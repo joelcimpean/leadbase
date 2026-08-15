@@ -7,10 +7,6 @@ import {
   type NextRequest,
 } from "next/server";
 
-/* =========================================================
-   PROXY
-========================================================= */
-
 export async function proxy(
   request: NextRequest
 ) {
@@ -18,10 +14,6 @@ export async function proxy(
     NextResponse.next({
       request,
     });
-
-  /* =======================================================
-     SUPABASE
-  ======================================================= */
 
   const supabase =
     createServerClient(
@@ -33,13 +25,7 @@ export async function proxy(
             return request.cookies.getAll();
           },
 
-          setAll(
-            cookiesToSet
-          ) {
-            /*
-             * Update the request cookies first so
-             * Server Components receive the refreshed session.
-             */
+          setAll(cookiesToSet) {
             cookiesToSet.forEach(
               ({
                 name,
@@ -57,10 +43,6 @@ export async function proxy(
                 request,
               });
 
-            /*
-             * Also send refreshed cookies back to
-             * the browser.
-             */
             cookiesToSet.forEach(
               ({
                 name,
@@ -79,12 +61,15 @@ export async function proxy(
       }
     );
 
-  /* =======================================================
-     PUBLIC ROUTES
-  ======================================================= */
-
   const pathname =
     request.nextUrl.pathname;
+
+  /* =========================================================
+     PUBLIC ROUTES
+
+     Cron routes do NOT use a browser login session.
+     They authenticate themselves with CRON_SECRET.
+  ========================================================= */
 
   const isPublicRoute =
     pathname.startsWith(
@@ -95,6 +80,9 @@ export async function proxy(
     ) ||
     pathname.startsWith(
       "/api/health"
+    ) ||
+    pathname.startsWith(
+      "/api/cron"
     );
 
   if (
@@ -103,9 +91,9 @@ export async function proxy(
     return supabaseResponse;
   }
 
-  /* =======================================================
-     AUTH CHECK
-  ======================================================= */
+  /* =========================================================
+     AUTHENTICATED APP ROUTES
+  ========================================================= */
 
   const {
     data,
@@ -135,19 +123,8 @@ export async function proxy(
   return supabaseResponse;
 }
 
-/* =========================================================
-   MATCHER
-
-   IMPORTANT:
-   /api/inbox/reply is deliberately excluded.
-
-   That Route Handler performs its own authentication and
-   should receive the raw POST request without Proxy touching
-   it.
-========================================================= */
-
 export const config = {
   matcher: [
-    "/((?!api/inbox/reply|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

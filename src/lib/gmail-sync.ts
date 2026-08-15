@@ -1,14 +1,21 @@
 import "server-only";
 
-import { google } from "googleapis";
-import { load } from "cheerio";
+import {
+  google,
+} from "googleapis";
+
+import {
+  load,
+} from "cheerio";
 
 import {
   createGmailOAuthClient,
   decryptGmailToken,
 } from "@/lib/gmail-oauth";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 /* =========================================================
    CONFIG
@@ -17,110 +24,192 @@ import { createClient } from "@/lib/supabase/server";
 const GMAIL_READ_SCOPE =
   "https://www.googleapis.com/auth/gmail.readonly";
 
-const MESSAGE_LOOKBACK_DAYS = 30;
+const MESSAGE_LOOKBACK_DAYS =
+  30;
 
-const SEARCH_TERM_CHUNK_SIZE = 20;
+const SEARCH_TERM_CHUNK_SIZE =
+  20;
 
-const MAX_SEARCH_PAGES = 5;
+const MAX_SEARCH_PAGES =
+  5;
 
-const GENERIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "outlook.de",
-  "hotmail.com",
-  "hotmail.de",
-  "live.com",
-  "live.de",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "web.de",
-  "gmx.de",
-  "gmx.net",
-  "gmx.com",
-  "yahoo.com",
-  "yahoo.de",
-  "t-online.de",
-  "freenet.de",
-  "aol.com",
-  "protonmail.com",
-  "proton.me",
-]);
+const GENERIC_EMAIL_DOMAINS =
+  new Set([
+    "gmail.com",
+    "googlemail.com",
+    "outlook.com",
+    "outlook.de",
+    "hotmail.com",
+    "hotmail.de",
+    "live.com",
+    "live.de",
+    "icloud.com",
+    "me.com",
+    "mac.com",
+    "web.de",
+    "gmx.de",
+    "gmx.net",
+    "gmx.com",
+    "yahoo.com",
+    "yahoo.de",
+    "t-online.de",
+    "freenet.de",
+    "aol.com",
+    "protonmail.com",
+    "proton.me",
+  ]);
 
 /* =========================================================
    TYPES
 ========================================================= */
 
 type GmailHeader = {
-  name?: string | null;
-  value?: string | null;
+  name?:
+    | string
+    | null;
+
+  value?:
+    | string
+    | null;
 };
 
 type GmailMessagePart = {
-  mimeType?: string | null;
+  filename?:
+    | string
+    | null;
+
+  mimeType?:
+    | string
+    | null;
 
   body?: {
-    data?: string | null;
+    data?:
+      | string
+      | null;
+
+    attachmentId?:
+      | string
+      | null;
+
+    size?:
+      | number
+      | null;
   } | null;
 
-  parts?: GmailMessagePart[] | null;
+  parts?:
+    | GmailMessagePart[]
+    | null;
 
-  headers?: GmailHeader[] | null;
+  headers?:
+    | GmailHeader[]
+    | null;
 };
 
 type LeadReference = {
   leadId: string;
-  draftId: string | null;
+
+  draftId:
+    | string
+    | null;
 };
 
 type ThreadReference = {
   leadId: string;
+
   draftId: string;
+
   threadId: string;
+};
+
+type AttachmentMetadata = {
+  name: string;
+
+  type: string;
+
+  size: number;
 };
 
 type ParsedIncomingMessage = {
   user_id: string;
+
   lead_id: string;
-  outreach_draft_id: string | null;
 
-  gmail_message_id: string;
-  gmail_thread_id: string;
+  outreach_draft_id:
+    | string
+    | null;
 
-  direction: "INCOMING";
+  gmail_message_id:
+    string;
 
-  from_name: string | null;
-  from_email: string;
-  to_email: string | null;
+  gmail_thread_id:
+    string;
 
-  subject: string | null;
-  body_text: string;
+  direction:
+    "INCOMING";
 
-  received_at: string;
+  from_name:
+    | string
+    | null;
 
-  is_unread: boolean;
+  from_email:
+    string;
+
+  to_email:
+    | string
+    | null;
+
+  subject:
+    | string
+    | null;
+
+  body_text:
+    string;
+
+  received_at:
+    string;
+
+  is_unread:
+    boolean;
+
+  attachments:
+    AttachmentMetadata[];
 };
 
 /* =========================================================
-   GENERIC HELPERS
+   HELPERS
 ========================================================= */
 
 function getSingleRelation<T>(
-  value: T | T[] | null | undefined
+  value:
+    | T
+    | T[]
+    | null
+    | undefined
 ): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      null
+    );
   }
 
-  return value ?? null;
+  return (
+    value ??
+    null
+  );
 }
 
 function chunkArray<T>(
   values: T[],
   size: number
 ) {
-  const chunks: T[][] = [];
+  const chunks:
+    T[][] =
+    [];
 
   for (
     let index = 0;
@@ -130,7 +219,8 @@ function chunkArray<T>(
     chunks.push(
       values.slice(
         index,
-        index + size
+        index +
+          size
       )
     );
   }
@@ -153,13 +243,43 @@ function getEmailDomain(
     email
       .trim()
       .toLowerCase()
-      .split("@");
+      .split(
+        "@"
+      );
 
-  if (parts.length !== 2) {
+  if (
+    parts.length !==
+    2
+  ) {
     return null;
   }
 
-  return parts[1] || null;
+  return (
+    parts[1] ||
+    null
+  );
+}
+
+function getErrorCode(
+  error: unknown
+) {
+  if (
+    typeof error ===
+      "object" &&
+    error !==
+      null &&
+    "code" in error
+  ) {
+    return Number(
+      (
+        error as {
+          code?: unknown;
+        }
+      ).code
+    );
+  }
+
+  return null;
 }
 
 /* =========================================================
@@ -173,33 +293,45 @@ function getHeader(
     | undefined,
   name: string
 ) {
-  const headers =
-    payload?.headers ?? [];
-
   const header =
-    headers.find(
-      (item) =>
-        item.name?.toLowerCase() ===
+    (
+      payload?.headers ??
+      []
+    ).find(
+      (
+        item
+      ) =>
+        item.name
+          ?.toLowerCase() ===
         name.toLowerCase()
     );
 
   return (
-    header?.value?.trim() ??
+    header
+      ?.value
+      ?.trim() ??
     null
   );
 }
 
 /* =========================================================
-   EMAIL ADDRESS
+   ADDRESS
 ========================================================= */
 
 function parseEmailAddress(
-  value: string | null
+  value:
+    | string
+    | null
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return {
-      email: null,
-      name: null,
+      email:
+        null,
+
+      name:
+        null,
     };
   }
 
@@ -208,7 +340,9 @@ function parseEmailAddress(
       /^(.*?)<([^>]+)>/
     );
 
-  if (angleMatch) {
+  if (
+    angleMatch
+  ) {
     const rawName =
       angleMatch[1]
         .trim()
@@ -222,15 +356,16 @@ function parseEmailAddress(
         .trim()
         .toLowerCase();
 
-    const usableName =
-      rawName &&
-      !rawName.includes("=?")
-        ? rawName
-        : null;
-
     return {
       email,
-      name: usableName,
+
+      name:
+        rawName &&
+        !rawName.includes(
+          "=?"
+        )
+          ? rawName
+          : null,
     };
   }
 
@@ -247,7 +382,8 @@ function parseEmailAddress(
             .toLowerCase()
         : null,
 
-    name: null,
+    name:
+      null,
   };
 }
 
@@ -261,7 +397,9 @@ function decodeBase64Url(
     | null
     | undefined
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "";
   }
 
@@ -278,7 +416,7 @@ function decodeBase64Url(
 }
 
 /* =========================================================
-   MIME BODY
+   BODY
 ========================================================= */
 
 function findTextPart(
@@ -288,12 +426,15 @@ function findTextPart(
     | undefined,
   mimeType: string
 ): string | null {
-  if (!part) {
+  if (
+    !part
+  ) {
     return null;
   }
 
   if (
-    part.mimeType === mimeType &&
+    part.mimeType ===
+      mimeType &&
     part.body?.data
   ) {
     return decodeBase64Url(
@@ -301,17 +442,20 @@ function findTextPart(
     );
   }
 
-  const children =
-    part.parts ?? [];
-
-  for (const child of children) {
+  for (
+    const child of
+      part.parts ??
+      []
+  ) {
     const result =
       findTextPart(
         child,
         mimeType
       );
 
-    if (result) {
+    if (
+      result
+    ) {
       return result;
     }
   }
@@ -319,15 +463,13 @@ function findTextPart(
   return null;
 }
 
-/* =========================================================
-   HTML -> TEXT
-========================================================= */
-
 function htmlToText(
   html: string
 ) {
   const $ =
-    load(html);
+    load(
+      html
+    );
 
   $("br").replaceWith(
     "\n"
@@ -336,8 +478,13 @@ function htmlToText(
   $(
     "p, div, li, blockquote"
   ).each(
-    (_, element) => {
-      $(element).append(
+    (
+      _,
+      element
+    ) => {
+      $(
+        element
+      ).append(
         "\n"
       );
     }
@@ -360,10 +507,6 @@ function htmlToText(
     .trim();
 }
 
-/* =========================================================
-   REMOVE QUOTED REPLY
-========================================================= */
-
 function removeQuotedReply(
   value: string
 ) {
@@ -385,15 +528,22 @@ function removeQuotedReply(
   let firstIndex =
     -1;
 
-  for (const marker of markers) {
+  for (
+    const marker of
+      markers
+  ) {
     const match =
-      marker.exec(text);
+      marker.exec(
+        text
+      );
 
     if (
       match &&
       (
-        firstIndex === -1 ||
-        match.index < firstIndex
+        firstIndex ===
+          -1 ||
+        match.index <
+          firstIndex
       )
     ) {
       firstIndex =
@@ -401,7 +551,10 @@ function removeQuotedReply(
     }
   }
 
-  if (firstIndex >= 0) {
+  if (
+    firstIndex >=
+    0
+  ) {
     text =
       text
         .slice(
@@ -412,24 +565,28 @@ function removeQuotedReply(
   }
 
   return text
-    .split("\n")
+    .split(
+      "\n"
+    )
     .filter(
-      (line) =>
+      (
+        line
+      ) =>
         !line
           .trim()
-          .startsWith(">")
+          .startsWith(
+            ">"
+          )
     )
-    .join("\n")
+    .join(
+      "\n"
+    )
     .replace(
       /\n{3,}/g,
       "\n\n"
     )
     .trim();
 }
-
-/* =========================================================
-   BODY
-========================================================= */
 
 function extractBody(
   payload:
@@ -447,7 +604,9 @@ function extractBody(
       "text/plain"
     );
 
-  if (plain) {
+  if (
+    plain
+  ) {
     return removeQuotedReply(
       plain
     );
@@ -459,16 +618,86 @@ function extractBody(
       "text/html"
     );
 
-  if (html) {
+  if (
+    html
+  ) {
     return removeQuotedReply(
-      htmlToText(html)
+      htmlToText(
+        html
+      )
     );
   }
 
   return (
-    fallbackSnippet?.trim() ??
+    fallbackSnippet
+      ?.trim() ??
     ""
   );
+}
+
+/* =========================================================
+   ATTACHMENTS
+========================================================= */
+
+function collectAttachments(
+  part:
+    | GmailMessagePart
+    | null
+    | undefined
+): AttachmentMetadata[] {
+  if (
+    !part
+  ) {
+    return [];
+  }
+
+  const attachments:
+    AttachmentMetadata[] =
+    [];
+
+  function walk(
+    current:
+      GmailMessagePart
+  ) {
+    const filename =
+      current.filename
+        ?.trim() ??
+      "";
+
+    if (
+      filename
+    ) {
+      attachments.push({
+        name:
+          filename,
+
+        type:
+          current.mimeType ||
+          "application/octet-stream",
+
+        size:
+          current.body
+            ?.size ??
+          0,
+      });
+    }
+
+    for (
+      const child of
+        current.parts ??
+        []
+    ) {
+      walk(
+        child
+      );
+    }
+  }
+
+  walk(
+    part
+  );
+
+  return attachments;
 }
 
 /* =========================================================
@@ -480,27 +709,27 @@ function isHardBounce({
   subject,
 }: {
   fromEmail: string;
-  subject: string | null;
+
+  subject:
+    | string
+    | null;
 }) {
   const sender =
-    fromEmail.toLowerCase();
+    fromEmail
+      .toLowerCase();
 
   const subjectText =
-    subject?.toLowerCase() ??
+    subject
+      ?.toLowerCase() ??
     "";
 
-  if (
+  return (
     sender.includes(
       "mailer-daemon"
     ) ||
     sender.includes(
       "postmaster"
-    )
-  ) {
-    return true;
-  }
-
-  if (
+    ) ||
     subjectText.includes(
       "delivery status notification"
     ) ||
@@ -513,11 +742,7 @@ function isHardBounce({
     subjectText.includes(
       "zustellung fehlgeschlagen"
     )
-  ) {
-    return true;
-  }
-
-  return false;
+  );
 }
 
 /* =========================================================
@@ -528,13 +753,15 @@ export async function syncGmailRepliesForCurrentUser() {
   const supabase =
     await createClient();
 
-  /* =======================================================
-     USER
-  ======================================================= */
+  /* USER */
 
   const {
-    data: { user },
-    error: userError,
+    data: {
+      user,
+    },
+
+    error:
+      userError,
   } =
     await supabase.auth.getUser();
 
@@ -547,13 +774,14 @@ export async function syncGmailRepliesForCurrentUser() {
     );
   }
 
-  /* =======================================================
-     CONNECTION
-  ======================================================= */
+  /* CONNECTION */
 
   const {
-    data: connection,
-    error: connectionError,
+    data:
+      connection,
+
+    error:
+      connectionError,
   } =
     await supabase
       .from(
@@ -597,17 +825,19 @@ export async function syncGmailRepliesForCurrentUser() {
   }
 
   const ownEmail =
-    connection.email_address
+    connection
+      .email_address
       .trim()
       .toLowerCase();
 
-  /* =======================================================
-     SENT DRAFTS
-  ======================================================= */
+  /* SENT OUTREACH */
 
   const {
-    data: drafts,
-    error: draftsError,
+    data:
+      drafts,
+
+    error:
+      draftsError,
   } =
     await supabase
       .from(
@@ -631,26 +861,32 @@ export async function syncGmailRepliesForCurrentUser() {
       .order(
         "sent_at",
         {
-          ascending: false,
+          ascending:
+            false,
         }
       );
 
-  if (draftsError) {
+  if (
+    draftsError
+  ) {
     throw new Error(
       `Could not load sent outreach drafts: ${draftsError.message}`
     );
   }
 
-  /* =======================================================
-     LEADS + CONTACT EMAILS
-  ======================================================= */
+  /* LEADS */
 
   const {
-    data: leads,
-    error: leadsError,
+    data:
+      leads,
+
+    error:
+      leadsError,
   } =
     await supabase
-      .from("leads")
+      .from(
+        "leads"
+      )
       .select(`
         id,
 
@@ -664,15 +900,15 @@ export async function syncGmailRepliesForCurrentUser() {
         user.id
       );
 
-  if (leadsError) {
+  if (
+    leadsError
+  ) {
     throw new Error(
       `Could not load lead contacts: ${leadsError.message}`
     );
   }
 
-  /* =======================================================
-     LATEST DRAFT PER LEAD
-  ======================================================= */
+  /* LOOKUPS */
 
   const latestDraftByLead =
     new Map<
@@ -682,7 +918,8 @@ export async function syncGmailRepliesForCurrentUser() {
 
   for (
     const draft of
-      drafts ?? []
+      drafts ??
+      []
   ) {
     if (
       !latestDraftByLead.has(
@@ -696,17 +933,13 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
-  /* =======================================================
-     KNOWN EMAILS + DOMAINS
-  ======================================================= */
-
   const knownContactByEmail =
     new Map<
       string,
       LeadReference
     >();
 
-  const possibleDomainReferences =
+  const domainReferences =
     new Map<
       string,
       LeadReference[]
@@ -714,7 +947,8 @@ export async function syncGmailRepliesForCurrentUser() {
 
   for (
     const lead of
-      leads ?? []
+      leads ??
+      []
   ) {
     const contact =
       getSingleRelation(
@@ -728,7 +962,9 @@ export async function syncGmailRepliesForCurrentUser() {
 
     if (
       !email ||
-      !isReasonableEmail(email)
+      !isReasonableEmail(
+        email
+      )
     ) {
       continue;
     }
@@ -741,7 +977,8 @@ export async function syncGmailRepliesForCurrentUser() {
       draftId:
         latestDraftByLead.get(
           lead.id
-        ) ?? null,
+        ) ??
+        null,
     };
 
     knownContactByEmail.set(
@@ -750,7 +987,9 @@ export async function syncGmailRepliesForCurrentUser() {
     );
 
     const domain =
-      getEmailDomain(email);
+      getEmailDomain(
+        email
+      );
 
     if (
       !domain ||
@@ -762,15 +1001,16 @@ export async function syncGmailRepliesForCurrentUser() {
     }
 
     const existing =
-      possibleDomainReferences.get(
+      domainReferences.get(
         domain
-      ) ?? [];
+      ) ??
+      [];
 
     existing.push(
       reference
     );
 
-    possibleDomainReferences.set(
+    domainReferences.set(
       domain,
       existing
     );
@@ -787,32 +1027,31 @@ export async function syncGmailRepliesForCurrentUser() {
       domain,
       references,
     ] of
-      possibleDomainReferences
+      domainReferences
         .entries()
   ) {
-    const uniqueLeadIds =
+    const leadIds =
       new Set(
         references.map(
-          (reference) =>
+          (
+            reference
+          ) =>
             reference.leadId
         )
       );
 
     if (
-      uniqueLeadIds.size !== 1
+      leadIds.size ===
+      1
     ) {
-      continue;
+      knownLeadByDomain.set(
+        domain,
+        references[0]
+      );
     }
-
-    knownLeadByDomain.set(
-      domain,
-      references[0]
-    );
   }
 
-  /* =======================================================
-     KNOWN OUTREACH THREADS
-  ======================================================= */
+  /* THREAD MAP */
 
   const threadMap =
     new Map<
@@ -822,7 +1061,8 @@ export async function syncGmailRepliesForCurrentUser() {
 
   for (
     const draft of
-      drafts ?? []
+      drafts ??
+      []
   ) {
     if (
       draft.gmail_thread_id
@@ -861,13 +1101,12 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
-  /* =======================================================
-     GMAIL CLIENT
-  ======================================================= */
+  /* GMAIL */
 
   const refreshToken =
     decryptGmailToken(
-      connection.encrypted_refresh_token
+      connection
+        .encrypted_refresh_token
     );
 
   const oauth2Client =
@@ -880,16 +1119,19 @@ export async function syncGmailRepliesForCurrentUser() {
 
   const gmail =
     google.gmail({
-      version: "v1",
-      auth: oauth2Client,
+      version:
+        "v1",
+
+      auth:
+        oauth2Client,
     });
 
-  /* =======================================================
-     CANDIDATE IDS
-  ======================================================= */
+  /* CANDIDATES */
 
   const candidateMessageIds =
-    new Set<string>();
+    new Set<
+      string
+    >();
 
   const threadReferenceByMessageId =
     new Map<
@@ -897,32 +1139,38 @@ export async function syncGmailRepliesForCurrentUser() {
       ThreadReference
     >();
 
-  /* =======================================================
-     SOURCE A — EXISTING OUTREACH THREADS
-  ======================================================= */
+  /* EXISTING THREADS */
 
   for (
     const reference of
       threadMap.values()
   ) {
     try {
-      const threadResponse =
-        await gmail.users.threads.get({
-          userId: "me",
+      const response =
+        await gmail
+          .users
+          .threads
+          .get({
+            userId:
+              "me",
 
-          id:
-            reference.threadId,
+            id:
+              reference.threadId,
 
-          format:
-            "minimal",
-        });
+            format:
+              "minimal",
+          });
 
       for (
         const message of
-          threadResponse.data.messages ??
+          response
+            .data
+            .messages ??
           []
       ) {
-        if (!message.id) {
+        if (
+          !message.id
+        ) {
           continue;
         }
 
@@ -935,24 +1183,19 @@ export async function syncGmailRepliesForCurrentUser() {
           reference
         );
       }
-    } catch (error) {
-      const possibleCode =
-        typeof error ===
-          "object" &&
-        error !== null &&
-        "code" in error
-          ? Number(
-              (
-                error as {
-                  code?: unknown;
-                }
-              ).code
-            )
-          : null;
+    } catch (
+      error
+    ) {
+      const code =
+        getErrorCode(
+          error
+        );
 
       if (
-        possibleCode === 401 ||
-        possibleCode === 403
+        code ===
+          401 ||
+        code ===
+          403
       ) {
         throw error;
       }
@@ -964,36 +1207,35 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
-  /* =======================================================
-     SOURCE B — NEW EMAILS FROM KNOWN CONTACTS / DOMAINS
-  ======================================================= */
+  /* NEW THREADS */
 
   const searchTerms = [
     ...Array.from(
       knownContactByEmail.keys()
     ).map(
-      (email) =>
+      (
+        email
+      ) =>
         `from:${email}`
     ),
 
     ...Array.from(
       knownLeadByDomain.keys()
     ).map(
-      (domain) =>
+      (
+        domain
+      ) =>
         `from:${domain}`
     ),
   ];
 
-  const uniqueSearchTerms =
-    Array.from(
-      new Set(
-        searchTerms
-      )
-    );
-
   const searchChunks =
     chunkArray(
-      uniqueSearchTerms,
+      Array.from(
+        new Set(
+          searchTerms
+        )
+      ),
       SEARCH_TERM_CHUNK_SIZE
     );
 
@@ -1002,70 +1244,89 @@ export async function syncGmailRepliesForCurrentUser() {
       searchChunks
   ) {
     if (
-      searchChunk.length === 0
+      searchChunk.length ===
+      0
     ) {
       continue;
     }
 
-    const fromSearch =
-      searchChunk.join(" ");
-
     const query =
-      `newer_than:${MESSAGE_LOOKBACK_DAYS}d {${fromSearch}}`;
+      `newer_than:${MESSAGE_LOOKBACK_DAYS}d {${searchChunk.join(
+        " "
+      )}}`;
 
     let pageToken:
-      string | undefined;
+      string | undefined =
+      undefined;
 
     for (
-      let page = 0;
-      page < MAX_SEARCH_PAGES;
-      page += 1
+      let page =
+        0;
+      page <
+        MAX_SEARCH_PAGES;
+      page +=
+        1
     ) {
-      const listResponse =
-        await gmail.users.messages.list({
-          userId: "me",
-
-          q: query,
-
-          maxResults: 100,
-
-          pageToken,
-        });
-
+      const listData: {
+        messages?:
+          | Array<{
+              id?:
+                | string
+                | null;
+            }>
+          | null;
+      
+        nextPageToken?:
+          | string
+          | null;
+      } = (
+        await gmail
+          .users
+          .messages
+          .list({
+            userId:
+              "me",
+      
+            q:
+              query,
+      
+            maxResults:
+              100,
+      
+            pageToken,
+          })
+      ).data;
+      
       for (
         const message of
-          listResponse.data.messages ??
+          listData.messages ??
           []
       ) {
-        if (message.id) {
+        if (
+          message.id
+        ) {
           candidateMessageIds.add(
             message.id
           );
         }
       }
-
-      const nextPageToken =
-        listResponse.data
-          .nextPageToken ??
-        undefined;
-
-      if (!nextPageToken) {
-        break;
-      }
-
+      
       pageToken =
-        nextPageToken;
-    }
-  }
-
-  /* =======================================================
-     NOTHING FOUND
-  ======================================================= */
-
-  if (
-    candidateMessageIds.size ===
-    0
-  ) {
+        listData.nextPageToken ??
+        undefined;
+      
+        if (
+          !pageToken
+        ) {
+          break;
+        }
+            }
+          }
+        
+          if (
+            candidateMessageIds.size ===
+            0
+          ) {
     return {
       threadsChecked:
         threadMap.size,
@@ -1081,9 +1342,7 @@ export async function syncGmailRepliesForCurrentUser() {
     };
   }
 
-  /* =======================================================
-     REMOVE ALREADY STORED IDS
-  ======================================================= */
+  /* ALREADY STORED */
 
   const candidateIds =
     Array.from(
@@ -1091,21 +1350,20 @@ export async function syncGmailRepliesForCurrentUser() {
     );
 
   const existingMessageIds =
-    new Set<string>();
-
-  const candidateChunks =
-    chunkArray(
-      candidateIds,
-      100
-    );
+    new Set<
+      string
+    >();
 
   for (
     const chunk of
-      candidateChunks
+      chunkArray(
+        candidateIds,
+        100
+      )
   ) {
     const {
-      data: existingMessages,
-      error: existingError,
+      data,
+      error,
     } =
       await supabase
         .from(
@@ -1123,15 +1381,18 @@ export async function syncGmailRepliesForCurrentUser() {
           chunk
         );
 
-    if (existingError) {
+    if (
+      error
+    ) {
       throw new Error(
-        `Could not check existing inbox messages: ${existingError.message}`
+        `Could not check existing inbox messages: ${error.message}`
       );
     }
 
     for (
       const message of
-        existingMessages ?? []
+        data ??
+        []
     ) {
       existingMessageIds.add(
         message.gmail_message_id
@@ -1141,9 +1402,11 @@ export async function syncGmailRepliesForCurrentUser() {
 
   const unknownMessageIds =
     candidateIds.filter(
-      (messageId) =>
+      (
+        id
+      ) =>
         !existingMessageIds.has(
-          messageId
+          id
         )
     );
 
@@ -1166,13 +1429,11 @@ export async function syncGmailRepliesForCurrentUser() {
     };
   }
 
-  /* =======================================================
-     FETCH FULL MESSAGES
-  ======================================================= */
+  /* FETCH */
 
   const parsedMessages:
     ParsedIncomingMessage[] =
-      [];
+    [];
 
   for (
     const messageId of
@@ -1181,37 +1442,36 @@ export async function syncGmailRepliesForCurrentUser() {
     let message;
 
     try {
-      const messageResponse =
-        await gmail.users.messages.get({
-          userId: "me",
+      const response =
+        await gmail
+          .users
+          .messages
+          .get({
+            userId:
+              "me",
 
-          id:
-            messageId,
+            id:
+              messageId,
 
-          format:
-            "full",
-        });
+            format:
+              "full",
+          });
 
       message =
-        messageResponse.data;
-    } catch (error) {
-      const possibleCode =
-        typeof error ===
-          "object" &&
-        error !== null &&
-        "code" in error
-          ? Number(
-              (
-                error as {
-                  code?: unknown;
-                }
-              ).code
-            )
-          : null;
+        response.data;
+    } catch (
+      error
+    ) {
+      const code =
+        getErrorCode(
+          error
+        );
 
       if (
-        possibleCode === 401 ||
-        possibleCode === 403
+        code ===
+          401 ||
+        code ===
+          403
       ) {
         throw error;
       }
@@ -1224,7 +1484,9 @@ export async function syncGmailRepliesForCurrentUser() {
       continue;
     }
 
-    if (!message.id) {
+    if (
+      !message.id
+    ) {
       continue;
     }
 
@@ -1233,16 +1495,20 @@ export async function syncGmailRepliesForCurrentUser() {
         | GmailMessagePart
         | undefined;
 
-    const fromHeader =
-      getHeader(
-        payload,
-        "From"
+    const from =
+      parseEmailAddress(
+        getHeader(
+          payload,
+          "From"
+        )
       );
 
-    const toHeader =
-      getHeader(
-        payload,
-        "To"
+    const to =
+      parseEmailAddress(
+        getHeader(
+          payload,
+          "To"
+        )
       );
 
     const subject =
@@ -1251,24 +1517,12 @@ export async function syncGmailRepliesForCurrentUser() {
         "Subject"
       );
 
-    const from =
-      parseEmailAddress(
-        fromHeader
-      );
-
-    const to =
-      parseEmailAddress(
-        toHeader
-      );
-
-    if (!from.email) {
+    if (
+      !from.email
+    ) {
       continue;
     }
 
-    /*
-     * Do not import our own sent messages
-     * as incoming lead messages.
-     */
     if (
       from.email ===
       ownEmail
@@ -1287,9 +1541,7 @@ export async function syncGmailRepliesForCurrentUser() {
       continue;
     }
 
-    /* =====================================================
-       MATCH TO LEAD
-    ===================================================== */
+    /* MATCH LEAD */
 
     const threadReference =
       threadReferenceByMessageId.get(
@@ -1300,10 +1552,9 @@ export async function syncGmailRepliesForCurrentUser() {
       LeadReference | null =
       null;
 
-    /*
-     * 1. Exact existing Gmail thread.
-     */
-    if (threadReference) {
+    if (
+      threadReference
+    ) {
       leadReference = {
         leadId:
           threadReference.leadId,
@@ -1313,20 +1564,19 @@ export async function syncGmailRepliesForCurrentUser() {
       };
     }
 
-    /*
-     * 2. Exact known lead email.
-     */
-    if (!leadReference) {
+    if (
+      !leadReference
+    ) {
       leadReference =
         knownContactByEmail.get(
           from.email
-        ) ?? null;
+        ) ??
+        null;
     }
 
-    /*
-     * 3. Same unique company domain.
-     */
-    if (!leadReference) {
+    if (
+      !leadReference
+    ) {
       const domain =
         getEmailDomain(
           from.email
@@ -1341,23 +1591,16 @@ export async function syncGmailRepliesForCurrentUser() {
         leadReference =
           knownLeadByDomain.get(
             domain
-          ) ?? null;
+          ) ??
+          null;
       }
     }
 
-    /*
-     * Unknown emails stay in Gmail and do not
-     * enter the JOEL LEADOS CRM inbox.
-     */
-    if (!leadReference) {
+    if (
+      !leadReference
+    ) {
       continue;
     }
-
-    const body =
-      extractBody(
-        payload,
-        message.snippet
-      );
 
     const internalDate =
       message.internalDate
@@ -1377,7 +1620,8 @@ export async function syncGmailRepliesForCurrentUser() {
             .toISOString();
 
     const labels =
-      message.labelIds ?? [];
+      message.labelIds ??
+      [];
 
     parsedMessages.push({
       user_id:
@@ -1413,7 +1657,10 @@ export async function syncGmailRepliesForCurrentUser() {
       subject,
 
       body_text:
-        body,
+        extractBody(
+          payload,
+          message.snippet
+        ),
 
       received_at:
         receivedAt,
@@ -1422,12 +1669,19 @@ export async function syncGmailRepliesForCurrentUser() {
         labels.includes(
           "UNREAD"
         ),
+
+      attachments:
+        collectAttachments(
+          payload
+        ),
     });
   }
 
   const validMessages =
     parsedMessages.filter(
-      (message) =>
+      (
+        message
+      ) =>
         Boolean(
           message.gmail_thread_id
         )
@@ -1452,12 +1706,11 @@ export async function syncGmailRepliesForCurrentUser() {
     };
   }
 
-  /* =======================================================
-     STORE
-  ======================================================= */
+  /* STORE */
 
   const {
-    error: insertError,
+    error:
+      insertError,
   } =
     await supabase
       .from(
@@ -1474,35 +1727,139 @@ export async function syncGmailRepliesForCurrentUser() {
         }
       );
 
-  if (insertError) {
+  if (
+    insertError
+  ) {
     throw new Error(
       `Could not save Gmail replies: ${insertError.message}`
     );
   }
 
-  /* =======================================================
-     UPDATE LEADS
-  ======================================================= */
-
   const repliedLeadIds =
     Array.from(
       new Set(
         validMessages.map(
-          (message) =>
+          (
+            message
+          ) =>
             message.lead_id
         )
       )
     );
+
+  /*
+   * IMPORTANT:
+   *
+   * Any genuinely new incoming customer mail restores
+   * the conversation to the active inbox.
+   *
+   * That means an archived / trashed / previously deleted
+   * lead can never silently disappear when they reply.
+   */
+
+  const cancelledAt =
+  new Date()
+    .toISOString();
+
+const {
+  error:
+    scheduledCancellationError,
+} =
+  await supabase
+    .from(
+      "scheduled_emails"
+    )
+    .update({
+      status:
+        "CANCELLED",
+
+      cancelled_at:
+        cancelledAt,
+
+      last_error:
+        "Cancelled automatically because a new customer email was received.",
+    })
+    .eq(
+      "user_id",
+      user.id
+    )
+    .in(
+      "lead_id",
+      repliedLeadIds
+    )
+    .eq(
+      "status",
+      "SCHEDULED"
+    );
+
+if (
+  scheduledCancellationError
+) {
+  console.error(
+    "Replies were stored but scheduled emails could not be cancelled:",
+    scheduledCancellationError
+  );
+}
 
   if (
     repliedLeadIds.length >
     0
   ) {
     const {
-      error: followUpError,
+      error:
+        inboxStateError,
     } =
       await supabase
-        .from("leads")
+        .from(
+          "inbox_conversation_states"
+        )
+        .upsert(
+          repliedLeadIds.map(
+            (
+              leadId
+            ) => ({
+              user_id:
+                user.id,
+
+              lead_id:
+                leadId,
+
+              state:
+                "INBOX",
+
+              archived_at:
+                null,
+
+              trashed_at:
+                null,
+
+              deleted_at:
+                null,
+            })
+          ),
+          {
+            onConflict:
+              "user_id,lead_id",
+          }
+        );
+
+    if (
+      inboxStateError
+    ) {
+      console.error(
+        "Messages were synced but conversations could not be restored to inbox:",
+        inboxStateError
+      );
+    }
+
+    const {
+      error:
+        followUpError,
+    } =
+      await supabase
+        .from(
+          "leads"
+        )
         .update({
           next_follow_up_at:
             null,
@@ -1516,7 +1873,9 @@ export async function syncGmailRepliesForCurrentUser() {
           repliedLeadIds
         );
 
-    if (followUpError) {
+    if (
+      followUpError
+    ) {
       console.error(
         "Replies were stored but follow-ups could not be stopped:",
         followUpError
@@ -1524,10 +1883,13 @@ export async function syncGmailRepliesForCurrentUser() {
     }
 
     const {
-      error: statusError,
+      error:
+        statusError,
     } =
       await supabase
-        .from("leads")
+        .from(
+          "leads"
+        )
         .update({
           status:
             "REPLIED",
@@ -1551,7 +1913,9 @@ export async function syncGmailRepliesForCurrentUser() {
           ]
         );
 
-    if (statusError) {
+    if (
+      statusError
+    ) {
       console.error(
         "Replies were stored but lead statuses could not be updated:",
         statusError

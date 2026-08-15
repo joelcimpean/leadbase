@@ -96,7 +96,7 @@ export function InboxAutoSync({
       }
 
       /*
-       * Initial sync shortly after loading JOEL LEADOS.
+       * Initial sync shortly after loading Leadbase.
        */
 
       const initialTimeout =

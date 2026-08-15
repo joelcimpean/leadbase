@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  CalendarClock,
+  ChevronDown,
+  Clock3,
   File,
   Loader2,
   MessageSquareReply,
@@ -13,6 +16,7 @@ import {
 import {
   ChangeEvent,
   FormEvent,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -34,6 +38,9 @@ const MAX_FILE_SIZE =
 const MAX_TOTAL_SIZE =
   12 * 1024 * 1024;
 
+const SCHEDULE_TIME_ZONE =
+  "Europe/Berlin";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -50,34 +57,36 @@ type ReplyComposerProps = {
 
 type ReplyApiResponse = {
   ok?: boolean;
-
   error?: string;
 
   messageId?: string;
-
   threadId?: string;
 };
 
 type GenerateReplyResponse = {
   ok?: boolean;
-
   error?: string;
 
   body?: string;
 };
 
+type ScheduleReplyResponse = {
+  ok?: boolean;
+  error?: string;
+
+  id?: string;
+  scheduledFor?: string;
+};
+
 type AttachmentPayload = {
   filename: string;
-
   contentType: string;
-
   size: number;
-
   base64: string;
 };
 
 /* =========================================================
-   HELPERS
+   FILE HELPERS
 ========================================================= */
 
 function formatFileSize(
@@ -178,6 +187,10 @@ function fileToBase64(
   );
 }
 
+/* =========================================================
+   API
+========================================================= */
+
 async function parseJsonResponse<T>(
   response: Response
 ): Promise<T> {
@@ -213,6 +226,357 @@ async function parseJsonResponse<T>(
 
   throw new Error(
     `The server could not process the request (${response.status}).`
+  );
+}
+
+/* =========================================================
+   TIMEZONE HELPERS
+========================================================= */
+
+function getZonedParts(
+  date: Date,
+  timeZone: string
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone,
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+
+        second:
+          "2-digit",
+
+        hourCycle:
+          "h23",
+      }
+    ).formatToParts(
+      date
+    );
+
+  const values:
+    Record<
+      string,
+      string
+    > = {};
+
+  for (
+    const part of
+      parts
+  ) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
+  return {
+    year:
+      Number(
+        values.year
+      ),
+
+    month:
+      Number(
+        values.month
+      ),
+
+    day:
+      Number(
+        values.day
+      ),
+
+    hour:
+      Number(
+        values.hour
+      ),
+
+    minute:
+      Number(
+        values.minute
+      ),
+
+    second:
+      Number(
+        values.second
+      ),
+  };
+}
+
+function getTimeZoneOffsetMs(
+  date: Date,
+  timeZone: string
+) {
+  const parts =
+    getZonedParts(
+      date,
+      timeZone
+    );
+
+  const representedAsUtc =
+    Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second
+    );
+
+  return (
+    representedAsUtc -
+    date.getTime()
+  );
+}
+
+function localDateTimeToIso(
+  value: string,
+  timeZone:
+    string
+) {
+  const match =
+    value.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+    );
+
+  if (
+    !match
+  ) {
+    return null;
+  }
+
+  const year =
+    Number(
+      match[1]
+    );
+
+  const month =
+    Number(
+      match[2]
+    );
+
+  const day =
+    Number(
+      match[3]
+    );
+
+  const hour =
+    Number(
+      match[4]
+    );
+
+  const minute =
+    Number(
+      match[5]
+    );
+
+  const utcGuess =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        hour,
+        minute,
+        0
+      )
+    );
+
+  let offset =
+    getTimeZoneOffsetMs(
+      utcGuess,
+      timeZone
+    );
+
+  let result =
+    new Date(
+      utcGuess.getTime() -
+      offset
+    );
+
+  /*
+   * Recalculate once because DST can make the first
+   * offset guess land on a different offset.
+   */
+  offset =
+    getTimeZoneOffsetMs(
+      result,
+      timeZone
+    );
+
+  result =
+    new Date(
+      utcGuess.getTime() -
+      offset
+    );
+
+  return result
+    .toISOString();
+}
+
+function pad2(
+  value: number
+) {
+  return String(
+    value
+  ).padStart(
+    2,
+    "0"
+  );
+}
+
+function getTomorrowMorningLocalValue() {
+  const nowParts =
+    getZonedParts(
+      new Date(),
+      SCHEDULE_TIME_ZONE
+    );
+
+  const date =
+    new Date(
+      Date.UTC(
+        nowParts.year,
+        nowParts.month - 1,
+        nowParts.day
+      )
+    );
+
+  date.setUTCDate(
+    date.getUTCDate() +
+    1
+  );
+
+  return [
+    date.getUTCFullYear(),
+    "-",
+    pad2(
+      date.getUTCMonth() +
+      1
+    ),
+    "-",
+    pad2(
+      date.getUTCDate()
+    ),
+    "T09:00",
+  ].join("");
+}
+
+function getTomorrowMorningIso() {
+  return localDateTimeToIso(
+    getTomorrowMorningLocalValue(),
+    SCHEDULE_TIME_ZONE
+  );
+}
+
+function getLaterTodayDate() {
+  const now =
+    new Date();
+
+  const target =
+    new Date(
+      now.getTime() +
+      2 *
+        60 *
+        60 *
+        1000
+    );
+
+  const nowParts =
+    getZonedParts(
+      now,
+      SCHEDULE_TIME_ZONE
+    );
+
+  const targetParts =
+    getZonedParts(
+      target,
+      SCHEDULE_TIME_ZONE
+    );
+
+  const sameDay =
+    nowParts.year ===
+      targetParts.year &&
+    nowParts.month ===
+      targetParts.month &&
+    nowParts.day ===
+      targetParts.day;
+
+  if (
+    !sameDay
+  ) {
+    return null;
+  }
+
+  return target;
+}
+
+function formatScheduledDate(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone:
+        SCHEDULE_TIME_ZONE,
+
+      weekday:
+        "short",
+
+      day:
+        "2-digit",
+
+      month:
+        "2-digit",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+    }
+  ).format(
+    new Date(
+      value
+    )
+  );
+}
+
+function formatTimeOnly(
+  date: Date
+) {
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone:
+        SCHEDULE_TIME_ZONE,
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+    }
+  ).format(
+    date
   );
 }
 
@@ -291,6 +655,42 @@ export function ReplyComposer({
     useState(false);
 
   const [
+    scheduling,
+    setScheduling,
+  ] =
+    useState(false);
+
+  const [
+    scheduleMenuOpen,
+    setScheduleMenuOpen,
+  ] =
+    useState(false);
+
+  const [
+    customScheduleOpen,
+    setCustomScheduleOpen,
+  ] =
+    useState(false);
+
+  const [
+    customDateTime,
+    setCustomDateTime,
+  ] =
+    useState(
+      getTomorrowMorningLocalValue
+    );
+
+  const [
+    scheduledFor,
+    setScheduledFor,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
     error,
     setError,
   ] =
@@ -305,6 +705,18 @@ export function ReplyComposer({
     setSent,
   ] =
     useState(false);
+
+  const busy =
+    sending ||
+    generating ||
+    scheduling;
+
+  const laterToday =
+    useMemo(
+      () =>
+        getLaterTodayDate(),
+      []
+    );
 
   /* =======================================================
      FILES
@@ -439,13 +851,41 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     GENERATE REPLY
+     ATTACHMENT PAYLOAD
+  ======================================================= */
+
+  async function createAttachmentPayload() {
+    return await Promise.all(
+      files.map(
+        async (
+          file
+        ): Promise<AttachmentPayload> => ({
+          filename:
+            file.name,
+
+          contentType:
+            file.type ||
+            "application/octet-stream",
+
+          size:
+            file.size,
+
+          base64:
+            await fileToBase64(
+              file
+            ),
+        })
+      )
+    );
+  }
+
+  /* =======================================================
+     GENERATE
   ======================================================= */
 
   async function handleGenerateReply() {
     if (
-      generating ||
-      sending
+      busy
     ) {
       return;
     }
@@ -453,13 +893,13 @@ export function ReplyComposer({
     if (
       body.trim()
     ) {
-      const shouldReplace =
+      const replace =
         window.confirm(
           "Replace your current reply with an AI-generated draft?"
         );
 
       if (
-        !shouldReplace
+        !replace
       ) {
         return;
       }
@@ -489,7 +929,6 @@ export function ReplyComposer({
             body:
               JSON.stringify({
                 leadId,
-
                 replyToMessageId,
               }),
           }
@@ -517,11 +956,6 @@ export function ReplyComposer({
     } catch (
       generationError
     ) {
-      console.warn(
-        "Reply generation failed:",
-        generationError
-      );
-
       setError(
         generationError instanceof
           Error
@@ -540,28 +974,21 @@ export function ReplyComposer({
   ======================================================= */
 
   function resetComposer() {
-    setBody(
-      ""
-    );
+    setBody("");
+    setCc("");
+    setBcc("");
 
-    setCc(
-      ""
-    );
+    setShowCc(false);
+    setShowBcc(false);
 
-    setBcc(
-      ""
-    );
+    setFiles([]);
 
-    setShowCc(
+    setScheduleMenuOpen(
       false
     );
 
-    setShowBcc(
+    setCustomScheduleOpen(
       false
-    );
-
-    setFiles(
-      []
     );
 
     setError(
@@ -570,33 +997,18 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     SEND
+     VALIDATE BEFORE SEND / SCHEDULE
   ======================================================= */
 
-  async function handleSubmit(
-    event:
-      FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
+  function validateComposer() {
     if (
-      sending ||
-      generating
-    ) {
-      return;
-    }
-
-    const trimmedBody =
-      body.trim();
-
-    if (
-      !trimmedBody
+      !body.trim()
     ) {
       setError(
-        "Write a message before sending."
+        "Write a message first."
       );
 
-      return;
+      return false;
     }
 
     const totalSize =
@@ -618,6 +1030,26 @@ export function ReplyComposer({
         "Attachments may be up to 12 MB in total."
       );
 
+      return false;
+    }
+
+    return true;
+  }
+
+  /* =======================================================
+     SEND NOW
+  ======================================================= */
+
+  async function handleSubmit(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (
+      busy ||
+      !validateComposer()
+    ) {
       return;
     }
 
@@ -634,30 +1066,8 @@ export function ReplyComposer({
     );
 
     try {
-      const attachments:
-        AttachmentPayload[] =
-        await Promise.all(
-          files.map(
-            async (
-              file
-            ) => ({
-              filename:
-                file.name,
-
-              contentType:
-                file.type ||
-                "application/octet-stream",
-
-              size:
-                file.size,
-
-              base64:
-                await fileToBase64(
-                  file
-                ),
-            })
-          )
-        );
+      const attachments =
+        await createAttachmentPayload();
 
       const response =
         await fetch(
@@ -674,14 +1084,12 @@ export function ReplyComposer({
             body:
               JSON.stringify({
                 leadId,
-
                 replyToMessageId,
 
                 body:
-                  trimmedBody,
+                  body.trim(),
 
                 cc,
-
                 bcc,
 
                 attachments,
@@ -717,21 +1125,15 @@ export function ReplyComposer({
       router.refresh();
 
       window.setTimeout(
-        () => {
+        () =>
           setSent(
             false
-          );
-        },
+          ),
         3500
       );
     } catch (
       submitError
     ) {
-      console.warn(
-        "Reply send failed:",
-        submitError
-      );
-
       setError(
         submitError instanceof
           Error
@@ -746,6 +1148,135 @@ export function ReplyComposer({
   }
 
   /* =======================================================
+     SCHEDULE
+  ======================================================= */
+
+  async function scheduleReply(
+    isoDate: string
+  ) {
+    if (
+      busy ||
+      !validateComposer()
+    ) {
+      return;
+    }
+
+    setScheduling(
+      true
+    );
+
+    setError(
+      null
+    );
+
+    try {
+      const attachments =
+        await createAttachmentPayload();
+
+      const response =
+        await fetch(
+          "/api/inbox/schedule-reply",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                leadId,
+                replyToMessageId,
+
+                body:
+                  body.trim(),
+
+                cc,
+                bcc,
+
+                attachments,
+
+                scheduledFor:
+                  isoDate,
+              }),
+          }
+        );
+
+      const result =
+        await parseJsonResponse<ScheduleReplyResponse>(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !result.ok ||
+        !result.scheduledFor
+      ) {
+        throw new Error(
+          result.error ||
+          "Reply could not be scheduled."
+        );
+      }
+
+      const successfulTime =
+        result.scheduledFor;
+
+      resetComposer();
+
+      setOpen(
+        false
+      );
+
+      setScheduledFor(
+        successfulTime
+      );
+
+      router.refresh();
+    } catch (
+      scheduleError
+    ) {
+      setError(
+        scheduleError instanceof
+          Error
+          ? scheduleError.message
+          : "Reply could not be scheduled."
+      );
+    } finally {
+      setScheduling(
+        false
+      );
+    }
+  }
+
+  /* =======================================================
+     CUSTOM SCHEDULE
+  ======================================================= */
+
+  function handleCustomSchedule() {
+    const iso =
+      localDateTimeToIso(
+        customDateTime,
+        SCHEDULE_TIME_ZONE
+      );
+
+    if (
+      !iso
+    ) {
+      setError(
+        "Choose a valid date and time."
+      );
+
+      return;
+    }
+
+    void scheduleReply(
+      iso
+    );
+  }
+
+  /* =======================================================
      CLOSED
   ======================================================= */
 
@@ -756,15 +1287,31 @@ export function ReplyComposer({
       <div className="mt-8 rounded-xl border bg-muted/20 p-5">
         <div className="flex items-start gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
-            <MessageSquareReply className="size-4" />
+            {scheduledFor ? (
+              <Clock3 className="size-4" />
+            ) : (
+              <MessageSquareReply className="size-4" />
+            )}
           </div>
 
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold">
-              Reply
+              {scheduledFor
+                ? "Reply scheduled"
+                : "Reply"}
             </h3>
 
-            {sent ? (
+            {scheduledFor ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Scheduled for{" "}
+                <span className="font-medium text-foreground">
+                  {formatScheduledDate(
+                    scheduledFor
+                  )}
+                </span>
+                .
+              </p>
+            ) : sent ? (
               <p className="mt-1 text-sm text-emerald-600 dark:text-emerald-400">
                 Reply sent successfully.
               </p>
@@ -778,29 +1325,35 @@ export function ReplyComposer({
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={
-                () => {
-                  setOpen(
-                    true
-                  );
+            {!scheduledFor ? (
+              <button
+                type="button"
+                onClick={
+                  () => {
+                    setOpen(
+                      true
+                    );
 
-                  setSent(
-                    false
-                  );
+                    setSent(
+                      false
+                    );
 
-                  setError(
-                    null
-                  );
+                    setError(
+                      null
+                    );
+                  }
                 }
-              }
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
-            >
-              <MessageSquareReply className="size-4" />
+                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+              >
+                <MessageSquareReply className="size-4" />
 
-              Write reply
-            </button>
+                Write reply
+              </button>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Edit and cancel controls come in the next step.
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -808,11 +1361,11 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     OPEN
+     OPEN COMPOSER
   ======================================================= */
 
   return (
-    <div className="mt-8 overflow-hidden rounded-xl border bg-background shadow-sm">
+    <div className="mt-8 overflow-visible rounded-xl border bg-background shadow-sm">
       {/* HEADER */}
 
       <div className="flex items-center justify-between border-b px-5 py-4">
@@ -834,15 +1387,14 @@ export function ReplyComposer({
 
         <button
           type="button"
+          disabled={
+            busy
+          }
           onClick={
             () =>
               setOpen(
                 false
               )
-          }
-          disabled={
-            sending ||
-            generating
           }
           className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
         >
@@ -872,15 +1424,14 @@ export function ReplyComposer({
             {!showCc ? (
               <button
                 type="button"
+                disabled={
+                  busy
+                }
                 onClick={
                   () =>
                     setShowCc(
                       true
                     )
-                }
-                disabled={
-                  sending ||
-                  generating
                 }
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
@@ -891,15 +1442,14 @@ export function ReplyComposer({
             {!showBcc ? (
               <button
                 type="button"
+                disabled={
+                  busy
+                }
                 onClick={
                   () =>
                     setShowBcc(
                       true
                     )
-                }
-                disabled={
-                  sending ||
-                  generating
                 }
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
@@ -919,6 +1469,9 @@ export function ReplyComposer({
               value={
                 cc
               }
+              disabled={
+                busy
+              }
               onChange={
                 (
                   event
@@ -933,15 +1486,13 @@ export function ReplyComposer({
 
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={
                 () => {
-                  setCc(
-                    ""
-                  );
-
-                  setShowCc(
-                    false
-                  );
+                  setCc("");
+                  setShowCc(false);
                 }
               }
             >
@@ -960,6 +1511,9 @@ export function ReplyComposer({
               value={
                 bcc
               }
+              disabled={
+                busy
+              }
               onChange={
                 (
                   event
@@ -974,15 +1528,13 @@ export function ReplyComposer({
 
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={
                 () => {
-                  setBcc(
-                    ""
-                  );
-
-                  setShowBcc(
-                    false
-                  );
+                  setBcc("");
+                  setShowBcc(false);
                 }
               }
             >
@@ -1004,6 +1556,10 @@ export function ReplyComposer({
             value={
               body
             }
+            autoFocus
+            disabled={
+              busy
+            }
             onChange={
               (
                 event
@@ -1011,11 +1567,6 @@ export function ReplyComposer({
                 setBody(
                   event.target.value
                 )
-            }
-            autoFocus
-            disabled={
-              sending ||
-              generating
             }
             placeholder={
               generating
@@ -1028,7 +1579,7 @@ export function ReplyComposer({
             className="min-h-[180px] w-full resize-y bg-transparent p-0 text-sm leading-7 outline-none disabled:opacity-60"
           />
 
-          {/* FILES */}
+          {/* ATTACHMENTS */}
 
           {files.length >
           0 ? (
@@ -1064,7 +1615,7 @@ export function ReplyComposer({
                       key={`${file.name}-${file.size}-${file.lastModified}`}
                       className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5"
                     >
-                      <File className="size-4" />
+                      <File className="size-4 shrink-0" />
 
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium">
@@ -1080,6 +1631,9 @@ export function ReplyComposer({
 
                       <button
                         type="button"
+                        disabled={
+                          busy
+                        }
                         onClick={
                           () =>
                             removeFile(
@@ -1092,6 +1646,84 @@ export function ReplyComposer({
                     </div>
                   )
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* CUSTOM SCHEDULE */}
+
+          {customScheduleOpen ? (
+            <div className="mt-5 rounded-xl border bg-muted/20 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background">
+                  <CalendarClock className="size-4" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">
+                    Schedule reply
+                  </p>
+
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Time zone: Europe/Berlin
+                  </p>
+
+                  <input
+                    type="datetime-local"
+                    value={
+                      customDateTime
+                    }
+                    disabled={
+                      busy
+                    }
+                    onChange={
+                      (
+                        event
+                      ) =>
+                        setCustomDateTime(
+                          event.target.value
+                        )
+                    }
+                    className="mt-4 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none"
+                  />
+
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        busy
+                      }
+                      onClick={
+                        () =>
+                          setCustomScheduleOpen(
+                            false
+                          )
+                      }
+                      className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        busy
+                      }
+                      onClick={
+                        handleCustomSchedule
+                      }
+                      className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-50"
+                    >
+                      {scheduling ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Clock3 className="size-4" />
+                      )}
+
+                      Schedule
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1126,6 +1758,8 @@ export function ReplyComposer({
         {/* FOOTER */}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-5 py-3">
+          {/* LEFT */}
+
           <div className="flex items-center gap-2">
             <input
               ref={
@@ -1133,6 +1767,9 @@ export function ReplyComposer({
               }
               type="file"
               multiple
+              disabled={
+                busy
+              }
               onChange={
                 handleFiles
               }
@@ -1141,16 +1778,16 @@ export function ReplyComposer({
 
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={
                 () =>
-                  fileInputRef.current
+                  fileInputRef
+                    .current
                     ?.click()
               }
-              disabled={
-                sending ||
-                generating
-              }
-              className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
               title="Attach files"
             >
               <Paperclip className="size-4" />
@@ -1158,72 +1795,207 @@ export function ReplyComposer({
 
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={
                 handleGenerateReply
               }
-              disabled={
-                sending ||
-                generating
-              }
-              className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               {generating ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-
                   Generating...
                 </>
               ) : (
                 <>
                   <Sparkles className="size-4" />
-
                   Generate reply
                 </>
               )}
             </button>
           </div>
 
+          {/* RIGHT */}
+
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={
                 () =>
                   setOpen(
                     false
                   )
               }
-              disabled={
-                sending ||
-                generating
-              }
-              className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+              className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
               Cancel
             </button>
 
-            <button
-              type="submit"
-              disabled={
-                sending ||
-                generating ||
-                !body.trim()
-              }
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {sending ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
+            {/* SEND SPLIT BUTTON */}
 
-                  Sending...
-                </>
-              ) : (
-                <>
-                  <Send className="size-4" />
+            <div className="relative flex">
+              <button
+                type="submit"
+                disabled={
+                  busy ||
+                  !body.trim()
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-l-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+              >
+                {sending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="size-4" />
+                    Send reply
+                  </>
+                )}
+              </button>
 
-                  Send reply
-                </>
-              )}
-            </button>
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  !body.trim()
+                }
+                onClick={
+                  () =>
+                    setScheduleMenuOpen(
+                      (
+                        current
+                      ) =>
+                        !current
+                    )
+                }
+                className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-foreground text-background hover:opacity-90 disabled:opacity-50"
+                aria-label="Schedule send"
+              >
+                <ChevronDown className="size-4" />
+              </button>
+
+              {scheduleMenuOpen ? (
+                <div className="absolute bottom-11 right-0 z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl">
+                  <div className="px-2 py-2">
+                    <p className="text-xs font-semibold">
+                      Send later
+                    </p>
+
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Europe/Berlin
+                    </p>
+                  </div>
+
+                  {laterToday ? (
+                    <button
+                      type="button"
+                      onClick={
+                        () => {
+                          setScheduleMenuOpen(
+                            false
+                          );
+
+                          void scheduleReply(
+                            laterToday.toISOString()
+                          );
+                        }
+                      }
+                      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                    >
+                      <Clock3 className="size-4 text-muted-foreground" />
+
+                      <div>
+                        <p className="text-sm font-medium">
+                          Later today
+                        </p>
+
+                        <p className="text-xs text-muted-foreground">
+                          {formatTimeOnly(
+                            laterToday
+                          )}
+                        </p>
+                      </div>
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={
+                      () => {
+                        const iso =
+                          getTomorrowMorningIso();
+
+                        if (
+                          !iso
+                        ) {
+                          setError(
+                            "Could not calculate tomorrow morning."
+                          );
+
+                          return;
+                        }
+
+                        setScheduleMenuOpen(
+                          false
+                        );
+
+                        void scheduleReply(
+                          iso
+                        );
+                      }
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                  >
+                    <CalendarClock className="size-4 text-muted-foreground" />
+
+                    <div>
+                      <p className="text-sm font-medium">
+                        Tomorrow morning
+                      </p>
+
+                      <p className="text-xs text-muted-foreground">
+                        09:00
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      () => {
+                        setScheduleMenuOpen(
+                          false
+                        );
+
+                        setCustomScheduleOpen(
+                          true
+                        );
+                      }
+                    }
+                    className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                  >
+                    <CalendarClock className="size-4 text-muted-foreground" />
+
+                    <div>
+                      <p className="text-sm font-medium">
+                        Custom date & time
+                      </p>
+
+                      <p className="text-xs text-muted-foreground">
+                        Choose exactly when to send
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </form>

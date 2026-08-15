@@ -27,7 +27,7 @@ export default async function LoginPage({
           </div>
 
           <h1 className="mt-5 text-2xl font-semibold tracking-tight">
-            Joel Leados
+            Leadbase
           </h1>
 
           <p className="mt-2 text-sm text-muted-foreground">

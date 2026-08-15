@@ -26,7 +26,7 @@ export const GMAIL_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
 
   /*
-   * Reading replies in threads that JOEL LEADOS
+   * Reading replies in threads that Leadbase
    * previously created.
    */
   "https://www.googleapis.com/auth/gmail.readonly",

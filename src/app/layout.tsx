@@ -33,7 +33,7 @@ const inter =
 export const metadata:
   Metadata = {
     title:
-      "Joel Leados",
+      "Leadbase",
 
     description:
       "Private lead generation and CRM workspace",

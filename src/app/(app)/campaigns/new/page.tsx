@@ -127,7 +127,7 @@ export default async function NewCampaignPage({
             </h2>
 
             <p className="mt-1 text-xs text-muted-foreground">
-              Tell Joel Leados what a promising lead looks like.
+              Tell Leadbase what a promising lead looks like.
             </p>
 
             <div className="mt-6 space-y-5">

@@ -117,12 +117,12 @@ export function AppSidebar({
           className="flex items-center gap-3"
         >
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-sm font-semibold text-background">
-            J
+          ⚡︎ 
           </div>
 
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-semibold">
-              Joel Leados
+              Leadbase
             </p>
 
             <p className="truncate text-xs text-muted-foreground">

@@ -152,12 +152,12 @@ import {
       connection.email_address;
   
     const subject =
-      "JOEL LEADOS – Gmail Test";
+      "Leadbase – Gmail Test";
   
     const body = [
       "Hallo Joel,",
       "",
-      "wenn du diese E-Mail siehst, funktioniert der Gmail-Versand aus JOEL LEADOS erfolgreich.",
+      "wenn du diese E-Mail siehst, funktioniert der Gmail-Versand aus Leadbase erfolgreich.",
       "",
       "Diese Nachricht wurde über die Gmail API gesendet.",
       "",

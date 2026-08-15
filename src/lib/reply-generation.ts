@@ -382,7 +382,7 @@ Erzeuge NICHT:
 - E-Mail-Adresse
 - Website
 
-Die Signatur wird von JOEL LEADOS automatisch ergänzt.
+Die Signatur wird von Leadbase automatisch ergänzt.
 
 =========================================================
 WICHTIG

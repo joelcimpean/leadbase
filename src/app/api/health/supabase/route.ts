@@ -35,7 +35,7 @@ export async function GET() {
 
     return NextResponse.json({
       connected: true,
-      message: "Joel Leados is connected to Supabase.",
+      message: "Leadbase is connected to Supabase.",
     });
   } catch {
     return NextResponse.json(

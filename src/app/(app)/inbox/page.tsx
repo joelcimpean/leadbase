@@ -2,14 +2,19 @@
 
 import {
   AlertCircle,
+  Archive,
   ArrowUpRight,
-  CheckCircle2,
   Download,
   FileText,
   Inbox,
+  Mail,
   MailCheck,
+  MailOpen,
   Paperclip,
+  RotateCcw,
   Search,
+  Trash2,
+  XCircle,
 } from "lucide-react";
 
 import Link from "next/link";
@@ -19,12 +24,22 @@ import {
 } from "next/navigation";
 
 import {
-  MarkConversationRead,
-} from "./mark-conversation-read";
+  archiveLeadConversation,
+  emptyTrash,
+  markLeadConversationReadFromForm,
+  markLeadConversationUnreadFromForm,
+  moveLeadConversationToTrash,
+  permanentlyDeleteLeadConversation,
+  restoreLeadConversation,
+} from "./actions";
 
 import {
   ReplyComposer,
 } from "./reply-composer";
+
+import {
+  InboxStatusBanner,
+} from "./status-banner";
 
 import {
   SyncInboxButton,
@@ -50,6 +65,17 @@ import {
    TYPES
 ========================================================= */
 
+type InboxView =
+  | "inbox"
+  | "archived"
+  | "trash";
+
+type ConversationState =
+  | "INBOX"
+  | "ARCHIVED"
+  | "TRASH"
+  | "DELETED";
+
 type InboxPageProps = {
   searchParams?: Promise<{
     lead?:
@@ -71,12 +97,18 @@ type InboxPageProps = {
     reply?:
       | string
       | string[];
+
+    view?:
+      | string
+      | string[];
   }>;
 };
 
 type TimelineAttachment = {
   name: string;
+
   type: string;
+
   size: number;
 
   gmailMessageId:
@@ -92,6 +124,7 @@ type TimelineMessage = {
     | "outgoing";
 
   sender: string;
+
   email: string;
 
   subject:
@@ -99,6 +132,7 @@ type TimelineMessage = {
     | null;
 
   body: string;
+
   date: string;
 
   attachments:
@@ -109,6 +143,7 @@ type Conversation = {
   leadId: string;
 
   company: string;
+
   contact: string;
 
   email:
@@ -118,14 +153,19 @@ type Conversation = {
   subject: string;
 
   preview: string;
+
   lastDate: string;
 
   unread: boolean;
+
   unreadCount: number;
 
   status:
     | "Replied"
     | "Sent";
+
+  state:
+    ConversationState;
 
   nextFollowUpAt:
     | string
@@ -198,6 +238,47 @@ function getQueryValue(
   );
 }
 
+function parseInboxView(
+  value: string
+): InboxView {
+  if (
+    value ===
+    "archived"
+  ) {
+    return "archived";
+  }
+
+  if (
+    value ===
+    "trash"
+  ) {
+    return "trash";
+  }
+
+  return "inbox";
+}
+
+function stateForView(
+  view:
+    InboxView
+): ConversationState {
+  if (
+    view ===
+    "archived"
+  ) {
+    return "ARCHIVED";
+  }
+
+  if (
+    view ===
+    "trash"
+  ) {
+    return "TRASH";
+  }
+
+  return "INBOX";
+}
+
 function compactPreview(
   value: string
 ) {
@@ -216,12 +297,14 @@ function compactPreview(
 function getInitials(
   value: string
 ) {
-  const result =
+  return (
     value
       .split(
         /\s+/
       )
-      .filter(Boolean)
+      .filter(
+        Boolean
+      )
       .slice(
         0,
         2
@@ -236,10 +319,7 @@ function getInitials(
             )
             .toUpperCase()
       )
-      .join("");
-
-  return (
-    result ||
+      .join("") ||
     "?"
   );
 }
@@ -311,7 +391,8 @@ function parseAttachments(
     if (
       typeof item !==
         "object" ||
-      item === null
+      item ===
+        null
     ) {
       continue;
     }
@@ -324,7 +405,7 @@ function parseAttachments(
 
     if (
       typeof record.name !==
-        "string"
+      "string"
     ) {
       continue;
     }
@@ -341,7 +422,7 @@ function parseAttachments(
 
       size:
         typeof record.size ===
-          "number"
+        "number"
           ? record.size
           : 0,
 
@@ -350,6 +431,59 @@ function parseAttachments(
   }
 
   return result;
+}
+
+function buildInboxHref({
+  view,
+  leadId,
+  q,
+}: {
+  view:
+    InboxView;
+
+  leadId?:
+    string;
+
+  q?:
+    string;
+}) {
+  const search =
+    new URLSearchParams();
+
+  if (
+    view !==
+    "inbox"
+  ) {
+    search.set(
+      "view",
+      view
+    );
+  }
+
+  if (
+    leadId
+  ) {
+    search.set(
+      "lead",
+      leadId
+    );
+  }
+
+  if (
+    q
+  ) {
+    search.set(
+      "q",
+      q
+    );
+  }
+
+  const query =
+    search.toString();
+
+  return query
+    ? `/inbox?${query}`
+    : "/inbox";
 }
 
 function formatConversationTime(
@@ -466,7 +600,8 @@ function formatFileSize(
 
   if (
     bytes <
-    1024 * 1024
+    1024 *
+      1024
   ) {
     return `${(
       bytes /
@@ -515,16 +650,23 @@ export default async function InboxPage({
       params.lead
     );
 
-  const query =
+  const rawQuery =
     getQueryValue(
       params.q
-    )
-      .trim()
+    ).trim();
+
+  const query =
+    rawQuery
       .toLowerCase();
 
   const syncStatus =
     getQueryValue(
       params.sync
+    );
+
+  const replyStatus =
+    getQueryValue(
+      params.reply
     );
 
   const newReplies =
@@ -533,6 +675,18 @@ export default async function InboxPage({
         params.new
       ) ||
       0
+    );
+
+  const currentView =
+    parseInboxView(
+      getQueryValue(
+        params.view
+      )
+    );
+
+  const desiredState =
+    stateForView(
+      currentView
     );
 
   const supabase =
@@ -554,13 +708,97 @@ export default async function InboxPage({
   }
 
   /* =======================================================
-     LOAD
+     TRASH RETENTION
+  ======================================================= */
+
+  const {
+    data:
+      preferences,
+  } =
+    await supabase
+      .from(
+        "inbox_preferences"
+      )
+      .select(
+        "trash_retention_days"
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+  const retentionDays =
+    preferences
+      ? preferences
+          .trash_retention_days
+      : 30;
+
+  if (
+    retentionDays !==
+    null
+  ) {
+    const cutoff =
+      new Date(
+        Date.now() -
+          retentionDays *
+            24 *
+            60 *
+            60 *
+            1000
+      ).toISOString();
+
+    const {
+      error:
+        cleanupError,
+    } =
+      await supabase
+        .from(
+          "inbox_conversation_states"
+        )
+        .update({
+          state:
+            "DELETED",
+
+          deleted_at:
+            new Date()
+              .toISOString(),
+
+          trashed_at:
+            null,
+        })
+        .eq(
+          "user_id",
+          user.id
+        )
+        .eq(
+          "state",
+          "TRASH"
+        )
+        .lt(
+          "trashed_at",
+          cutoff
+        );
+
+    if (
+      cleanupError
+    ) {
+      console.error(
+        "Could not automatically clean trash:",
+        cleanupError
+      );
+    }
+  }
+
+  /* =======================================================
+     LOAD DATA
   ======================================================= */
 
   const [
     draftsResult,
     messagesResult,
     gmailResult,
+    statesResult,
   ] =
     await Promise.all([
       supabase
@@ -660,6 +898,22 @@ export default async function InboxPage({
           user.id
         )
         .maybeSingle(),
+
+      supabase
+        .from(
+          "inbox_conversation_states"
+        )
+        .select(`
+          lead_id,
+          state,
+          archived_at,
+          trashed_at,
+          deleted_at
+        `)
+        .eq(
+          "user_id",
+          user.id
+        ),
     ]);
 
   if (
@@ -677,6 +931,24 @@ export default async function InboxPage({
     console.error(
       "Could not load messages:",
       messagesResult.error
+    );
+  }
+
+  if (
+    gmailResult.error
+  ) {
+    console.error(
+      "Could not load Gmail:",
+      gmailResult.error
+    );
+  }
+
+  if (
+    statesResult.error
+  ) {
+    console.error(
+      "Could not load inbox states:",
+      statesResult.error
     );
   }
 
@@ -714,8 +986,26 @@ export default async function InboxPage({
       ?.email_address ??
     "hello@joelcimpean.com";
 
+  const stateByLead =
+    new Map<
+      string,
+      ConversationState
+    >();
+
+  for (
+    const state of
+      statesResult.data ??
+      []
+  ) {
+    stateByLead.set(
+      state.lead_id,
+      state.state as
+        ConversationState
+    );
+  }
+
   /* =======================================================
-     INDEX
+     INDEX DATA
   ======================================================= */
 
   const latestDraftByLead =
@@ -773,7 +1063,7 @@ export default async function InboxPage({
     >();
 
   /* =======================================================
-     SENT OUTREACH CONVERSATIONS
+     OUTREACH CONVERSATIONS
   ======================================================= */
 
   for (
@@ -924,7 +1214,8 @@ export default async function InboxPage({
 
         sender:
           message.from_name ??
-          contact?.full_name ??
+          contact
+            ?.full_name ??
           message.from_email,
 
         email:
@@ -1021,17 +1312,20 @@ export default async function InboxPage({
 
         contact:
           contact?.full_name ??
-          latestIncoming?.from_name ??
+          latestIncoming
+            ?.from_name ??
           "Company inbox",
 
         email:
           contact?.email ??
-          latestIncoming?.from_email ??
+          latestIncoming
+            ?.from_email ??
           null,
 
         subject:
           draft.subject ??
-          latestIncoming?.subject ??
+          latestIncoming
+            ?.subject ??
           "Outreach",
 
         preview:
@@ -1044,7 +1338,8 @@ export default async function InboxPage({
               ),
 
         lastDate:
-          latestTimeline?.date ??
+          latestTimeline
+            ?.date ??
           draft.sent_at ??
           new Date(
             0
@@ -1062,20 +1357,29 @@ export default async function InboxPage({
             ? "Replied"
             : "Sent",
 
+        state:
+          stateByLead.get(
+            lead.id
+          ) ??
+          "INBOX",
+
         nextFollowUpAt:
           lead.next_follow_up_at,
 
         replyToMessageId:
-          latestIncoming?.id ??
+          latestIncoming
+            ?.id ??
           null,
 
         replyRecipientName:
-          latestIncoming?.from_name ??
+          latestIncoming
+            ?.from_name ??
           contact?.full_name ??
           null,
 
         replyRecipientEmail:
-          latestIncoming?.from_email ??
+          latestIncoming
+            ?.from_email ??
           contact?.email ??
           null,
 
@@ -1219,7 +1523,8 @@ export default async function InboxPage({
               ? message.from_name ??
                 "Joel Cimpean"
               : message.from_name ??
-                contact?.full_name ??
+                contact
+                  ?.full_name ??
                 message.from_email,
 
           email:
@@ -1261,11 +1566,13 @@ export default async function InboxPage({
 
         contact:
           contact?.full_name ??
-          latestIncoming.from_name ??
+          latestIncoming
+            .from_name ??
           "Company inbox",
 
         email:
-          latestIncoming.from_email,
+          latestIncoming
+            .from_email,
 
         subject:
           sortedIncoming[0]
@@ -1284,7 +1591,8 @@ export default async function InboxPage({
           timeline.at(
             -1
           )?.date ??
-          latestIncoming.received_at,
+          latestIncoming
+            .received_at,
 
         unread:
           unreadCount >
@@ -1295,6 +1603,12 @@ export default async function InboxPage({
         status:
           "Replied",
 
+        state:
+          stateByLead.get(
+            leadId
+          ) ??
+          "INBOX",
+
         nextFollowUpAt:
           lead.next_follow_up_at,
 
@@ -1302,12 +1616,14 @@ export default async function InboxPage({
           latestIncoming.id,
 
         replyRecipientName:
-          latestIncoming.from_name ??
+          latestIncoming
+            .from_name ??
           contact?.full_name ??
           null,
 
         replyRecipientEmail:
-          latestIncoming.from_email,
+          latestIncoming
+            .from_email,
 
         timeline,
       }
@@ -1315,28 +1631,72 @@ export default async function InboxPage({
   }
 
   /* =======================================================
-     FILTER
+     FOLDERS
   ======================================================= */
 
   const allConversations =
     Array.from(
       conversations.values()
-    ).sort(
+    )
+      .filter(
+        (
+          conversation
+        ) =>
+          conversation.state !==
+          "DELETED"
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          timestamp(
+            b.lastDate
+          ) -
+          timestamp(
+            a.lastDate
+          )
+      );
+
+  const inboxCount =
+    allConversations.filter(
       (
-        a,
-        b
+        conversation
       ) =>
-        timestamp(
-          b.lastDate
-        ) -
-        timestamp(
-          a.lastDate
-        )
+        conversation.state ===
+        "INBOX"
+    ).length;
+
+  const archivedCount =
+    allConversations.filter(
+      (
+        conversation
+      ) =>
+        conversation.state ===
+        "ARCHIVED"
+    ).length;
+
+  const trashCount =
+    allConversations.filter(
+      (
+        conversation
+      ) =>
+        conversation.state ===
+        "TRASH"
+    ).length;
+
+  const folderConversations =
+    allConversations.filter(
+      (
+        conversation
+      ) =>
+        conversation.state ===
+        desiredState
     );
 
   const filtered =
     query
-      ? allConversations.filter(
+      ? folderConversations.filter(
           (
             conversation
           ) =>
@@ -1347,14 +1707,18 @@ export default async function InboxPage({
               conversation.subject,
               conversation.preview,
             ]
-              .filter(Boolean)
-              .join(" ")
+              .filter(
+                Boolean
+              )
+              .join(
+                " "
+              )
               .toLowerCase()
               .includes(
                 query
               )
         )
-      : allConversations;
+      : folderConversations;
 
   const selected =
     filtered.find(
@@ -1367,12 +1731,28 @@ export default async function InboxPage({
     filtered[0] ??
     null;
 
+  const cleanStatusHref =
+    buildInboxHref({
+      view:
+        currentView,
+
+      leadId:
+        requestedLeadId ||
+        undefined,
+
+      q:
+        rawQuery ||
+        undefined,
+    });
+
   /* =======================================================
      UI
   ======================================================= */
 
   return (
     <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+      {/* HEADER */}
+
       <header className="flex shrink-0 items-end justify-between gap-6 border-b px-8 py-7 lg:px-10">
         <div>
           <p className="text-sm text-muted-foreground">
@@ -1388,40 +1768,68 @@ export default async function InboxPage({
           </p>
         </div>
 
-        <SyncInboxButton
-          disabled={
-            !gmailReadReady
-          }
-        />
+        <div className="flex items-center gap-2">
+          {currentView ===
+            "trash" &&
+          trashCount >
+            0 ? (
+            <form
+              action={
+                emptyTrash
+              }
+            >
+              <button
+                type="submit"
+                className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+              >
+                <Trash2 className="size-4" />
+
+                Empty trash
+              </button>
+            </form>
+          ) : null}
+
+          <SyncInboxButton
+            disabled={
+              !gmailReadReady
+            }
+          />
+        </div>
       </header>
 
-      {selected ? (
-        <MarkConversationRead
-          leadId={
-            selected.leadId
-          }
-          hasUnread={
-            selected.unread
-          }
-        />
-      ) : null}
+      {/* SUCCESS */}
 
       {syncStatus ===
       "done" ? (
-        <div className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-8 py-2.5 text-xs text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-          <CheckCircle2 className="size-3.5" />
-
-          {newReplies >
-          0
-            ? `${newReplies} new message${
-                newReplies ===
-                1
-                  ? ""
-                  : "s"
-              } synced.`
-            : "Inbox is up to date."}
-        </div>
+        <InboxStatusBanner
+          cleanupHref={
+            cleanStatusHref
+          }
+          message={
+            newReplies >
+            0
+              ? `${newReplies} new message${
+                  newReplies ===
+                  1
+                    ? ""
+                    : "s"
+                } synced.`
+              : "Inbox is up to date."
+          }
+        />
       ) : null}
+
+      {replyStatus ===
+      "sent" ? (
+        <InboxStatusBanner
+          cleanupHref={
+            cleanStatusHref
+          }
+          message="Reply sent successfully."
+        />
+      ) : null}
+
+      {/* ERRORS */}
 
       {!gmailReadReady ? (
         <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-8 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
@@ -1431,23 +1839,90 @@ export default async function InboxPage({
         </div>
       ) : null}
 
+      {syncStatus ===
+      "error" ? (
+        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-8 py-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+          <AlertCircle className="size-3.5" />
+
+          Gmail sync failed. Check the development terminal for details.
+        </div>
+      ) : null}
+
+      {/* FOLDER NAV */}
+
+      <div className="flex shrink-0 items-center gap-1 border-b px-6 py-2">
+        <FolderTab
+          href="/inbox"
+          active={
+            currentView ===
+            "inbox"
+          }
+          label="Inbox"
+          count={
+            inboxCount
+          }
+          icon={
+            Inbox
+          }
+        />
+
+        <FolderTab
+          href="/inbox?view=archived"
+          active={
+            currentView ===
+            "archived"
+          }
+          label="Archived"
+          count={
+            archivedCount
+          }
+          icon={
+            Archive
+          }
+        />
+
+        <FolderTab
+          href="/inbox?view=trash"
+          active={
+            currentView ===
+            "trash"
+          }
+          label="Trash"
+          count={
+            trashCount
+          }
+          icon={
+            Trash2
+          }
+        />
+      </div>
+
       <div className="flex min-h-0 flex-1">
         {/* LIST */}
 
         <aside className="flex w-[390px] shrink-0 flex-col border-r">
           <div className="border-b p-4">
             <form>
+              {currentView !==
+              "inbox" ? (
+                <input
+                  type="hidden"
+                  name="view"
+                  value={
+                    currentView
+                  }
+                />
+              ) : null}
+
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
                 <Input
                   name="q"
                   defaultValue={
-                    getQueryValue(
-                      params.q
-                    )
+                    rawQuery
                   }
-                  placeholder="Search conversations..."
+                  placeholder={`Search ${currentView}...`}
                   className="pl-9"
                 />
               </div>
@@ -1455,84 +1930,145 @@ export default async function InboxPage({
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {filtered.map(
-              (
-                conversation
-              ) => (
-                <Link
-                  key={
-                    conversation.leadId
-                  }
-                  href={`/inbox?lead=${encodeURIComponent(
-                    conversation.leadId
-                  )}`}
-                  className={`block border-b px-4 py-4 transition-colors hover:bg-muted/50 ${
-                    selected
-                      ?.leadId ===
-                    conversation.leadId
-                      ? "bg-muted/70"
-                      : ""
-                  }`}
-                >
-                  <div className="flex gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
-                      {getInitials(
-                        conversation.company
-                      )}
-                    </div>
+            {filtered.length ===
+            0 ? (
+              <div className="px-6 py-12 text-center">
+                {currentView ===
+                "archived" ? (
+                  <Archive className="mx-auto size-5 text-muted-foreground" />
+                ) : currentView ===
+                  "trash" ? (
+                  <Trash2 className="mx-auto size-5 text-muted-foreground" />
+                ) : (
+                  <Inbox className="mx-auto size-5 text-muted-foreground" />
+                )}
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-between gap-3">
-                        <p className="truncate text-sm font-medium">
+                <p className="mt-3 text-sm font-medium">
+                  {currentView ===
+                  "archived"
+                    ? "No archived conversations"
+                    : currentView ===
+                        "trash"
+                      ? "Trash is empty"
+                      : "No lead conversations yet"}
+                </p>
+              </div>
+            ) : (
+              filtered.map(
+                (
+                  conversation
+                ) => (
+                  <Link
+                    key={
+                      conversation.leadId
+                    }
+                    href={
+                      buildInboxHref({
+                        view:
+                          currentView,
+
+                        leadId:
+                          conversation.leadId,
+
+                        q:
+                          rawQuery ||
+                          undefined,
+                      })
+                    }
+                    className={`block border-b px-4 py-4 transition-colors hover:bg-muted/50 ${
+                      selected
+                        ?.leadId ===
+                      conversation.leadId
+                        ? "bg-muted/70"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
+                        {getInitials(
+                          conversation.company
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex justify-between gap-3">
+                          <p
+                            className={`truncate text-sm ${
+                              conversation.unread
+                                ? "font-semibold"
+                                : "font-medium"
+                            }`}
+                          >
+                            {
+                              conversation.company
+                            }
+                          </p>
+
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatConversationTime(
+                              conversation.lastDate
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {
-                            conversation.company
+                            conversation.contact
                           }
                         </p>
 
-                        <span className="text-xs text-muted-foreground">
-                          {formatConversationTime(
-                            conversation.lastDate
-                          )}
-                        </span>
-                      </div>
-
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {
-                          conversation.contact
-                        }
-                      </p>
-
-                      <p className="mt-3 truncate text-sm">
-                        {
-                          conversation.subject
-                        }
-                      </p>
-
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                        {
-                          conversation.preview
-                        }
-                      </p>
-
-                      <div className="mt-3 flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={messageStatusClass(
-                            conversation.status
-                          )}
+                        <p
+                          className={`mt-3 truncate text-sm ${
+                            conversation.unread
+                              ? "font-semibold"
+                              : ""
+                          }`}
                         >
                           {
-                            conversation.status
+                            conversation.subject
                           }
-                        </Badge>
+                        </p>
 
-                        {conversation.unread ? (
-                          <span className="size-2 rounded-full bg-blue-500" />
-                        ) : null}
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                          {
+                            conversation.preview
+                          }
+                        </p>
+
+                        <div className="mt-3 flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={
+                              messageStatusClass(
+                                conversation.status
+                              )
+                            }
+                          >
+                            {
+                              conversation.status
+                            }
+                          </Badge>
+
+                          {conversation.unread ? (
+                            <>
+                              <span className="size-2 rounded-full bg-blue-500" />
+
+                              {conversation.unreadCount >
+                              1 ? (
+                                <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                                  {
+                                    conversation.unreadCount
+                                  }{" "}
+                                  new
+                                </span>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                )
               )
             )}
           </div>
@@ -1543,13 +2079,17 @@ export default async function InboxPage({
         <main className="min-w-0 flex-1 overflow-y-auto">
           {selected ? (
             <div className="mx-auto max-w-4xl px-8 py-8 lg:px-12 lg:py-10">
+              {/* THREAD HEADER */}
+
               <div className="flex items-start justify-between gap-6">
                 <div>
                   <Badge
                     variant="outline"
-                    className={messageStatusClass(
-                      selected.status
-                    )}
+                    className={
+                      messageStatusClass(
+                        selected.status
+                      )
+                    }
                   >
                     {selected.status ===
                     "Replied"
@@ -1568,17 +2108,166 @@ export default async function InboxPage({
                   </p>
                 </div>
 
-                <Link
-                  href={`/leads/${selected.leadId}`}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium hover:bg-muted"
-                >
-                  Open lead
+                {/* ACTIONS */}
 
-                  <ArrowUpRight className="size-4" />
-                </Link>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {currentView !==
+                  "trash" ? (
+                    selected.unread ? (
+                      <form
+  action={
+    markLeadConversationReadFromForm.bind(
+      null,
+      selected.leadId
+    )
+  }
+>
+                        <button
+                          type="submit"
+                          title="Mark as read"
+                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                        >
+                          <MailOpen className="size-4" />
+
+                          Read
+                        </button>
+                      </form>
+                    ) : selected.replyToMessageId ? (
+                      <form
+  action={
+    markLeadConversationUnreadFromForm.bind(
+      null,
+      selected.leadId
+    )
+  }
+>
+                        <button
+                          type="submit"
+                          title="Mark as unread"
+                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                        >
+                          <Mail className="size-4" />
+
+                          Unread
+                        </button>
+                      </form>
+                    ) : null
+                  ) : null}
+
+                  {currentView ===
+                  "inbox" ? (
+                    <form
+                      action={
+                        archiveLeadConversation.bind(
+                          null,
+                          selected.leadId
+                        )
+                      }
+                    >
+                      <button
+                        type="submit"
+                        title="Archive"
+                        className="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-muted"
+                      >
+                        <Archive className="size-4" />
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {currentView ===
+                  "archived" ? (
+                    <form
+                      action={
+                        restoreLeadConversation.bind(
+                          null,
+                          selected.leadId
+                        )
+                      }
+                    >
+                      <button
+                        type="submit"
+                        className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                      >
+                        <RotateCcw className="size-4" />
+
+                        Restore
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {currentView !==
+                  "trash" ? (
+                    <form
+                      action={
+                        moveLeadConversationToTrash.bind(
+                          null,
+                          selected.leadId
+                        )
+                      }
+                    >
+                      <button
+                        type="submit"
+                        title="Move to trash"
+                        className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-red-600"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <form
+                        action={
+                          restoreLeadConversation.bind(
+                            null,
+                            selected.leadId
+                          )
+                        }
+                      >
+                        <button
+                          type="submit"
+                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                        >
+                          <RotateCcw className="size-4" />
+
+                          Restore
+                        </button>
+                      </form>
+
+                      <form
+                        action={
+                          permanentlyDeleteLeadConversation.bind(
+                            null,
+                            selected.leadId
+                          )
+                        }
+                      >
+                        <button
+                          type="submit"
+                          title="Delete permanently"
+                          className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-background px-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/40"
+                        >
+                          <XCircle className="size-4" />
+
+                          Delete permanently
+                        </button>
+                      </form>
+                    </>
+                  )}
+
+                  <Link
+                    href={`/leads/${selected.leadId}`}
+                    className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                  >
+                    Open lead
+
+                    <ArrowUpRight className="size-4" />
+                  </Link>
+                </div>
               </div>
 
               <Separator className="my-8" />
+
+              {/* MESSAGES */}
 
               <div className="space-y-6">
                 {selected.timeline.map(
@@ -1600,7 +2289,11 @@ export default async function InboxPage({
                 )}
               </div>
 
-              {selected.replyToMessageId &&
+              {/* REPLY */}
+
+              {currentView !==
+                "trash" &&
+              selected.replyToMessageId &&
               selected.replyRecipientEmail &&
               gmailSendReady ? (
                 <ReplyComposer
@@ -1621,13 +2314,66 @@ export default async function InboxPage({
               ) : null}
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              No conversation selected.
+            <div className="flex h-full items-center justify-center px-8">
+              <div className="text-center">
+                <Inbox className="mx-auto size-6 text-muted-foreground" />
+
+                <p className="mt-4 text-sm font-medium">
+                  No conversation selected
+                </p>
+              </div>
             </div>
           )}
         </main>
       </div>
     </div>
+  );
+}
+
+/* =========================================================
+   FOLDER TAB
+========================================================= */
+
+function FolderTab({
+  href,
+  active,
+  label,
+  count,
+  icon: Icon,
+}: {
+  href: string;
+
+  active: boolean;
+
+  label: string;
+
+  count: number;
+
+  icon:
+    React.ElementType;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
+        active
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      }`}
+    >
+      <Icon className="size-4" />
+
+      {label}
+
+      {count >
+      0 ? (
+        <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          {count}
+        </span>
+      ) : null}
+    </Link>
   );
 }
 
@@ -1663,8 +2409,8 @@ function MessageCard({
   return (
     <article className="overflow-hidden rounded-xl border bg-card">
       <div className="flex justify-between gap-5 border-b px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-full bg-muted">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
             {outgoing ? (
               <MailCheck className="size-4" />
             ) : (
@@ -1672,14 +2418,14 @@ function MessageCard({
             )}
           </div>
 
-          <div>
-            <p className="text-sm font-medium">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">
               {
                 message.sender
               }
             </p>
 
-            <p className="text-xs text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {
                 message.email
               }
@@ -1687,7 +2433,7 @@ function MessageCard({
           </div>
         </div>
 
-        <span className="text-xs text-muted-foreground">
+        <span className="shrink-0 text-xs text-muted-foreground">
           {formatFullDate(
             message.date
           )}

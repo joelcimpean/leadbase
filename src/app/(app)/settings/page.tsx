@@ -9,7 +9,12 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
+
+import {
+  updateInboxPreferences,
+} from "./actions";
 
 import {
   ThemeSelector,
@@ -70,42 +75,91 @@ export default async function SettingsPage({
     await supabase.auth.getUser();
 
   let gmailConnection: {
-    email_address: string;
-    scopes: string[];
-    connected_at: string;
-    updated_at: string;
-  } | null = null;
+    email_address:
+      string;
 
-  if (user) {
-    const {
-      data,
-      error,
-    } =
-      await supabase
-        .from(
-          "gmail_connections"
-        )
-        .select(`
-          email_address,
-          scopes,
-          connected_at,
-          updated_at
-        `)
-        .eq(
-          "user_id",
-          user.id
-        )
-        .maybeSingle();
+    scopes:
+      string[];
 
-    if (error) {
+    connected_at:
+      string;
+
+    updated_at:
+      string;
+  } | null =
+    null;
+
+  let trashRetentionDays:
+    number | null =
+    30;
+
+  if (
+    user
+  ) {
+    const [
+      gmailResult,
+      inboxPreferencesResult,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "gmail_connections"
+          )
+          .select(`
+            email_address,
+            scopes,
+            connected_at,
+            updated_at
+          `)
+          .eq(
+            "user_id",
+            user.id
+          )
+          .maybeSingle(),
+
+        supabase
+          .from(
+            "inbox_preferences"
+          )
+          .select(
+            "trash_retention_days"
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
+          .maybeSingle(),
+      ]);
+
+    if (
+      gmailResult.error
+    ) {
       console.error(
         "Could not load Gmail connection:",
-        error
+        gmailResult.error
       );
     }
 
     gmailConnection =
-      data;
+      gmailResult.data;
+
+    if (
+      inboxPreferencesResult.error
+    ) {
+      console.error(
+        "Could not load inbox preferences:",
+        inboxPreferencesResult.error
+      );
+    }
+
+    if (
+      inboxPreferencesResult.data
+    ) {
+      trashRetentionDays =
+        inboxPreferencesResult
+          .data
+          .trash_retention_days;
+    }
   }
 
   const resolvedSearchParams =
@@ -117,8 +171,10 @@ export default async function SettingsPage({
     Array.isArray(
       resolvedSearchParams.gmail
     )
-      ? resolvedSearchParams.gmail[0]
-      : resolvedSearchParams.gmail;
+      ? resolvedSearchParams
+          .gmail[0]
+      : resolvedSearchParams
+          .gmail;
 
   const gmailConnected =
     Boolean(
@@ -143,8 +199,17 @@ export default async function SettingsPage({
 
   const openAiConfigured =
     Boolean(
-      process.env.OPENAI_API_KEY
+      process.env
+        .OPENAI_API_KEY
     );
+
+  const retentionValue =
+    trashRetentionDays ===
+    null
+      ? "never"
+      : String(
+          trashRetentionDays
+        );
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-8 py-8 lg:px-10 lg:py-10">
@@ -191,7 +256,7 @@ export default async function SettingsPage({
             MonitorCog
           }
           title="Appearance"
-          description="Choose how Joel Leados looks on this device."
+          description="Choose how Leadbase looks on this device."
         >
           <ThemeSelector />
 
@@ -203,7 +268,9 @@ export default async function SettingsPage({
         {/* GMAIL */}
 
         <SettingsSection
-          icon={Mail}
+          icon={
+            Mail
+          }
           title="Gmail"
           description="Connect your Google Workspace mailbox for sending and synchronizing lead conversations."
         >
@@ -277,10 +344,73 @@ export default async function SettingsPage({
           </div>
         </SettingsSection>
 
+        {/* INBOX */}
+
+        <SettingsSection
+          icon={
+            Trash2
+          }
+          title="Inbox & trash"
+          description="Control how deleted lead conversations are retained inside Leadbase."
+        >
+          <form
+            action={
+              updateInboxPreferences
+            }
+            className="max-w-md"
+          >
+            <Label htmlFor="trashRetentionDays">
+              Automatically empty trash
+            </Label>
+
+            <select
+              id="trashRetentionDays"
+              name="trashRetentionDays"
+              defaultValue={
+                retentionValue
+              }
+              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none"
+            >
+              <option value="7">
+                After 7 days
+              </option>
+
+              <option value="14">
+                After 14 days
+              </option>
+
+              <option value="30">
+                After 30 days
+              </option>
+
+              <option value="90">
+                After 90 days
+              </option>
+
+              <option value="never">
+                Never automatically delete
+              </option>
+            </select>
+
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              This setting controls the Leadbase trash only. It does not delete emails from your Gmail account.
+            </p>
+
+            <Button
+              type="submit"
+              className="mt-4"
+            >
+              Save inbox settings
+            </Button>
+          </form>
+        </SettingsSection>
+
         {/* AI */}
 
         <SettingsSection
-          icon={Bot}
+          icon={
+            Bot
+          }
           title="AI"
           description="AI is used for website analysis, research and personalized email drafts."
         >
@@ -310,7 +440,9 @@ export default async function SettingsPage({
         {/* LEAD DISCOVERY */}
 
         <SettingsSection
-          icon={MapPin}
+          icon={
+            MapPin
+          }
           title="Lead discovery"
           description="Sources used to discover and research businesses."
         >
@@ -332,9 +464,11 @@ export default async function SettingsPage({
         {/* LANGUAGE */}
 
         <SettingsSection
-          icon={Globe2}
+          icon={
+            Globe2
+          }
           title="Language"
-          description="Choose the language used by the Joel Leados interface."
+          description="Choose the language used by the Leadbase interface."
         >
           <div className="flex flex-wrap gap-2">
             <Button>
@@ -354,7 +488,9 @@ export default async function SettingsPage({
         {/* OUTREACH */}
 
         <SettingsSection
-          icon={Send}
+          icon={
+            Send
+          }
           title="Outreach"
           description="Control how email drafts and follow-ups behave."
         >
@@ -395,7 +531,9 @@ export default async function SettingsPage({
         {/* COMPLIANCE */}
 
         <SettingsSection
-          icon={ShieldCheck}
+          icon={
+            ShieldCheck
+          }
           title="Compliance & safety"
           description="Safeguards applied before outreach can be sent."
         >
@@ -417,7 +555,9 @@ export default async function SettingsPage({
         {/* DELIVERABILITY */}
 
         <SettingsSection
-          icon={SlidersHorizontal}
+          icon={
+            SlidersHorizontal
+          }
           title="Deliverability"
           description="Monitor the technical health of your sending domain and mailbox."
         >
