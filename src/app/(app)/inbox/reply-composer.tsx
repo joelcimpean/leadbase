@@ -8,14 +8,17 @@ import {
   Loader2,
   MessageSquareReply,
   Paperclip,
+  Pencil,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 
 import {
   ChangeEvent,
   FormEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -29,8 +32,7 @@ import {
    CONFIG
 ========================================================= */
 
-const MAX_ATTACHMENTS =
-  8;
+const MAX_ATTACHMENTS = 8;
 
 const MAX_FILE_SIZE =
   8 * 1024 * 1024;
@@ -70,12 +72,57 @@ type GenerateReplyResponse = {
   body?: string;
 };
 
+type ScheduledAttachment = {
+  name: string;
+  type: string;
+  size: number;
+};
+
+type ScheduledReplyState = {
+  id: string;
+
+  status:
+    | "SCHEDULED"
+    | "CANCELLED"
+    | "FAILED"
+    | string;
+
+  body: string;
+
+  ccEmails: string[];
+  bccEmails: string[];
+
+  attachments:
+    ScheduledAttachment[];
+
+  scheduledFor: string;
+
+  cancelledAt:
+    | string
+    | null;
+
+  cancelReason:
+    | string
+    | null;
+
+  lastError:
+    | string
+    | null;
+
+  createdAt: string;
+};
+
 type ScheduleReplyResponse = {
   ok?: boolean;
   error?: string;
 
   id?: string;
+
   scheduledFor?: string;
+
+  schedule?:
+    | ScheduledReplyState
+    | null;
 };
 
 type AttachmentPayload = {
@@ -152,8 +199,7 @@ function fileToBase64(
             );
 
           if (
-            commaIndex ===
-            -1
+            commaIndex === -1
           ) {
             reject(
               new Error(
@@ -275,8 +321,7 @@ function getZonedParts(
     > = {};
 
   for (
-    const part of
-      parts
+    const part of parts
   ) {
     if (
       part.type !==
@@ -350,8 +395,7 @@ function getTimeZoneOffsetMs(
 
 function localDateTimeToIso(
   value: string,
-  timeZone:
-    string
+  timeZone: string
 ) {
   const match =
     value.match(
@@ -413,10 +457,6 @@ function localDateTimeToIso(
       offset
     );
 
-  /*
-   * Recalculate once because DST can make the first
-   * offset guess land on a different offset.
-   */
   offset =
     getTimeZoneOffsetMs(
       result,
@@ -527,6 +567,38 @@ function getLaterTodayDate() {
   }
 
   return target;
+}
+
+function isoToBerlinLocalInput(
+  value: string
+) {
+  const parts =
+    getZonedParts(
+      new Date(
+        value
+      ),
+      SCHEDULE_TIME_ZONE
+    );
+
+  return [
+    parts.year,
+    "-",
+    pad2(
+      parts.month
+    ),
+    "-",
+    pad2(
+      parts.day
+    ),
+    "T",
+    pad2(
+      parts.hour
+    ),
+    ":",
+    pad2(
+      parts.minute
+    ),
+  ].join("");
 }
 
 function formatScheduledDate(
@@ -661,6 +733,12 @@ export function ReplyComposer({
     useState(false);
 
   const [
+    cancelling,
+    setCancelling,
+  ] =
+    useState(false);
+
+  const [
     scheduleMenuOpen,
     setScheduleMenuOpen,
   ] =
@@ -681,8 +759,26 @@ export function ReplyComposer({
     );
 
   const [
-    scheduledFor,
-    setScheduledFor,
+    schedule,
+    setSchedule,
+  ] =
+    useState<
+      ScheduledReplyState | null
+    >(
+      null
+    );
+
+  const [
+    scheduleLoading,
+    setScheduleLoading,
+  ] =
+    useState(
+      true
+    );
+
+  const [
+    editingScheduleId,
+    setEditingScheduleId,
   ] =
     useState<
       string | null
@@ -709,7 +805,13 @@ export function ReplyComposer({
   const busy =
     sending ||
     generating ||
-    scheduling;
+    scheduling ||
+    cancelling;
+
+  const editingSchedule =
+    Boolean(
+      editingScheduleId
+    );
 
   const laterToday =
     useMemo(
@@ -717,6 +819,85 @@ export function ReplyComposer({
         getLaterTodayDate(),
       []
     );
+
+  /* =======================================================
+     LOAD PERSISTENT SCHEDULE
+  ======================================================= */
+
+  useEffect(
+    () => {
+      let cancelled =
+        false;
+
+      async function loadSchedule() {
+        setScheduleLoading(
+          true
+        );
+
+        try {
+          const response =
+            await fetch(
+              `/api/inbox/schedule-reply?leadId=${encodeURIComponent(
+                leadId
+              )}`,
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const result =
+            await parseJsonResponse<ScheduleReplyResponse>(
+              response
+            );
+
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          if (
+            response.ok &&
+            result.ok
+          ) {
+            setSchedule(
+              result.schedule ??
+              null
+            );
+          }
+        } catch (
+          loadError
+        ) {
+          console.warn(
+            "Could not load scheduled reply:",
+            loadError
+          );
+        } finally {
+          if (
+            !cancelled
+          ) {
+            setScheduleLoading(
+              false
+            );
+          }
+        }
+      }
+
+      void loadSchedule();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    [
+      leadId,
+    ]
+  );
 
   /* =======================================================
      FILES
@@ -739,6 +920,16 @@ export function ReplyComposer({
       selected.length ===
       0
     ) {
+      return;
+    }
+
+    if (
+      editingSchedule
+    ) {
+      setError(
+        "Existing scheduled attachments are preserved. Cancel and create a new schedule if you need to change the attachments."
+      );
+
       return;
     }
 
@@ -974,14 +1165,29 @@ export function ReplyComposer({
   ======================================================= */
 
   function resetComposer() {
-    setBody("");
-    setCc("");
-    setBcc("");
+    setBody(
+      ""
+    );
 
-    setShowCc(false);
-    setShowBcc(false);
+    setCc(
+      ""
+    );
 
-    setFiles([]);
+    setBcc(
+      ""
+    );
+
+    setShowCc(
+      false
+    );
+
+    setShowBcc(
+      false
+    );
+
+    setFiles(
+      []
+    );
 
     setScheduleMenuOpen(
       false
@@ -991,13 +1197,177 @@ export function ReplyComposer({
       false
     );
 
+    setEditingScheduleId(
+      null
+    );
+
+    setCustomDateTime(
+      getTomorrowMorningLocalValue()
+    );
+
     setError(
       null
     );
   }
 
+  function closeComposer() {
+    if (
+      busy
+    ) {
+      return;
+    }
+
+    resetComposer();
+
+    setOpen(
+      false
+    );
+  }
+
+  function openNewReply() {
+    resetComposer();
+
+    setOpen(
+      true
+    );
+
+    setSent(
+      false
+    );
+  }
+
   /* =======================================================
-     VALIDATE BEFORE SEND / SCHEDULE
+     EDIT EXISTING SCHEDULE
+  ======================================================= */
+
+  function openScheduleEditor() {
+    if (
+      !schedule ||
+      schedule.status !==
+        "SCHEDULED"
+    ) {
+      return;
+    }
+
+    setBody(
+      schedule.body
+    );
+
+    setCc(
+      schedule.ccEmails.join(
+        ", "
+      )
+    );
+
+    setBcc(
+      schedule.bccEmails.join(
+        ", "
+      )
+    );
+
+    setShowCc(
+      schedule.ccEmails.length >
+      0
+    );
+
+    setShowBcc(
+      schedule.bccEmails.length >
+      0
+    );
+
+    setFiles(
+      []
+    );
+
+    setCustomDateTime(
+      isoToBerlinLocalInput(
+        schedule.scheduledFor
+      )
+    );
+
+    setEditingScheduleId(
+      schedule.id
+    );
+
+    setCustomScheduleOpen(
+      true
+    );
+
+    setScheduleMenuOpen(
+      false
+    );
+
+    setError(
+      null
+    );
+
+    setOpen(
+      true
+    );
+  }
+
+  function openFailedAsNew() {
+    if (
+      !schedule
+    ) {
+      openNewReply();
+
+      return;
+    }
+
+    setBody(
+      schedule.body
+    );
+
+    setCc(
+      schedule.ccEmails.join(
+        ", "
+      )
+    );
+
+    setBcc(
+      schedule.bccEmails.join(
+        ", "
+      )
+    );
+
+    setShowCc(
+      schedule.ccEmails.length >
+      0
+    );
+
+    setShowBcc(
+      schedule.bccEmails.length >
+      0
+    );
+
+    setFiles(
+      []
+    );
+
+    setEditingScheduleId(
+      null
+    );
+
+    setCustomScheduleOpen(
+      false
+    );
+
+    setCustomDateTime(
+      getTomorrowMorningLocalValue()
+    );
+
+    setError(
+      null
+    );
+
+    setOpen(
+      true
+    );
+  }
+
+  /* =======================================================
+     VALIDATE
   ======================================================= */
 
   function validateComposer() {
@@ -1045,6 +1415,14 @@ export function ReplyComposer({
       FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+
+    if (
+      editingSchedule
+    ) {
+      void saveScheduledReply();
+
+      return;
+    }
 
     if (
       busy ||
@@ -1112,6 +1490,10 @@ export function ReplyComposer({
         );
       }
 
+      setSchedule(
+        null
+      );
+
       resetComposer();
 
       setOpen(
@@ -1148,7 +1530,7 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     SCHEDULE
+     CREATE SCHEDULE
   ======================================================= */
 
   async function scheduleReply(
@@ -1212,7 +1594,7 @@ export function ReplyComposer({
       if (
         !response.ok ||
         !result.ok ||
-        !result.scheduledFor
+        !result.schedule
       ) {
         throw new Error(
           result.error ||
@@ -1220,17 +1602,14 @@ export function ReplyComposer({
         );
       }
 
-      const successfulTime =
-        result.scheduledFor;
+      setSchedule(
+        result.schedule
+      );
 
       resetComposer();
 
       setOpen(
         false
-      );
-
-      setScheduledFor(
-        successfulTime
       );
 
       router.refresh();
@@ -1245,6 +1624,204 @@ export function ReplyComposer({
       );
     } finally {
       setScheduling(
+        false
+      );
+    }
+  }
+
+  /* =======================================================
+     SAVE EXISTING SCHEDULE
+  ======================================================= */
+
+  async function saveScheduledReply() {
+    if (
+      busy ||
+      !editingScheduleId ||
+      !validateComposer()
+    ) {
+      return;
+    }
+
+    const iso =
+      localDateTimeToIso(
+        customDateTime,
+        SCHEDULE_TIME_ZONE
+      );
+
+    if (
+      !iso
+    ) {
+      setError(
+        "Choose a valid date and time."
+      );
+
+      return;
+    }
+
+    setScheduling(
+      true
+    );
+
+    setError(
+      null
+    );
+
+    try {
+      const response =
+        await fetch(
+          "/api/inbox/schedule-reply",
+          {
+            method:
+              "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                id:
+                  editingScheduleId,
+
+                body:
+                  body.trim(),
+
+                cc,
+                bcc,
+
+                scheduledFor:
+                  iso,
+              }),
+          }
+        );
+
+      const result =
+        await parseJsonResponse<ScheduleReplyResponse>(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !result.ok ||
+        !result.schedule
+      ) {
+        throw new Error(
+          result.error ||
+          "Scheduled reply could not be updated."
+        );
+      }
+
+      setSchedule(
+        result.schedule
+      );
+
+      resetComposer();
+
+      setOpen(
+        false
+      );
+
+      router.refresh();
+    } catch (
+      updateError
+    ) {
+      setError(
+        updateError instanceof
+          Error
+          ? updateError.message
+          : "Scheduled reply could not be updated."
+      );
+    } finally {
+      setScheduling(
+        false
+      );
+    }
+  }
+
+  /* =======================================================
+     CANCEL EXISTING SCHEDULE
+  ======================================================= */
+
+  async function cancelScheduledReply() {
+    if (
+      busy ||
+      !schedule ||
+      schedule.status !==
+        "SCHEDULED"
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Cancel this scheduled reply? It will not be sent."
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    setCancelling(
+      true
+    );
+
+    setError(
+      null
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/inbox/schedule-reply?id=${encodeURIComponent(
+            schedule.id
+          )}`,
+          {
+            method:
+              "DELETE",
+          }
+        );
+
+      const result =
+        await parseJsonResponse<ScheduleReplyResponse>(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !result.ok ||
+        !result.schedule
+      ) {
+        throw new Error(
+          result.error ||
+          "Scheduled reply could not be cancelled."
+        );
+      }
+
+      setSchedule(
+        result.schedule
+      );
+
+      resetComposer();
+
+      setOpen(
+        false
+      );
+
+      router.refresh();
+    } catch (
+      cancelError
+    ) {
+      setError(
+        cancelError instanceof
+          Error
+          ? cancelError.message
+          : "Scheduled reply could not be cancelled."
+      );
+    } finally {
+      setCancelling(
         false
       );
     }
@@ -1283,35 +1860,218 @@ export function ReplyComposer({
   if (
     !open
   ) {
+    if (
+      scheduleLoading
+    ) {
+      return (
+        <div className="mt-8 rounded-xl border bg-muted/20 p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              Loading reply status...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (
+      schedule?.status ===
+      "SCHEDULED"
+    ) {
+      return (
+        <div className="mt-8 rounded-xl border bg-muted/20 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+              <Clock3 className="size-4" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Reply scheduled
+                  </h3>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Scheduled for{" "}
+                    <span className="font-medium text-foreground">
+                      {formatScheduledDate(
+                        schedule.scheduledFor
+                      )}
+                    </span>
+                    .
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={
+                      openScheduleEditor
+                    }
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                  >
+                    <Pencil className="size-3.5" />
+
+                    Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      cancelling
+                    }
+                    onClick={
+                      () =>
+                        void cancelScheduledReply()
+                    }
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-background px-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
+                  >
+                    {cancelling ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {schedule.body ? (
+                <div className="mt-4 rounded-lg border bg-background/70 px-3 py-3">
+                  <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                    {schedule.body}
+                  </p>
+                </div>
+              ) : null}
+
+              {schedule.attachments.length >
+              0 ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {schedule.attachments.length}{" "}
+                  {schedule.attachments.length ===
+                  1
+                    ? "attachment"
+                    : "attachments"}{" "}
+                  included
+                </p>
+              ) : null}
+
+              {error ? (
+                <p className="mt-3 text-xs text-red-600 dark:text-red-400">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (
+      schedule?.status ===
+      "CANCELLED"
+    ) {
+      const cancelledByReply =
+        schedule.cancelReason ===
+        "CUSTOMER_REPLY";
+
+      return (
+        <div className="mt-8 rounded-xl border bg-muted/20 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+              <X className="size-4 text-muted-foreground" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold">
+                Scheduled reply cancelled
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {cancelledByReply
+                  ? "The scheduled reply was cancelled automatically because the lead replied before it was sent."
+                  : "The scheduled reply was cancelled and will not be sent."}
+              </p>
+
+              <button
+                type="button"
+                onClick={
+                  openNewReply
+                }
+                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+              >
+                <MessageSquareReply className="size-4" />
+
+                Write reply
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (
+      schedule?.status ===
+      "FAILED"
+    ) {
+      return (
+        <div className="mt-8 rounded-xl border border-red-200 bg-red-50/50 p-5 dark:border-red-900/60 dark:bg-red-950/20">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+              <Clock3 className="size-4 text-red-600 dark:text-red-400" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold">
+                Scheduled reply failed
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                The scheduled reply could not be sent.
+              </p>
+
+              {schedule.lastError ? (
+                <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+                  {schedule.lastError}
+                </p>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={
+                  openFailedAsNew
+                }
+                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+              >
+                <Pencil className="size-4" />
+
+                Edit & reschedule
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="mt-8 rounded-xl border bg-muted/20 p-5">
         <div className="flex items-start gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
-            {scheduledFor ? (
-              <Clock3 className="size-4" />
-            ) : (
-              <MessageSquareReply className="size-4" />
-            )}
+            <MessageSquareReply className="size-4" />
           </div>
 
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold">
-              {scheduledFor
-                ? "Reply scheduled"
-                : "Reply"}
+              Reply
             </h3>
 
-            {scheduledFor ? (
-              <p className="mt-1 text-sm text-muted-foreground">
-                Scheduled for{" "}
-                <span className="font-medium text-foreground">
-                  {formatScheduledDate(
-                    scheduledFor
-                  )}
-                </span>
-                .
-              </p>
-            ) : sent ? (
+            {sent ? (
               <p className="mt-1 text-sm text-emerald-600 dark:text-emerald-400">
                 Reply sent successfully.
               </p>
@@ -1325,35 +2085,17 @@ export function ReplyComposer({
               </p>
             )}
 
-            {!scheduledFor ? (
-              <button
-                type="button"
-                onClick={
-                  () => {
-                    setOpen(
-                      true
-                    );
+            <button
+              type="button"
+              onClick={
+                openNewReply
+              }
+              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+            >
+              <MessageSquareReply className="size-4" />
 
-                    setSent(
-                      false
-                    );
-
-                    setError(
-                      null
-                    );
-                  }
-                }
-                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
-              >
-                <MessageSquareReply className="size-4" />
-
-                Write reply
-              </button>
-            ) : (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Edit and cancel controls come in the next step.
-              </p>
-            )}
+              Write reply
+            </button>
           </div>
         </div>
       </div>
@@ -1371,16 +2113,24 @@ export function ReplyComposer({
       <div className="flex items-center justify-between border-b px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-lg border bg-muted/20">
-            <MessageSquareReply className="size-4" />
+            {editingSchedule ? (
+              <Clock3 className="size-4" />
+            ) : (
+              <MessageSquareReply className="size-4" />
+            )}
           </div>
 
           <div>
             <h3 className="text-sm font-semibold">
-              Reply
+              {editingSchedule
+                ? "Edit scheduled reply"
+                : "Reply"}
             </h3>
 
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Replying in the latest Gmail thread
+              {editingSchedule
+                ? "Update the message or scheduled send time."
+                : "Replying in the latest Gmail thread"}
             </p>
           </div>
         </div>
@@ -1391,10 +2141,7 @@ export function ReplyComposer({
             busy
           }
           onClick={
-            () =>
-              setOpen(
-                false
-              )
+            closeComposer
           }
           className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
         >
@@ -1491,8 +2238,13 @@ export function ReplyComposer({
               }
               onClick={
                 () => {
-                  setCc("");
-                  setShowCc(false);
+                  setCc(
+                    ""
+                  );
+
+                  setShowCc(
+                    false
+                  );
                 }
               }
             >
@@ -1533,8 +2285,13 @@ export function ReplyComposer({
               }
               onClick={
                 () => {
-                  setBcc("");
-                  setShowBcc(false);
+                  setBcc(
+                    ""
+                  );
+
+                  setShowBcc(
+                    false
+                  );
                 }
               }
             >
@@ -1579,7 +2336,7 @@ export function ReplyComposer({
             className="min-h-[180px] w-full resize-y bg-transparent p-0 text-sm leading-7 outline-none disabled:opacity-60"
           />
 
-          {/* ATTACHMENTS */}
+          {/* NEW ATTACHMENTS */}
 
           {files.length >
           0 ? (
@@ -1650,7 +2407,49 @@ export function ReplyComposer({
             </div>
           ) : null}
 
-          {/* CUSTOM SCHEDULE */}
+          {/* EXISTING SCHEDULED ATTACHMENTS */}
+
+          {editingSchedule &&
+          schedule?.attachments.length ? (
+            <div className="mt-5 border-t pt-4">
+              <p className="text-xs font-medium">
+                Existing attachments
+              </p>
+
+              <div className="mt-3 space-y-2">
+                {schedule.attachments.map(
+                  (
+                    attachment
+                  ) => (
+                    <div
+                      key={`${attachment.name}-${attachment.size}`}
+                      className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5"
+                    >
+                      <File className="size-4 shrink-0" />
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">
+                          {attachment.name}
+                        </p>
+
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatFileSize(
+                            attachment.size
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                Existing attachments are preserved when editing. Cancel and create a new scheduled reply to change them.
+              </p>
+            </div>
+          ) : null}
+
+          {/* SCHEDULE EDITOR */}
 
           {customScheduleOpen ? (
             <div className="mt-5 rounded-xl border bg-muted/20 p-4">
@@ -1661,7 +2460,9 @@ export function ReplyComposer({
 
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">
-                    Schedule reply
+                    {editingSchedule
+                      ? "Scheduled send time"
+                      : "Schedule reply"}
                   </p>
 
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -1687,42 +2488,44 @@ export function ReplyComposer({
                     className="mt-4 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none"
                   />
 
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      disabled={
-                        busy
-                      }
-                      onClick={
-                        () =>
-                          setCustomScheduleOpen(
-                            false
-                          )
-                      }
-                      className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-                    >
-                      Cancel
-                    </button>
+                  {!editingSchedule ? (
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={
+                          busy
+                        }
+                        onClick={
+                          () =>
+                            setCustomScheduleOpen(
+                              false
+                            )
+                        }
+                        className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                      >
+                        Cancel
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={
-                        busy
-                      }
-                      onClick={
-                        handleCustomSchedule
-                      }
-                      className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-50"
-                    >
-                      {scheduling ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Clock3 className="size-4" />
-                      )}
+                      <button
+                        type="button"
+                        disabled={
+                          busy
+                        }
+                        onClick={
+                          handleCustomSchedule
+                        }
+                        className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-50"
+                      >
+                        {scheduling ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Clock3 className="size-4" />
+                        )}
 
-                      Schedule
-                    </button>
-                  </div>
+                        Schedule
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1731,7 +2534,7 @@ export function ReplyComposer({
           {/* ERROR */}
 
           {error ? (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
               {error}
             </div>
           ) : null}
@@ -1768,7 +2571,8 @@ export function ReplyComposer({
               type="file"
               multiple
               disabled={
-                busy
+                busy ||
+                editingSchedule
               }
               onChange={
                 handleFiles
@@ -1779,7 +2583,8 @@ export function ReplyComposer({
             <button
               type="button"
               disabled={
-                busy
+                busy ||
+                editingSchedule
               }
               onClick={
                 () =>
@@ -1787,8 +2592,12 @@ export function ReplyComposer({
                     .current
                     ?.click()
               }
-              className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-              title="Attach files"
+              className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+              title={
+                editingSchedule
+                  ? "Attachments are preserved while editing"
+                  : "Attach files"
+              }
             >
               <Paperclip className="size-4" />
             </button>
@@ -1819,45 +2628,19 @@ export function ReplyComposer({
 
           {/* RIGHT */}
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={
-                busy
-              }
-              onClick={
-                () =>
-                  setOpen(
-                    false
-                  )
-              }
-              className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
-            >
-              Cancel
-            </button>
-
-            {/* SEND SPLIT BUTTON */}
-
-            <div className="relative flex">
+          {editingSchedule ? (
+            <div className="flex items-center gap-2">
               <button
-                type="submit"
+                type="button"
                 disabled={
-                  busy ||
-                  !body.trim()
+                  busy
                 }
-                className="inline-flex h-9 items-center gap-2 rounded-l-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+                onClick={
+                  closeComposer
+                }
+                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
               >
-                {sending ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="size-4" />
-                    Send reply
-                  </>
-                )}
+                Discard changes
               </button>
 
               <button
@@ -1868,32 +2651,164 @@ export function ReplyComposer({
                 }
                 onClick={
                   () =>
-                    setScheduleMenuOpen(
-                      (
-                        current
-                      ) =>
-                        !current
-                    )
+                    void saveScheduledReply()
                 }
-                className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-foreground text-background hover:opacity-90 disabled:opacity-50"
-                aria-label="Schedule send"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
               >
-                <ChevronDown className="size-4" />
+                {scheduling ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Clock3 className="size-4" />
+                )}
+
+                Save changes
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  busy
+                }
+                onClick={
+                  closeComposer
+                }
+                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
               </button>
 
-              {scheduleMenuOpen ? (
-                <div className="absolute bottom-11 right-0 z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl">
-                  <div className="px-2 py-2">
-                    <p className="text-xs font-semibold">
-                      Send later
-                    </p>
+              {/* SEND SPLIT BUTTON */}
 
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Europe/Berlin
-                    </p>
-                  </div>
+              <div className="relative flex">
+                <button
+                  type="submit"
+                  disabled={
+                    busy ||
+                    !body.trim()
+                  }
+                  className="inline-flex h-9 items-center gap-2 rounded-l-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+                >
+                  {sending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="size-4" />
+                      Send reply
+                    </>
+                  )}
+                </button>
 
-                  {laterToday ? (
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    !body.trim()
+                  }
+                  onClick={
+                    () =>
+                      setScheduleMenuOpen(
+                        (
+                          current
+                        ) =>
+                          !current
+                      )
+                  }
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-foreground text-background hover:opacity-90 disabled:opacity-50"
+                  aria-label="Schedule send"
+                >
+                  <ChevronDown className="size-4" />
+                </button>
+
+                {scheduleMenuOpen ? (
+                  <div className="absolute bottom-11 right-0 z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl">
+                    <div className="px-2 py-2">
+                      <p className="text-xs font-semibold">
+                        Send later
+                      </p>
+
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Europe/Berlin
+                      </p>
+                    </div>
+
+                    {laterToday ? (
+                      <button
+                        type="button"
+                        onClick={
+                          () => {
+                            setScheduleMenuOpen(
+                              false
+                            );
+
+                            void scheduleReply(
+                              laterToday.toISOString()
+                            );
+                          }
+                        }
+                        className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                      >
+                        <Clock3 className="size-4 text-muted-foreground" />
+
+                        <div>
+                          <p className="text-sm font-medium">
+                            Later today
+                          </p>
+
+                          <p className="text-xs text-muted-foreground">
+                            {formatTimeOnly(
+                              laterToday
+                            )}
+                          </p>
+                        </div>
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={
+                        () => {
+                          const iso =
+                            getTomorrowMorningIso();
+
+                          if (
+                            !iso
+                          ) {
+                            setError(
+                              "Could not calculate tomorrow morning."
+                            );
+
+                            return;
+                          }
+
+                          setScheduleMenuOpen(
+                            false
+                          );
+
+                          void scheduleReply(
+                            iso
+                          );
+                        }
+                      }
+                      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                    >
+                      <CalendarClock className="size-4 text-muted-foreground" />
+
+                      <div>
+                        <p className="text-sm font-medium">
+                          Tomorrow morning
+                        </p>
+
+                        <p className="text-xs text-muted-foreground">
+                          09:00
+                        </p>
+                      </div>
+                    </button>
+
                     <button
                       type="button"
                       onClick={
@@ -1902,101 +2817,30 @@ export function ReplyComposer({
                             false
                           );
 
-                          void scheduleReply(
-                            laterToday.toISOString()
+                          setCustomScheduleOpen(
+                            true
                           );
                         }
                       }
                       className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
                     >
-                      <Clock3 className="size-4 text-muted-foreground" />
+                      <CalendarClock className="size-4 text-muted-foreground" />
 
                       <div>
                         <p className="text-sm font-medium">
-                          Later today
+                          Custom date & time
                         </p>
 
                         <p className="text-xs text-muted-foreground">
-                          {formatTimeOnly(
-                            laterToday
-                          )}
+                          Choose exactly when to send
                         </p>
                       </div>
                     </button>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={
-                      () => {
-                        const iso =
-                          getTomorrowMorningIso();
-
-                        if (
-                          !iso
-                        ) {
-                          setError(
-                            "Could not calculate tomorrow morning."
-                          );
-
-                          return;
-                        }
-
-                        setScheduleMenuOpen(
-                          false
-                        );
-
-                        void scheduleReply(
-                          iso
-                        );
-                      }
-                    }
-                    className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
-                  >
-                    <CalendarClock className="size-4 text-muted-foreground" />
-
-                    <div>
-                      <p className="text-sm font-medium">
-                        Tomorrow morning
-                      </p>
-
-                      <p className="text-xs text-muted-foreground">
-                        09:00
-                      </p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      () => {
-                        setScheduleMenuOpen(
-                          false
-                        );
-
-                        setCustomScheduleOpen(
-                          true
-                        );
-                      }
-                    }
-                    className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
-                  >
-                    <CalendarClock className="size-4 text-muted-foreground" />
-
-                    <div>
-                      <p className="text-sm font-medium">
-                        Custom date & time
-                      </p>
-
-                      <p className="text-xs text-muted-foreground">
-                        Choose exactly when to send
-                      </p>
-                    </div>
-                  </button>
-                </div>
-              ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </form>
     </div>
