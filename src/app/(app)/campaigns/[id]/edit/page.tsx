@@ -1,24 +1,47 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+
+import {
+  notFound,
+} from "next/navigation";
+
 import {
   ArrowLeft,
   Megaphone,
 } from "lucide-react";
 
-import { updateCampaignDetails } from "../../actions";
+import {
+  updateCampaignDetails,
+} from "../../actions";
+
+import {
+  IndustryAutocomplete,
+} from "@/components/industry-autocomplete";
 
 import {
   Button,
   buttonVariants,
 } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { createClient } from "@/lib/supabase/server";
+
+import {
+  Input,
+} from "@/components/ui/input";
+
+import {
+  Label,
+} from "@/components/ui/label";
+
+import {
+  Textarea,
+} from "@/components/ui/textarea";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 type EditCampaignPageProps = {
   params: Promise<{
@@ -34,12 +57,20 @@ export default async function EditCampaignPage({
   params,
   searchParams,
 }: EditCampaignPageProps) {
-  const { id } = await params;
-  const { error: formError } = await searchParams;
+  const { id } =
+    await params;
 
-  const supabase = await createClient();
+  const {
+    error: formError,
+  } = await searchParams;
 
-  const { data: campaign, error } = await supabase
+  const supabase =
+    await createClient();
+
+  const {
+    data: campaign,
+    error,
+  } = await supabase
     .from("campaigns")
     .select(`
       id,
@@ -58,7 +89,10 @@ export default async function EditCampaignPage({
     .eq("id", id)
     .single();
 
-  if (error || !campaign) {
+  if (
+    error ||
+    !campaign
+  ) {
     notFound();
   }
 
@@ -69,6 +103,7 @@ export default async function EditCampaignPage({
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
+
         Back to campaign
       </Link>
 
@@ -82,13 +117,17 @@ export default async function EditCampaignPage({
         </h1>
 
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Update the target profile, qualification criteria
-          and outreach strategy.
+          Update the target
+          profile, qualification
+          criteria and outreach
+          strategy.
         </p>
       </header>
 
       <form
-        action={updateCampaignDetails}
+        action={
+          updateCampaignDetails
+        }
         className="mt-8 space-y-5"
       >
         <input
@@ -96,6 +135,10 @@ export default async function EditCampaignPage({
           name="campaignId"
           value={campaign.id}
         />
+
+        {/* =================================================
+            BASICS
+        ================================================= */}
 
         <Card className="shadow-none">
           <CardContent className="p-6">
@@ -110,30 +153,74 @@ export default async function EditCampaignPage({
                 </h2>
 
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Target market and campaign status.
+                  Target market and
+                  campaign status.
                 </p>
               </div>
             </div>
 
+            <div className="mt-5 rounded-xl border bg-muted/20 px-4 py-3">
+              <p className="text-xs font-medium">
+                One campaign = one
+                industry + one
+                region
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Keeping campaigns
+                specific makes your
+                research and AI
+                outreach more
+                relevant.
+              </p>
+            </div>
+
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
+              {/* NAME */}
+
               <Field
                 label="Campaign name *"
                 name="name"
-                defaultValue={campaign.name}
+                defaultValue={
+                  campaign.name
+                }
                 required
               />
 
-              <Field
-                label="Target industry"
-                name="targetIndustry"
-                defaultValue={campaign.target_industry}
-              />
+              {/* INDUSTRY */}
+
+              <div className="space-y-2">
+                <Label htmlFor="targetIndustry">
+                  Target industry
+                </Label>
+
+                <IndustryAutocomplete
+                  id="targetIndustry"
+                  name="targetIndustry"
+                  defaultValue={
+                    campaign.target_industry ??
+                    ""
+                  }
+                  placeholder="Search e.g. Solar, Gartenbau, Friseur..."
+                />
+
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Choose one specific
+                  type of business.
+                </p>
+              </div>
+
+              {/* GEOGRAPHY */}
 
               <Field
                 label="Target geography"
                 name="targetGeography"
-                defaultValue={campaign.target_geography}
+                defaultValue={
+                  campaign.target_geography
+                }
               />
+
+              {/* SIZE */}
 
               <Field
                 label="Company-size preference"
@@ -143,11 +230,17 @@ export default async function EditCampaignPage({
                 }
               />
 
+              {/* ROLE */}
+
               <Field
                 label="Target roles"
                 name="targetRoles"
-                defaultValue={campaign.target_roles}
+                defaultValue={
+                  campaign.target_roles
+                }
               />
+
+              {/* STATUS */}
 
               <div className="space-y-2">
                 <Label htmlFor="status">
@@ -157,7 +250,9 @@ export default async function EditCampaignPage({
                 <select
                   id="status"
                   name="status"
-                  defaultValue={campaign.status}
+                  defaultValue={
+                    campaign.status
+                  }
                   className="flex h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="DRAFT">
@@ -180,6 +275,10 @@ export default async function EditCampaignPage({
             </div>
           </CardContent>
         </Card>
+
+        {/* =================================================
+            QUALIFICATION
+        ================================================= */}
 
         <Card className="shadow-none">
           <CardContent className="p-6">
@@ -207,6 +306,10 @@ export default async function EditCampaignPage({
           </CardContent>
         </Card>
 
+        {/* =================================================
+            OUTREACH
+        ================================================= */}
+
         <Card className="shadow-none">
           <CardContent className="p-6">
             <h2 className="text-sm font-semibold">
@@ -225,7 +328,9 @@ export default async function EditCampaignPage({
               <TextAreaField
                 label="Email tone"
                 name="emailTone"
-                defaultValue={campaign.email_tone}
+                defaultValue={
+                  campaign.email_tone
+                }
               />
 
               <div className="max-w-xs space-y-2">
@@ -256,17 +361,26 @@ export default async function EditCampaignPage({
           </CardContent>
         </Card>
 
+        {/* =================================================
+            ERROR
+        ================================================= */}
+
         {formError ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
             {formError}
           </div>
         ) : null}
 
+        {/* =================================================
+            ACTIONS
+        ================================================= */}
+
         <div className="flex justify-end gap-3">
           <Link
             href={`/campaigns/${campaign.id}`}
             className={buttonVariants({
-              variant: "outline",
+              variant:
+                "outline",
             })}
           >
             Cancel
@@ -281,6 +395,10 @@ export default async function EditCampaignPage({
   );
 }
 
+/* =========================================================
+   FIELD
+========================================================= */
+
 function Field({
   label,
   name,
@@ -289,7 +407,9 @@ function Field({
 }: {
   label: string;
   name: string;
-  defaultValue?: string | null;
+  defaultValue?:
+    | string
+    | null;
   required?: boolean;
 }) {
   return (
@@ -301,12 +421,18 @@ function Field({
       <Input
         id={name}
         name={name}
-        defaultValue={defaultValue ?? ""}
+        defaultValue={
+          defaultValue ?? ""
+        }
         required={required}
       />
     </div>
   );
 }
+
+/* =========================================================
+   TEXTAREA
+========================================================= */
 
 function TextAreaField({
   label,
@@ -315,7 +441,9 @@ function TextAreaField({
 }: {
   label: string;
   name: string;
-  defaultValue?: string | null;
+  defaultValue?:
+    | string
+    | null;
 }) {
   return (
     <div className="space-y-2">
@@ -326,7 +454,9 @@ function TextAreaField({
       <Textarea
         id={name}
         name={name}
-        defaultValue={defaultValue ?? ""}
+        defaultValue={
+          defaultValue ?? ""
+        }
         className="min-h-28"
       />
     </div>

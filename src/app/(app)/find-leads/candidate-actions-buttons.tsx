@@ -6,14 +6,30 @@ import {
   X,
 } from "lucide-react";
 
-import { useFormStatus } from "react-dom";
+import {
+  useFormStatus,
+} from "react-dom";
 
 import {
   rejectCandidate,
   saveCandidateAsLead,
 } from "./candidate-actions";
 
-import { Button } from "@/components/ui/button";
+import {
+  useLanguage,
+} from "@/components/language-provider";
+
+import {
+  Button,
+} from "@/components/ui/button";
+
+import {
+  acquisitionCopy,
+} from "@/lib/acquisition-i18n";
+
+/* =========================================================
+   COMPONENT
+========================================================= */
 
 export function CandidateActions({
   candidateId,
@@ -21,22 +37,36 @@ export function CandidateActions({
   candidateId: string;
 }) {
   return (
-    <div className="mt-5 flex items-center gap-2 border-t pt-4">
-      <form action={saveCandidateAsLead}>
+    <div className="mt-5 grid grid-cols-2 gap-2 border-t pt-4 sm:flex sm:items-center">
+      <form
+        action={
+          saveCandidateAsLead
+        }
+        className="min-w-0"
+      >
         <input
           type="hidden"
           name="candidateId"
-          value={candidateId}
+          value={
+            candidateId
+          }
         />
 
         <SaveButton />
       </form>
 
-      <form action={rejectCandidate}>
+      <form
+        action={
+          rejectCandidate
+        }
+        className="min-w-0"
+      >
         <input
           type="hidden"
           name="candidateId"
-          value={candidateId}
+          value={
+            candidateId
+          }
         />
 
         <RejectButton />
@@ -45,51 +75,101 @@ export function CandidateActions({
   );
 }
 
+/* =========================================================
+   SAVE BUTTON
+========================================================= */
+
 function SaveButton() {
-  const { pending } = useFormStatus();
+  const {
+    language,
+  } =
+    useLanguage();
+
+  const text =
+    acquisitionCopy[
+      language
+    ].findLeads;
+
+  const {
+    pending,
+  } =
+    useFormStatus();
 
   return (
     <Button
       type="submit"
       size="sm"
-      disabled={pending}
-      className="gap-2"
+      disabled={
+        pending
+      }
+      className="h-10 w-full gap-2 sm:h-8 sm:w-auto"
     >
       {pending ? (
         <>
           <Loader2 className="size-3.5 animate-spin" />
-          Adding...
+
+          {
+            text.adding
+          }
         </>
       ) : (
         <>
           <UserPlus className="size-3.5" />
-          Add to leads
+
+          {
+            text.addToLeads
+          }
         </>
       )}
     </Button>
   );
 }
 
+/* =========================================================
+   REJECT BUTTON
+========================================================= */
+
 function RejectButton() {
-  const { pending } = useFormStatus();
+  const {
+    language,
+  } =
+    useLanguage();
+
+  const text =
+    acquisitionCopy[
+      language
+    ].findLeads;
+
+  const {
+    pending,
+  } =
+    useFormStatus();
 
   return (
     <Button
       type="submit"
       size="sm"
       variant="outline"
-      disabled={pending}
-      className="gap-2"
+      disabled={
+        pending
+      }
+      className="h-10 w-full gap-2 sm:h-8 sm:w-auto"
     >
       {pending ? (
         <>
           <Loader2 className="size-3.5 animate-spin" />
-          Rejecting...
+
+          {
+            text.rejecting
+          }
         </>
       ) : (
         <>
           <X className="size-3.5" />
-          Reject
+
+          {
+            text.reject
+          }
         </>
       )}
     </Button>

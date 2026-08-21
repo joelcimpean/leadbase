@@ -9,12 +9,11 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
-  Trash2,
 } from "lucide-react";
 
 import {
-  updateInboxPreferences,
-} from "./actions";
+  LanguageSelector,
+} from "@/components/language-selector";
 
 import {
   ThemeSelector,
@@ -23,10 +22,6 @@ import {
 import {
   Badge,
 } from "@/components/ui/badge";
-
-import {
-  Button,
-} from "@/components/ui/button";
 
 import {
   Card,
@@ -40,6 +35,14 @@ import {
 import {
   Label,
 } from "@/components/ui/label";
+
+import {
+  languageCopy,
+} from "@/lib/i18n";
+
+import {
+  getAppLanguage,
+} from "@/lib/i18n-server";
 
 import {
   createClient,
@@ -64,8 +67,18 @@ type SettingsPageProps = {
 export default async function SettingsPage({
   searchParams,
 }: SettingsPageProps) {
-  const supabase =
-    await createClient();
+  const [
+    supabase,
+    language,
+  ] = await Promise.all([
+    createClient(),
+    getAppLanguage(),
+  ]);
+
+  const text =
+    languageCopy[
+      language
+    ].settings;
 
   const {
     data: {
@@ -75,91 +88,46 @@ export default async function SettingsPage({
     await supabase.auth.getUser();
 
   let gmailConnection: {
-    email_address:
-      string;
-
-    scopes:
-      string[];
-
-    connected_at:
-      string;
-
-    updated_at:
-      string;
-  } | null =
-    null;
-
-  let trashRetentionDays:
-    number | null =
-    30;
+    email_address: string;
+    scopes: string[];
+    connected_at: string;
+    updated_at: string;
+  } | null = null;
 
   if (
     user
   ) {
-    const [
-      gmailResult,
-      inboxPreferencesResult,
-    ] =
-      await Promise.all([
-        supabase
-          .from(
-            "gmail_connections"
-          )
-          .select(`
-            email_address,
-            scopes,
-            connected_at,
-            updated_at
-          `)
-          .eq(
-            "user_id",
-            user.id
-          )
-          .maybeSingle(),
-
-        supabase
-          .from(
-            "inbox_preferences"
-          )
-          .select(
-            "trash_retention_days"
-          )
-          .eq(
-            "user_id",
-            user.id
-          )
-          .maybeSingle(),
-      ]);
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          "gmail_connections"
+        )
+        .select(`
+          email_address,
+          scopes,
+          connected_at,
+          updated_at
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .maybeSingle();
 
     if (
-      gmailResult.error
+      error
     ) {
       console.error(
         "Could not load Gmail connection:",
-        gmailResult.error
+        error
       );
     }
 
     gmailConnection =
-      gmailResult.data;
-
-    if (
-      inboxPreferencesResult.error
-    ) {
-      console.error(
-        "Could not load inbox preferences:",
-        inboxPreferencesResult.error
-      );
-    }
-
-    if (
-      inboxPreferencesResult.data
-    ) {
-      trashRetentionDays =
-        inboxPreferencesResult
-          .data
-          .trash_retention_days;
-    }
+      data;
   }
 
   const resolvedSearchParams =
@@ -171,10 +139,8 @@ export default async function SettingsPage({
     Array.isArray(
       resolvedSearchParams.gmail
     )
-      ? resolvedSearchParams
-          .gmail[0]
-      : resolvedSearchParams
-          .gmail;
+      ? resolvedSearchParams.gmail[0]
+      : resolvedSearchParams.gmail;
 
   const gmailConnected =
     Boolean(
@@ -199,85 +165,110 @@ export default async function SettingsPage({
 
   const openAiConfigured =
     Boolean(
-      process.env
-        .OPENAI_API_KEY
+      process.env.OPENAI_API_KEY
     );
 
-  const retentionValue =
-    trashRetentionDays ===
-    null
-      ? "never"
-      : String(
-          trashRetentionDays
-        );
-
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-8 py-8 lg:px-10 lg:py-10">
-      {/* HEADER */}
+    <div className="mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
-      <header>
+      <header className="min-w-0">
         <p className="text-sm text-muted-foreground">
-          Workspace
+          {
+            text.eyebrow
+          }
         </p>
 
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Settings
+          {
+            text.title
+          }
         </h1>
 
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Manage integrations, appearance, language, outreach preferences and workspace settings.
+          {
+            text.description
+          }
         </p>
       </header>
 
-      {/* GMAIL MESSAGE */}
+      {/* ===================================================
+          GMAIL MESSAGE
+      =================================================== */}
 
       {gmailParam ===
       "connected" ? (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+        <div className="mt-5 flex min-w-0 items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 sm:mt-6 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
 
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium">
-              Gmail connected successfully
+              {
+                text.gmailConnectedTitle
+              }
             </p>
 
-            <p className="mt-0.5 text-xs opacity-80">
-              Your Google Workspace mailbox is ready.
+            <p className="mt-0.5 break-words text-xs leading-5 opacity-80">
+              {
+                text.gmailConnectedDescription
+              }
             </p>
           </div>
         </div>
       ) : null}
 
-      <div className="mt-8 space-y-6">
-        {/* APPEARANCE */}
+      {/* ===================================================
+          SETTINGS
+      =================================================== */}
+
+      <div className="mt-6 space-y-4 sm:mt-8 sm:space-y-6">
+        {/* =================================================
+            APPEARANCE
+        ================================================= */}
 
         <SettingsSection
           icon={
             MonitorCog
           }
-          title="Appearance"
-          description="Choose how Leadbase looks on this device."
+          title={
+            text.appearanceTitle
+          }
+          description={
+            text.appearanceDescription
+          }
         >
-          <ThemeSelector />
+          <div className="min-w-0">
+            <ThemeSelector />
+          </div>
 
           <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            System automatically follows your operating system&apos;s light or dark appearance.
+            {
+              text.appearanceNote
+            }
           </p>
         </SettingsSection>
 
-        {/* GMAIL */}
+        {/* =================================================
+            GMAIL
+        ================================================= */}
 
         <SettingsSection
           icon={
             Mail
           }
-          title="Gmail"
-          description="Connect your Google Workspace mailbox for sending and synchronizing lead conversations."
+          title={
+            text.gmailTitle
+          }
+          description={
+            text.gmailDescription
+          }
         >
-          <div className="flex flex-col justify-between gap-4 rounded-xl border p-4 sm:flex-row sm:items-center">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium">
+          <div className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border p-4 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="min-w-0 break-all text-sm font-medium">
                   {gmailConnection
                     ?.email_address ??
                     "hello@joelcimpean.com"}
@@ -286,15 +277,22 @@ export default async function SettingsPage({
                 {gmailConnected ? (
                   <Badge
                     variant="outline"
-                    className="border-emerald-200 bg-emerald-50 font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    className="shrink-0 border-emerald-200 bg-emerald-50 font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                   >
                     <CheckCircle2 className="mr-1 size-3" />
 
-                    Connected
+                    {
+                      text.connected
+                    }
                   </Badge>
                 ) : (
-                  <Badge variant="outline">
-                    Not connected
+                  <Badge
+                    variant="outline"
+                    className="shrink-0"
+                  >
+                    {
+                      text.notConnected
+                    }
                   </Badge>
                 )}
               </div>
@@ -302,202 +300,183 @@ export default async function SettingsPage({
               {gmailConnected ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <MiniStatus
-                    label="Send access"
+                    label={
+                      text.sendAccess
+                    }
                     active={
                       hasGmailSendScope
                     }
                   />
 
                   <MiniStatus
-                    label="Inbox sync"
+                    label={
+                      text.inboxSync
+                    }
                     active={
                       hasGmailReadScope
                     }
                   />
 
                   <MiniStatus
-                    label="OAuth"
+                    label={
+                      text.oauth
+                    }
                     active
                   />
                 </div>
               ) : (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Connect Google OAuth before sending outreach emails.
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {
+                    text.gmailNotConnectedNote
+                  }
                 </p>
               )}
             </div>
 
             <a
               href="/api/google/gmail/connect"
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+              className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted sm:h-9 sm:w-auto"
             >
               {gmailConnected ? (
                 <>
                   <RefreshCw className="size-3.5" />
 
-                  Reconnect
+                  {
+                    text.reconnect
+                  }
                 </>
               ) : (
-                "Connect Gmail"
+                text.connectGmail
               )}
             </a>
           </div>
         </SettingsSection>
 
-        {/* INBOX */}
-
-        <SettingsSection
-          icon={
-            Trash2
-          }
-          title="Inbox & trash"
-          description="Control how deleted lead conversations are retained inside Leadbase."
-        >
-          <form
-            action={
-              updateInboxPreferences
-            }
-            className="max-w-md"
-          >
-            <Label htmlFor="trashRetentionDays">
-              Automatically empty trash
-            </Label>
-
-            <select
-              id="trashRetentionDays"
-              name="trashRetentionDays"
-              defaultValue={
-                retentionValue
-              }
-              className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none"
-            >
-              <option value="7">
-                After 7 days
-              </option>
-
-              <option value="14">
-                After 14 days
-              </option>
-
-              <option value="30">
-                After 30 days
-              </option>
-
-              <option value="90">
-                After 90 days
-              </option>
-
-              <option value="never">
-                Never automatically delete
-              </option>
-            </select>
-
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              This setting controls the Leadbase trash only. It does not delete emails from your Gmail account.
-            </p>
-
-            <Button
-              type="submit"
-              className="mt-4"
-            >
-              Save inbox settings
-            </Button>
-          </form>
-        </SettingsSection>
-
-        {/* AI */}
+        {/* =================================================
+            AI
+        ================================================= */}
 
         <SettingsSection
           icon={
             Bot
           }
-          title="AI"
-          description="AI is used for website analysis, research and personalized email drafts."
+          title={
+            text.aiTitle
+          }
+          description={
+            text.aiDescription
+          }
         >
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
             <SettingBox
-              label="Provider"
+              label={
+                text.provider
+              }
               value="OpenAI"
               note="Responses API"
             />
 
             <SettingBox
-              label="Status"
+              label={
+                text.status
+              }
               value={
                 openAiConfigured
-                  ? "Configured"
-                  : "Not configured"
+                  ? text.configured
+                  : text.notConfigured
               }
               note={
                 openAiConfigured
-                  ? "Server-side API key detected"
-                  : "Server-side API key required"
+                  ? text.serverKeyDetected
+                  : text.serverKeyRequired
               }
             />
           </div>
         </SettingsSection>
 
-        {/* LEAD DISCOVERY */}
+        {/* =================================================
+            LEAD DISCOVERY
+        ================================================= */}
 
         <SettingsSection
           icon={
             MapPin
           }
-          title="Lead discovery"
-          description="Sources used to discover and research businesses."
+          title={
+            text.discoveryTitle
+          }
+          description={
+            text.discoveryDescription
+          }
         >
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
             <SettingBox
-              label="Local discovery"
+              label={
+                text.localDiscovery
+              }
               value="Google Places"
-              note="Business discovery"
+              note={
+                text.businessDiscovery
+              }
             />
 
             <SettingBox
-              label="Research"
+              label={
+                text.research
+              }
               value="Website + AI"
-              note="Structural and visual analysis"
+              note={
+                text.structuralVisualAnalysis
+              }
             />
           </div>
         </SettingsSection>
 
-        {/* LANGUAGE */}
+        {/* =================================================
+            LANGUAGE
+        ================================================= */}
 
         <SettingsSection
           icon={
             Globe2
           }
-          title="Language"
-          description="Choose the language used by the Leadbase interface."
+          title={
+            text.languageTitle
+          }
+          description={
+            text.languageDescription
+          }
         >
-          <div className="flex flex-wrap gap-2">
-            <Button>
-              English
-            </Button>
+          <LanguageSelector />
 
-            <Button variant="outline">
-              Deutsch
-            </Button>
-          </div>
-
-          <p className="mt-3 text-xs text-muted-foreground">
-            Language switching will become functional when internationalization is added.
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            {
+              text.languageNote
+            }
           </p>
         </SettingsSection>
 
-        {/* OUTREACH */}
+        {/* =================================================
+            OUTREACH
+        ================================================= */}
 
         <SettingsSection
           icon={
             Send
           }
-          title="Outreach"
-          description="Control how email drafts and follow-ups behave."
+          title={
+            text.outreachTitle
+          }
+          description={
+            text.outreachDescription
+          }
         >
           <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="follow-up-days">
-                Default follow-up delay
+                {
+                  text.defaultFollowUpDelay
+                }
               </Label>
 
               <Input
@@ -505,68 +484,137 @@ export default async function SettingsPage({
                 type="number"
                 defaultValue="5"
                 disabled
+                className="h-11 sm:h-9"
               />
 
-              <p className="text-xs text-muted-foreground">
-                Days after sending before a follow-up is prepared.
+              <p className="text-xs leading-5 text-muted-foreground">
+                {
+                  text.followUpDelayNote
+                }
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label>
-                Sending mode
+                {
+                  text.sendingMode
+                }
               </Label>
 
-              <div className="flex h-9 items-center rounded-lg border px-3 text-sm">
-                Human approval required
+              <div className="flex min-h-11 items-center rounded-lg border px-3 py-2 text-sm sm:min-h-9 sm:py-0">
+                {
+                  text.humanApprovalRequired
+                }
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                Automatic sending is disabled.
+              <p className="text-xs leading-5 text-muted-foreground">
+                {
+                  text.automaticSendingDisabled
+                }
               </p>
             </div>
           </div>
         </SettingsSection>
 
-        {/* COMPLIANCE */}
+        {/* =================================================
+            COMPLIANCE
+        ================================================= */}
 
         <SettingsSection
           icon={
             ShieldCheck
           }
-          title="Compliance & safety"
-          description="Safeguards applied before outreach can be sent."
+          title={
+            text.complianceTitle
+          }
+          description={
+            text.complianceDescription
+          }
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SafetyItem text="Human approval before sending" />
+          <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+            <SafetyItem
+              text={
+                text.humanApprovalBeforeSending
+              }
+            />
 
-            <SafetyItem text="Do Not Contact suppression" />
+            <SafetyItem
+              text={
+                text.doNotContactSuppression
+              }
+            />
 
-            <SafetyItem text="No fabricated contact information" />
+            <SafetyItem
+              text={
+                text.noFabricatedContactInformation
+              }
+            />
 
-            <SafetyItem text="No tracking pixels in V1" />
+            <SafetyItem
+              text={
+                text.noTrackingPixels
+              }
+            />
 
-            <SafetyItem text="No deceptive Re: or Fwd: subjects" />
+            <SafetyItem
+              text={
+                text.noDeceptiveSubjects
+              }
+            />
 
-            <SafetyItem text="Activity and sending history" />
+            <SafetyItem
+              text={
+                text.activitySendingHistory
+              }
+            />
           </div>
         </SettingsSection>
 
-        {/* DELIVERABILITY */}
+        {/* =================================================
+            DELIVERABILITY
+        ================================================= */}
 
         <SettingsSection
           icon={
             SlidersHorizontal
           }
-          title="Deliverability"
-          description="Monitor the technical health of your sending domain and mailbox."
+          title={
+            text.deliverabilityTitle
+          }
+          description={
+            text.deliverabilityDescription
+          }
         >
-          <div className="grid gap-4 sm:grid-cols-3">
-            <DeliverabilityBox label="SPF" />
+          <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+            <DeliverabilityBox
+              label="SPF"
+              notChecked={
+                text.notChecked
+              }
+              verificationLater={
+                text.verificationLater
+              }
+            />
 
-            <DeliverabilityBox label="DKIM" />
+            <DeliverabilityBox
+              label="DKIM"
+              notChecked={
+                text.notChecked
+              }
+              verificationLater={
+                text.verificationLater
+              }
+            />
 
-            <DeliverabilityBox label="DMARC" />
+            <DeliverabilityBox
+              label="DMARC"
+              notChecked={
+                text.notChecked
+              }
+              verificationLater={
+                text.verificationLater
+              }
+            />
           </div>
         </SettingsSection>
       </div>
@@ -587,36 +635,40 @@ function SettingsSection({
   icon:
     React.ElementType;
 
-  title:
-    string;
+  title: string;
 
-  description:
-    string;
+  description: string;
 
   children:
     React.ReactNode;
 }) {
   return (
-    <Card className="shadow-none">
+    <Card className="min-w-0 shadow-none">
       <CardContent className="p-0">
-        <div className="flex gap-4 border-b p-5">
+        <div className="flex min-w-0 gap-3 border-b p-4 sm:gap-4 sm:p-5">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
             <Icon className="size-4" />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold">
-              {title}
+              {
+                title
+              }
             </h2>
 
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              {description}
+            <p className="mt-1 max-w-2xl break-words text-sm leading-6 text-muted-foreground">
+              {
+                description
+              }
             </p>
           </div>
         </div>
 
-        <div className="p-5">
-          {children}
+        <div className="min-w-0 p-4 sm:p-5">
+          {
+            children
+          }
         </div>
       </CardContent>
     </Card>
@@ -632,27 +684,30 @@ function SettingBox({
   value,
   note,
 }: {
-  label:
-    string;
+  label: string;
 
-  value:
-    string;
+  value: string;
 
-  note:
-    string;
+  note: string;
 }) {
   return (
-    <div className="rounded-xl border p-4">
+    <div className="min-w-0 rounded-xl border p-4">
       <p className="text-xs font-medium text-muted-foreground">
-        {label}
+        {
+          label
+        }
       </p>
 
-      <p className="mt-2 text-sm font-medium">
-        {value}
+      <p className="mt-2 break-words text-sm font-medium">
+        {
+          value
+        }
       </p>
 
-      <p className="mt-1 text-xs text-muted-foreground">
-        {note}
+      <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
+        {
+          note
+        }
       </p>
     </div>
   );
@@ -666,23 +721,23 @@ function MiniStatus({
   label,
   active,
 }: {
-  label:
-    string;
+  label: string;
 
-  active:
-    boolean;
+  active: boolean;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-[11px] text-muted-foreground">
+    <div className="inline-flex min-h-7 items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-[11px] text-muted-foreground">
       <span
         className={
           active
-            ? "size-1.5 rounded-full bg-emerald-500"
-            : "size-1.5 rounded-full bg-zinc-400"
+            ? "size-1.5 shrink-0 rounded-full bg-emerald-500"
+            : "size-1.5 shrink-0 rounded-full bg-zinc-400"
         }
       />
 
-      {label}
+      {
+        label
+      }
     </div>
   );
 }
@@ -694,15 +749,16 @@ function MiniStatus({
 function SafetyItem({
   text,
 }: {
-  text:
-    string;
+  text: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border p-3">
-      <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+    <div className="flex min-w-0 items-start gap-3 rounded-lg border p-3">
+      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
 
-      <span className="text-sm">
-        {text}
+      <span className="break-words text-sm leading-5">
+        {
+          text
+        }
       </span>
     </div>
   );
@@ -714,24 +770,38 @@ function SafetyItem({
 
 function DeliverabilityBox({
   label,
+  notChecked,
+  verificationLater,
 }: {
-  label:
-    string;
+  label: string;
+
+  notChecked: string;
+
+  verificationLater: string;
 }) {
   return (
-    <div className="rounded-xl border p-4">
-      <div className="flex items-center justify-between">
+    <div className="min-w-0 rounded-xl border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium">
-          {label}
+          {
+            label
+          }
         </p>
 
-        <Badge variant="outline">
-          Not checked
+        <Badge
+          variant="outline"
+          className="shrink-0"
+        >
+          {
+            notChecked
+          }
         </Badge>
       </div>
 
-      <p className="mt-3 text-xs text-muted-foreground">
-        Verification will be added later.
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">
+        {
+          verificationLater
+        }
       </p>
     </div>
   );

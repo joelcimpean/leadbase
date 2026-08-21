@@ -1,935 +1,1035 @@
 import {
-    AlertCircle,
-    CalendarClock,
-    CheckCircle2,
-    ChevronDown,
-    Clock3,
-    Mail,
-    MailCheck,
-    PencilLine,
-    Save,
-    Sparkles,
-    User,
-  } from "lucide-react";
-  
-  import {
-    GenerateOutreachButton,
-  } from "./generate-outreach-button";
-  
-  import {
-    SendEmailButton,
-  } from "./send-email-button";
-  
-  import {
-    SendFollowUpButton,
-  } from "./send-follow-up-button";
-  
-  import {
-    approveOutreachDraft,
-    updateLeadContactSalutation,
-    updateOutreachDraft,
-  } from "../outreach-actions";
-  
-  import {
-    Badge,
-  } from "@/components/ui/badge";
-  
-  import {
-    Card,
-    CardContent,
-  } from "@/components/ui/card";
-  
-  import {
-    createClient,
-  } from "@/lib/supabase/server";
-  
-  /* =========================================================
-     TYPES
-  ========================================================= */
-  
-  type OutreachSectionProps = {
-    leadId: string;
-  };
-  
-  type ContactSalutation =
-    | "HERR"
-    | "FRAU"
-    | null;
-  
-  /* =========================================================
-     CONFIG
-  ========================================================= */
-  
-  const SIGNATURE_MARKER =
-    "Mit freundlichen Grüßen / Kind regards,";
-  
-  const GMAIL_SEND_SCOPE =
-    "https://www.googleapis.com/auth/gmail.send";
-  
-  /* =========================================================
-     HELPERS
-  ========================================================= */
-  
-  function getSingleRelation<T>(
-    value: T | T[] | null
-  ): T | null {
-    if (
-      Array.isArray(
-        value
-      )
-    ) {
-      return (
-        value[0] ??
-        null
-      );
-    }
-  
-    return value;
-  }
-  
-  function parsePoints(
-    value: unknown
+  AlertCircle,
+  CalendarClock,
+  CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Mail,
+  MailCheck,
+  PencilLine,
+  Save,
+  Sparkles,
+  User,
+} from "lucide-react";
+
+import {
+  GenerateOutreachButton,
+} from "./generate-outreach-button";
+
+import {
+  SendEmailButton,
+} from "./send-email-button";
+
+import {
+  SendFollowUpButton,
+} from "./send-follow-up-button";
+
+import {
+  approveOutreachDraft,
+  updateLeadContactSalutation,
+  updateOutreachDraft,
+} from "../outreach-actions";
+
+import {
+  Badge,
+} from "@/components/ui/badge";
+
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+
+import {
+  type AppLanguage,
+} from "@/lib/i18n";
+
+import {
+  getAppLanguage,
+} from "@/lib/i18n-server";
+
+import {
+  leadsCopy,
+} from "@/lib/leads-i18n";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
+type OutreachSectionProps = {
+  leadId: string;
+};
+
+type ContactSalutation =
+  | "HERR"
+  | "FRAU"
+  | null;
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const SIGNATURE_MARKER =
+  "Mit freundlichen Grüßen / Kind regards,";
+
+const GMAIL_SEND_SCOPE =
+  "https://www.googleapis.com/auth/gmail.send";
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function getSingleRelation<T>(
+  value:
+    | T
+    | T[]
+    | null
+): T | null {
+  if (
+    Array.isArray(
+      value
+    )
   ) {
-    if (
-      !Array.isArray(
-        value
-      )
-    ) {
-      return [];
-    }
-  
-    return value.filter(
-      (
-        item
-      ): item is string =>
-        typeof item ===
-        "string"
+    return (
+      value[0] ??
+      null
     );
   }
-  
-  function getLastName(
-    fullName: string
+
+  return value;
+}
+
+function parsePoints(
+  value: unknown
+) {
+  if (
+    !Array.isArray(
+      value
+    )
   ) {
-    const parts =
-      fullName
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
-  
-    if (
-      parts.length === 0
-    ) {
-      return "";
-    }
-  
-    if (
-      parts.length === 1
-    ) {
-      return parts[0];
-    }
-  
-    const particles =
-      new Set([
-        "von",
-        "van",
-        "de",
-        "der",
-        "den",
-        "zu",
-        "zur",
-      ]);
-  
-    let start =
-      parts.length - 1;
-  
-    while (
-      start > 0 &&
-      particles.has(
-        parts[
-          start - 1
-        ].toLowerCase()
+    return [];
+  }
+
+  return value.filter(
+    (
+      item
+    ): item is string =>
+      typeof item ===
+      "string"
+  );
+}
+
+function getLastName(
+  fullName: string
+) {
+  const parts =
+    fullName
+      .trim()
+      .split(
+        /\s+/
       )
-    ) {
-      start -= 1;
-    }
-  
-    return parts
-      .slice(start)
-      .join(" ");
-  }
-  
-  function getGreeting(
-    fullName:
-      | string
-      | null
-      | undefined,
-  
-    salutation:
-      | ContactSalutation
-      | undefined
-  ) {
-    if (
-      fullName &&
-      salutation ===
-        "HERR"
-    ) {
-      return `Sehr geehrter Herr ${getLastName(
-        fullName
-      )},`;
-    }
-  
-    if (
-      fullName &&
-      salutation ===
-        "FRAU"
-    ) {
-      return `Sehr geehrte Frau ${getLastName(
-        fullName
-      )},`;
-    }
-  
-    return "Guten Tag,";
-  }
-  
-  function splitSignature(
-    value: string
-  ) {
-    const index =
-      value.indexOf(
-        SIGNATURE_MARKER
+      .filter(
+        Boolean
       );
-  
-    if (
-      index === -1
-    ) {
-      return {
-        message:
-          value.trim(),
-  
-        hasSignature:
-          false,
-      };
-    }
-  
+
+  if (
+    parts.length ===
+    0
+  ) {
+    return "";
+  }
+
+  if (
+    parts.length ===
+    1
+  ) {
+    return parts[0];
+  }
+
+  const particles =
+    new Set([
+      "von",
+      "van",
+      "de",
+      "der",
+      "den",
+      "zu",
+      "zur",
+    ]);
+
+  let start =
+    parts.length -
+    1;
+
+  while (
+    start >
+      0 &&
+    particles.has(
+      parts[
+        start -
+          1
+      ].toLowerCase()
+    )
+  ) {
+    start -=
+      1;
+  }
+
+  return parts
+    .slice(
+      start
+    )
+    .join(
+      " "
+    );
+}
+
+function getGreeting(
+  fullName:
+    | string
+    | null
+    | undefined,
+
+  salutation:
+    | ContactSalutation
+    | undefined
+) {
+  if (
+    fullName &&
+    salutation ===
+      "HERR"
+  ) {
+    return `Sehr geehrter Herr ${getLastName(
+      fullName
+    )},`;
+  }
+
+  if (
+    fullName &&
+    salutation ===
+      "FRAU"
+  ) {
+    return `Sehr geehrte Frau ${getLastName(
+      fullName
+    )},`;
+  }
+
+  return "Guten Tag,";
+}
+
+function splitSignature(
+  value: string
+) {
+  const index =
+    value.indexOf(
+      SIGNATURE_MARKER
+    );
+
+  if (
+    index ===
+    -1
+  ) {
     return {
       message:
-        value
-          .slice(
-            0,
-            index
-          )
-          .trim(),
-  
+        value.trim(),
+
       hasSignature:
-        true,
+        false,
     };
   }
-  
-  function getEditableMessage(
-    value:
-      | string
-      | null
-      | undefined
-  ) {
-    if (!value) {
-      return "";
-    }
-  
-    return splitSignature(
+
+  return {
+    message:
       value
-    ).message;
-  }
-  
-  function formatDateTime(
-    date:
-      | string
-      | null
-      | undefined
+        .slice(
+          0,
+          index
+        )
+        .trim(),
+
+    hasSignature:
+      true,
+  };
+}
+
+function getEditableMessage(
+  value:
+    | string
+    | null
+    | undefined
+) {
+  if (
+    !value
   ) {
-    if (!date) {
-      return "—";
-    }
-  
-    return new Intl.DateTimeFormat(
-      "de-DE",
-      {
-        day:
-          "2-digit",
-  
-        month:
-          "short",
-  
-        year:
-          "numeric",
-  
-        hour:
-          "2-digit",
-  
-        minute:
-          "2-digit",
-      }
-    ).format(
-      new Date(
-        date
-      )
-    );
+    return "";
   }
-  
-  function draftStatusClass(
-    status: string
+
+  return splitSignature(
+    value
+  ).message;
+}
+
+function formatDateTime(
+  date:
+    | string
+    | null
+    | undefined,
+  language:
+    AppLanguage
+) {
+  if (
+    !date
   ) {
-    switch (
-      status
-    ) {
-      case "APPROVED":
-        return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  
-      case "SENDING":
-        return "border-amber-200 bg-amber-50 text-amber-700";
-  
-      case "SENT":
-        return "border-blue-200 bg-blue-50 text-blue-700";
-  
-      case "ARCHIVED":
-        return "border-zinc-200 bg-zinc-100 text-zinc-600";
-  
-      default:
-        return "border-zinc-200 bg-zinc-50 text-zinc-700";
-    }
+    return "—";
   }
-  
-  function draftStatusLabel(
-    status: string
+
+  return new Intl.DateTimeFormat(
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-IE",
+    {
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+    }
+  ).format(
+    new Date(
+      date
+    )
+  );
+}
+
+function draftStatusClass(
+  status: string
+) {
+  switch (
+    status
   ) {
-    switch (
-      status
-    ) {
-      case "APPROVED":
-        return "Approved";
-  
-      case "SENDING":
-        return "Sending";
-  
-      case "SENT":
-        return "Sent";
-  
-      case "ARCHIVED":
-        return "Archived";
-  
-      default:
-        return "Draft";
-    }
+    case "APPROVED":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
+
+    case "SENDING":
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
+
+    case "SENT":
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
+
+    case "ARCHIVED":
+      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
+
+    default:
+      return "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300";
   }
-  
-  /* =========================================================
-     SIGNATURE
-  ========================================================= */
-  
-  function Signature() {
-    return (
-      <div className="mt-7 text-sm leading-6">
-        <p>
-          Mit freundlichen Grüßen / Kind regards,
+}
+
+function draftStatusLabel(
+  status: string,
+  language:
+    AppLanguage
+) {
+  const text =
+    leadsCopy[
+      language
+    ].outreach;
+
+  switch (
+    status
+  ) {
+    case "APPROVED":
+      return text.statusApproved;
+
+    case "SENDING":
+      return text.statusSending;
+
+    case "SENT":
+      return text.statusSent;
+
+    case "ARCHIVED":
+      return text.statusArchived;
+
+    default:
+      return text.statusDraft;
+  }
+}
+
+/* =========================================================
+   SIGNATURE
+========================================================= */
+
+function Signature() {
+  return (
+    <div className="mt-7 break-words text-sm leading-6">
+      <p>
+        Mit freundlichen Grüßen / Kind regards,
+      </p>
+
+      <div className="mt-4">
+        <p className="font-medium">
+          Joel Cimpean
         </p>
-  
-        <div className="mt-4">
-          <p className="font-medium">
-            Joel Cimpean
-          </p>
-  
-          <p className="text-muted-foreground">
-            <a
-              href="mailto:hello@joelcimpean.com"
-              className="underline underline-offset-2 transition-colors hover:text-foreground"
-            >
-              hello@joelcimpean.com
-            </a>
-  
-            <span className="mx-1.5">
-              /
-            </span>
-  
-            <a
-              href="https://joelcimpean.com"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2 transition-colors hover:text-foreground"
-            >
-              joelcimpean.com
-            </a>
-          </p>
-        </div>
+
+        <p className="mt-0.5 break-words text-muted-foreground">
+          <a
+            href="mailto:hello@joelcimpean.com"
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            hello@joelcimpean.com
+          </a>
+
+          <span className="mx-1.5">
+            /
+          </span>
+
+          <a
+            href="https://joelcimpean.com"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            joelcimpean.com
+          </a>
+        </p>
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   EMAIL BODY
+========================================================= */
+
+function EmailBody({
+  body,
+}: {
+  body: string;
+}) {
+  const {
+    message,
+    hasSignature,
+  } =
+    splitSignature(
+      body
     );
-  }
-  
-  /* =========================================================
-     EMAIL BODY
-  ========================================================= */
-  
-  function EmailBody({
-    body,
-  }: {
-    body: string;
-  }) {
-    const {
-      message,
-      hasSignature,
-    } =
-      splitSignature(
-        body
-      );
-  
-    return (
-      <div>
-        <div className="whitespace-pre-wrap text-[14px] leading-7 text-foreground">
-          {message}
-        </div>
-  
-        {hasSignature ? (
-          <Signature />
-        ) : null}
+
+  return (
+    <div className="min-w-0">
+      <div className="whitespace-pre-wrap break-words text-[14px] leading-7 text-foreground">
+        {
+          message
+        }
       </div>
-    );
-  }
-  
-  /* =========================================================
-     OUTREACH SECTION
-  ========================================================= */
-  
-  export async function OutreachSection({
-    leadId,
-  }: OutreachSectionProps) {
-    const supabase =
-      await createClient();
-  
-    const [
-      draftResult,
-      leadResult,
-      gmailResult,
-    ] =
-      await Promise.all([
-        supabase
-          .from(
-            "outreach_drafts"
-          )
-          .select(`
+
+      {hasSignature ? (
+        <Signature />
+      ) : null}
+    </div>
+  );
+}
+
+/* =========================================================
+   OUTREACH
+========================================================= */
+
+export async function OutreachSection({
+  leadId,
+}: OutreachSectionProps) {
+  const [
+    supabase,
+    language,
+  ] =
+    await Promise.all([
+      createClient(),
+      getAppLanguage(),
+    ]);
+
+  const text =
+    leadsCopy[
+      language
+    ].outreach;
+
+  const [
+    draftResult,
+    leadResult,
+    gmailResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "outreach_drafts"
+        )
+        .select(`
+          id,
+          channel,
+          language,
+          subject,
+          body,
+          follow_up_body,
+          personalization_points,
+          status,
+          model,
+          input_tokens,
+          output_tokens,
+          total_tokens,
+          created_at,
+          sent_at,
+          sent_to,
+          gmail_message_id,
+          gmail_thread_id,
+          sending_started_at,
+          send_error,
+          follow_up_sent_at,
+          follow_up_sent_to,
+          gmail_follow_up_message_id,
+          gmail_follow_up_thread_id,
+          follow_up_sending_started_at,
+          follow_up_send_error
+        `)
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          1
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "leads"
+        )
+        .select(`
+          id,
+          status,
+          next_follow_up_at,
+
+          company:companies (
             id,
-            channel,
-            language,
-            subject,
-            body,
-            follow_up_body,
-            personalization_points,
-            status,
-            model,
-            input_tokens,
-            output_tokens,
-            total_tokens,
-            created_at,
-            sent_at,
-            sent_to,
-            gmail_message_id,
-            gmail_thread_id,
-            sending_started_at,
-            send_error,
-            follow_up_sent_at,
-            follow_up_sent_to,
-            gmail_follow_up_message_id,
-            gmail_follow_up_thread_id,
-            follow_up_sending_started_at,
-            follow_up_send_error
-          `)
-          .eq(
-            "lead_id",
-            leadId
-          )
-          .order(
-            "created_at",
-            {
-              ascending:
-                false,
-            }
-          )
-          .limit(1)
-          .maybeSingle(),
-  
-        supabase
-          .from(
-            "leads"
-          )
-          .select(`
+            name
+          ),
+
+          primary_contact:contacts (
             id,
-            status,
-            next_follow_up_at,
-  
-            company:companies (
-              id,
-              name
-            ),
-  
-            primary_contact:contacts (
-              id,
-              full_name,
-              job_title,
-              email,
-              salutation
-            )
-          `)
-          .eq(
-            "id",
-            leadId
+            full_name,
+            job_title,
+            email,
+            salutation
           )
-          .maybeSingle(),
-  
-        supabase
-          .from(
-            "gmail_connections"
-          )
-          .select(`
-            email_address,
-            scopes
-          `)
-          .maybeSingle(),
-      ]);
-  
-    if (
+        `)
+        .eq(
+          "id",
+          leadId
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "gmail_connections"
+        )
+        .select(`
+          email_address,
+          scopes
+        `)
+        .maybeSingle(),
+    ]);
+
+  if (
+    draftResult.error
+  ) {
+    console.error(
+      "Could not load outreach draft:",
       draftResult.error
-    ) {
-      console.error(
-        "Could not load outreach draft:",
-        draftResult.error
-      );
-    }
-  
-    if (
+    );
+  }
+
+  if (
+    leadResult.error
+  ) {
+    console.error(
+      "Could not load outreach recipient:",
       leadResult.error
-    ) {
-      console.error(
-        "Could not load outreach recipient:",
-        leadResult.error
-      );
-    }
-  
-    if (
+    );
+  }
+
+  if (
+    gmailResult.error
+  ) {
+    console.error(
+      "Could not load Gmail status:",
       gmailResult.error
-    ) {
-      console.error(
-        "Could not load Gmail status:",
-        gmailResult.error
-      );
-    }
-  
-    const draft =
-      draftResult.data;
-  
-    const lead =
-      leadResult.data;
-  
-    const gmailConnection =
-      gmailResult.data;
-  
-    const company =
-      getSingleRelation(
-        lead?.company ??
-          null
-      );
-  
-    const contact =
-      getSingleRelation(
-        lead?.primary_contact ??
-          null
-      );
-  
-    const personalizationPoints =
-      parsePoints(
-        draft?.personalization_points
-      );
-  
-    const greeting =
-      getGreeting(
-        contact?.full_name,
-  
-        contact?.salutation as
-          | ContactSalutation
-          | undefined
-      );
-  
-    const canEdit =
-      Boolean(
-        draft &&
+    );
+  }
+
+  const draft =
+    draftResult.data;
+
+  const lead =
+    leadResult.data;
+
+  const gmailConnection =
+    gmailResult.data;
+
+  const company =
+    getSingleRelation(
+      lead?.company ??
+        null
+    );
+
+  const contact =
+    getSingleRelation(
+      lead?.primary_contact ??
+        null
+    );
+
+  const personalizationPoints =
+    parsePoints(
+      draft?.personalization_points
+    );
+
+  const greeting =
+    getGreeting(
+      contact?.full_name,
+      contact?.salutation as
+        | ContactSalutation
+        | undefined
+    );
+
+  const canEdit =
+    Boolean(
+      draft &&
         (
           draft.status ===
             "DRAFT" ||
           draft.status ===
             "APPROVED"
         )
-      );
-  
-    const canEditSalutation =
-      canEdit;
-  
-    const gmailScopes =
-      Array.isArray(
-        gmailConnection?.scopes
-      )
-        ? gmailConnection.scopes
-        : [];
-  
-    const gmailReady =
-      Boolean(
-        gmailConnection &&
+    );
+
+  const canEditSalutation =
+    canEdit;
+
+  const gmailScopes =
+    Array.isArray(
+      gmailConnection?.scopes
+    )
+      ? gmailConnection.scopes
+      : [];
+
+  const gmailReady =
+    Boolean(
+      gmailConnection &&
         gmailScopes.includes(
           GMAIL_SEND_SCOPE
         )
-      );
-  
-    const recipientEmail =
-      contact?.email
-        ?.trim() ??
-      null;
-  
-    const followUpDueAt =
-      lead?.next_follow_up_at
-        ? new Date(
-            lead.next_follow_up_at
-          )
-        : null;
-  
-    const followUpDue =
-      Boolean(
-        draft?.status ===
-          "SENT" &&
+    );
+
+  const recipientEmail =
+    contact?.email
+      ?.trim() ??
+    null;
+
+  const followUpDueAt =
+    lead?.next_follow_up_at
+      ? new Date(
+          lead.next_follow_up_at
+        )
+      : null;
+
+  const followUpDue =
+    Boolean(
+      draft?.status ===
+        "SENT" &&
         draft.follow_up_body &&
         !draft.follow_up_sent_at &&
         followUpDueAt &&
         followUpDueAt.getTime() <=
           Date.now()
-      );
-  
-    const followUpScheduled =
-      Boolean(
-        draft?.status ===
-          "SENT" &&
+    );
+
+  const followUpScheduled =
+    Boolean(
+      draft?.status ===
+        "SENT" &&
         draft.follow_up_body &&
         !draft.follow_up_sent_at &&
         followUpDueAt &&
         followUpDueAt.getTime() >
           Date.now()
-      );
-  
-    return (
-      <Card
-        id="outreach"
-        className="overflow-hidden shadow-none"
-      >
-        <CardContent className="p-0">
-          {/* HEADER */}
-  
-          <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
-                <Sparkles className="size-4" />
-              </div>
-  
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-semibold">
-                    Outreach draft
-                  </h2>
-  
-                  {draft ? (
-                    <Badge
-                      variant="outline"
-                      className={
-                        draftStatusClass(
-                          draft.status
-                        )
-                      }
-                    >
-                      {draftStatusLabel(
-                        draft.status
-                      )}
-                    </Badge>
-                  ) : null}
-                </div>
-  
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {contact?.full_name
-                    ? `Personalized email for ${contact.full_name}.`
-                    : company?.name
-                      ? `Personalized email for ${company.name}.`
-                      : "Personalized email based on the current research."}
-                </p>
-              </div>
+    );
+
+  const locale =
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-IE";
+
+  return (
+    <Card
+      id="outreach"
+      className="min-w-0 overflow-hidden shadow-none"
+    >
+      <CardContent className="p-0">
+        <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:px-5 sm:py-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+              <Sparkles className="size-4" />
             </div>
-  
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold">
+                  {
+                    text.title
+                  }
+                </h2>
+
+                {draft ? (
+                  <Badge
+                    variant="outline"
+                    className={
+                      draftStatusClass(
+                        draft.status
+                      )
+                    }
+                  >
+                    {draftStatusLabel(
+                      draft.status,
+                      language
+                    )}
+                  </Badge>
+                ) : null}
+              </div>
+
+              <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
+                {contact?.full_name
+                  ? text.personalizedForPerson.replace(
+                      "{name}",
+                      contact.full_name
+                    )
+                  : company?.name
+                    ? text.personalizedForCompany.replace(
+                        "{name}",
+                        company.name
+                      )
+                    : text.personalizedBasedOnResearch}
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">
             <GenerateOutreachButton
               leadId={
                 leadId
               }
-              hasDraft={
-                Boolean(
-                  draft
-                )
-              }
+              hasDraft={Boolean(
+                draft
+              )}
             />
           </div>
-  
-          {!draft ? (
-            <div className="border-t px-5 py-10">
-              <div className="mx-auto max-w-sm text-center">
-                <div className="mx-auto flex size-10 items-center justify-center rounded-lg border">
-                  <Mail className="size-4 text-muted-foreground" />
+        </div>
+
+        {!draft ? (
+          <div className="border-t px-4 py-10 sm:px-5">
+            <div className="mx-auto max-w-sm text-center">
+              <div className="mx-auto flex size-10 items-center justify-center rounded-lg border">
+                <Mail className="size-4 text-muted-foreground" />
+              </div>
+
+              <p className="mt-3 text-sm font-medium">
+                {
+                  text.noDraft
+                }
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {
+                  text.noDraftDescription
+                }
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="border-t bg-muted/20 px-4 py-4 sm:px-5">
+              <div className="grid gap-4">
+                <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
+                  <p className="pt-0.5 text-xs font-medium text-muted-foreground">
+                    {
+                      text.recipient
+                    }
+                  </p>
+
+                  <div className="flex min-w-0 items-start gap-2">
+                    <User className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium">
+                        {contact?.full_name ??
+                          company?.name ??
+                          text.unknownRecipient}
+                      </p>
+
+                      <p className="mt-0.5 break-all text-xs text-muted-foreground">
+                        {recipientEmail ??
+                          text.noEmailAddress}
+                      </p>
+
+                      {contact?.job_title ? (
+                        <p className="mt-0.5 break-words text-xs text-muted-foreground">
+                          {
+                            contact.job_title
+                          }
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-  
-                <p className="mt-3 text-sm font-medium">
-                  No outreach draft yet
-                </p>
-  
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Generate a personalized German email using the company and website research.
-                </p>
+
+                {contact?.id &&
+                contact.full_name &&
+                canEditSalutation ? (
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-center">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {
+                        text.salutation
+                      }
+                    </p>
+
+                    <div className="min-w-0">
+                      <form
+                        action={
+                          updateLeadContactSalutation
+                        }
+                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:flex-wrap sm:items-center"
+                      >
+                        <input
+                          type="hidden"
+                          name="leadId"
+                          value={
+                            leadId
+                          }
+                        />
+
+                        <input
+                          type="hidden"
+                          name="contactId"
+                          value={
+                            contact.id
+                          }
+                        />
+
+                        <select
+                          name="salutation"
+                          defaultValue={
+                            contact.salutation ??
+                            ""
+                          }
+                          className="h-10 min-w-0 rounded-md border bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring sm:h-8"
+                        >
+                          <option value="">
+                            {
+                              text.neutral
+                            }
+                          </option>
+
+                          <option value="HERR">
+                            Herr
+                          </option>
+
+                          <option value="FRAU">
+                            Frau
+                          </option>
+                        </select>
+
+                        <button
+                          type="submit"
+                          className="h-10 rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted sm:h-8"
+                        >
+                          {
+                            text.save
+                          }
+                        </button>
+                      </form>
+
+                      <p className="mt-2 break-words text-xs text-muted-foreground">
+                        {
+                          text.preview
+                        }
+                        :{" "}
+                        <span className="text-foreground">
+                          {
+                            greeting
+                          }
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
+                  <p className="pt-0.5 text-xs font-medium text-muted-foreground">
+                    {
+                      text.subject
+                    }
+                  </p>
+
+                  <p className="break-words text-sm font-medium">
+                    {draft.subject ??
+                      "—"}
+                  </p>
+                </div>
+
+                {draft.sent_at ? (
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
+                    <p className="pt-0.5 text-xs font-medium text-muted-foreground">
+                      {
+                        text.sent
+                      }
+                    </p>
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        {formatDateTime(
+                          draft.sent_at,
+                          language
+                        )}
+                      </p>
+
+                      {draft.sent_to ? (
+                        <p className="mt-0.5 break-all text-xs text-muted-foreground">
+                          {
+                            text.to
+                          }{" "}
+                          {
+                            draft.sent_to
+                          }
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
-          ) : (
-            <>
-              {/* RECIPIENT */}
-  
-              <div className="border-t bg-muted/20 px-5 py-4">
-                <div className="grid gap-4">
-                  <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-start">
-                    <p className="pt-0.5 text-xs font-medium text-muted-foreground">
-                      Recipient
-                    </p>
-  
-                    <div className="flex items-start gap-2">
-                      <User className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-  
-                      <div>
-                        <p className="text-sm font-medium">
-                          {contact?.full_name ??
-                            company?.name ??
-                            "Unknown recipient"}
-                        </p>
-  
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {recipientEmail ??
-                            "No email address found"}
-                        </p>
-  
-                        {contact?.job_title ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {
-                              contact.job_title
-                            }
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-  
-                  {contact?.id &&
-                  contact.full_name &&
-                  canEditSalutation ? (
-                    <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-center">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Salutation
-                      </p>
-  
-                      <div className="flex flex-wrap items-center gap-2">
-                        <form
-                          action={
-                            updateLeadContactSalutation
-                          }
-                          className="flex flex-wrap items-center gap-2"
-                        >
-                          <input
-                            type="hidden"
-                            name="leadId"
-                            value={
-                              leadId
-                            }
-                          />
-  
-                          <input
-                            type="hidden"
-                            name="contactId"
-                            value={
-                              contact.id
-                            }
-                          />
-  
-                          <select
-                            name="salutation"
-                            defaultValue={
-                              contact.salutation ??
-                              ""
-                            }
-                            className="h-8 rounded-md border bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring"
-                          >
-                            <option value="">
-                              Neutral
-                            </option>
-  
-                            <option value="HERR">
-                              Herr
-                            </option>
-  
-                            <option value="FRAU">
-                              Frau
-                            </option>
-                          </select>
-  
-                          <button
-                            type="submit"
-                            className="h-8 rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted"
-                          >
-                            Save
-                          </button>
-                        </form>
-  
-                        <span className="text-xs text-muted-foreground">
-                          →{" "}
-                          {greeting}
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
-  
-                  <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-start">
-                    <p className="pt-0.5 text-xs font-medium text-muted-foreground">
-                      Subject
-                    </p>
-  
-                    <p className="text-sm font-medium">
-                      {draft.subject ??
-                        "—"}
-                    </p>
-                  </div>
-  
-                  {draft.sent_at ? (
-                    <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-start">
-                      <p className="pt-0.5 text-xs font-medium text-muted-foreground">
-                        Sent
-                      </p>
-  
-                      <div>
-                        <p className="text-sm font-medium">
-                          {formatDateTime(
-                            draft.sent_at
-                          )}
-                        </p>
-  
-                        {draft.sent_to ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            to{" "}
-                            {
-                              draft.sent_to
-                            }
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+
+            <div className="min-w-0 border-t px-4 py-5 sm:px-5 sm:py-6">
+              <div className="mx-auto min-w-0 max-w-[760px]">
+                <EmailBody
+                  body={
+                    draft.body
+                  }
+                />
               </div>
-  
-              {/* EMAIL */}
-  
-              <div className="border-t px-5 py-6">
-                <div className="mx-auto max-w-[760px]">
-                  <EmailBody
-                    body={
-                      draft.body
-                    }
-                  />
-                </div>
-              </div>
-  
-              {draft.send_error ? (
-                <div className="border-t border-red-200 bg-red-50 px-5 py-3">
-                  <div className="flex items-start gap-2 text-red-700">
-                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
-  
-                    <div>
-                      <p className="text-xs font-medium">
-                        Email could not be sent
-                      </p>
-  
-                      <p className="mt-1 text-xs leading-5">
-                        {
-                          draft.send_error
-                        }
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-  
-              {/* ACTION BAR */}
-  
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-5 py-3">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <CheckCircle2 className="size-3.5" />
-  
-                  <span>
-                    Personalized using{" "}
-                    {
-                      personalizationPoints.length
-                    }{" "}
-                    company insight
-                    {personalizationPoints.length ===
-                    1
-                      ? ""
-                      : "s"}
-                  </span>
-                </div>
-  
-                <div className="flex flex-wrap items-center gap-2">
-                  {draft.status ===
-                  "DRAFT" ? (
-                    <form
-                      action={
-                        approveOutreachDraft
+            </div>
+
+            {draft.send_error ? (
+              <div className="border-t border-red-200 bg-red-50 px-4 py-3 sm:px-5 dark:border-red-900 dark:bg-red-950/40">
+                <div className="flex min-w-0 items-start gap-2 text-red-700 dark:text-red-400">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium">
+                      {
+                        text.emailCouldNotBeSent
                       }
+                    </p>
+
+                    <p className="mt-1 break-words text-xs leading-5">
+                      {
+                        draft.send_error
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-3 border-t bg-muted/10 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5 sm:py-3">
+              <div className="flex min-w-0 items-start gap-2 text-xs leading-5 text-muted-foreground sm:items-center">
+                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 sm:mt-0" />
+
+                <span className="break-words">
+                  {personalizationPoints.length ===
+                  1
+                    ? text.personalizedUsingOne
+                    : text.personalizedUsingMany.replace(
+                        "{count}",
+                        String(
+                          personalizationPoints.length
+                        )
+                      )}
+                </span>
+              </div>
+
+              <div className="flex w-full flex-col gap-2 min-[420px]:flex-row min-[420px]:flex-wrap sm:w-auto sm:items-center [&>form]:w-full min-[420px]:[&>form]:w-auto">
+                {draft.status ===
+                "DRAFT" ? (
+                  <form
+                    action={
+                      approveOutreachDraft
+                    }
+                  >
+                    <input
+                      type="hidden"
+                      name="draftId"
+                      value={
+                        draft.id
+                      }
+                    />
+
+                    <input
+                      type="hidden"
+                      name="leadId"
+                      value={
+                        leadId
+                      }
+                    />
+
+                    <button
+                      type="submit"
+                      className="h-10 w-full rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:h-8 sm:w-auto"
                     >
-                      <input
-                        type="hidden"
-                        name="draftId"
-                        value={
-                          draft.id
-                        }
-                      />
-  
-                      <input
-                        type="hidden"
-                        name="leadId"
-                        value={
-                          leadId
-                        }
-                      />
-  
-                      <button
-                        type="submit"
-                        className="h-8 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
-                      >
-                        Approve draft
-                      </button>
-                    </form>
-                  ) : null}
-  
-                  {draft.status ===
-                  "APPROVED" ? (
-                    <>
-                      <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700">
-                        <CheckCircle2 className="size-3.5" />
-  
-                        Ready to send
-                      </div>
-  
-                      {recipientEmail &&
-                      gmailReady ? (
+                      {
+                        text.approveDraft
+                      }
+                    </button>
+                  </form>
+                ) : null}
+
+                {draft.status ===
+                "APPROVED" ? (
+                  <>
+                    <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 min-[420px]:w-auto sm:h-8 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400">
+                      <CheckCircle2 className="size-3.5" />
+
+                      {
+                        text.readyToSend
+                      }
+                    </div>
+
+                    {recipientEmail &&
+                    gmailReady ? (
+                      <div className="w-full min-[420px]:w-auto [&>*]:w-full min-[420px]:[&>*]:w-auto">
                         <SendEmailButton
                           leadId={
                             leadId
@@ -941,431 +1041,492 @@ import {
                             recipientEmail
                           }
                         />
-                      ) : null}
-                    </>
-                  ) : null}
-  
-                  {draft.status ===
-                  "SENDING" ? (
-                    <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-700">
-                      <Clock3 className="size-3.5" />
-  
-                      Sending...
-                    </div>
-                  ) : null}
-  
-                  {draft.status ===
-                  "SENT" ? (
-                    <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700">
-                      <MailCheck className="size-3.5" />
-  
-                      Email sent
-                    </div>
-                  ) : null}
-                </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {draft.status ===
+                "SENDING" ? (
+                  <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-700 min-[420px]:w-auto sm:h-8 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400">
+                    <Clock3 className="size-3.5" />
+
+                    {
+                      text.sending
+                    }
+                  </div>
+                ) : null}
+
+                {draft.status ===
+                "SENT" ? (
+                  <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 min-[420px]:w-auto sm:h-8 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400">
+                    <MailCheck className="size-3.5" />
+
+                    {
+                      text.emailSent
+                    }
+                  </div>
+                ) : null}
               </div>
-  
-              {/* FOLLOW-UP WORKFLOW */}
-  
-              {draft.status ===
-                "SENT" &&
-              draft.follow_up_body ? (
-                <div className="border-t">
-                  <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border">
-                        <CalendarClock className="size-4 text-muted-foreground" />
-                      </div>
-  
-                      <div>
-                        <p className="text-sm font-medium">
-                          Follow-up
-                        </p>
-  
-                        {draft.follow_up_sent_at ? (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Sent{" "}
-                            {formatDateTime(
-                              draft.follow_up_sent_at
-                            )}
-                          </p>
-                        ) : followUpDue ? (
-                          <p className="mt-1 text-xs font-medium text-amber-700">
-                            Follow-up is due now
-                          </p>
-                        ) : followUpScheduled &&
-                          followUpDueAt ? (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Scheduled for{" "}
-                            {formatDateTime(
-                              followUpDueAt.toISOString()
-                            )}
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            No follow-up date scheduled.
-                          </p>
-                        )}
-                      </div>
+            </div>
+
+            {draft.status ===
+              "SENT" &&
+            draft.follow_up_body ? (
+              <div className="border-t">
+                <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:px-5">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border">
+                      <CalendarClock className="size-4 text-muted-foreground" />
                     </div>
-  
-                    <div className="flex flex-wrap items-center gap-2">
+
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        {
+                          text.followUp
+                        }
+                      </p>
+
                       {draft.follow_up_sent_at ? (
-                        <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700">
-                          <MailCheck className="size-3.5" />
-  
-                          Follow-up sent
-                        </div>
-                      ) : followUpDue &&
-                        recipientEmail &&
-                        gmailReady ? (
-                        <SendFollowUpButton
-                          leadId={
-                            leadId
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {text.followUpSentAt.replace(
+                            "{date}",
+                            formatDateTime(
+                              draft.follow_up_sent_at,
+                              language
+                            )
+                          )}
+                        </p>
+                      ) : followUpDue ? (
+                        <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                          {
+                            text.followUpDue
                           }
-                          draftId={
-                            draft.id
+                        </p>
+                      ) : followUpScheduled &&
+                        followUpDueAt ? (
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {text.scheduledFor.replace(
+                            "{date}",
+                            formatDateTime(
+                              followUpDueAt.toISOString(),
+                              language
+                            )
+                          )}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {
+                            text.noFollowUpScheduled
                           }
-                          recipientEmail={
-                            recipientEmail
-                          }
-                        />
-                      ) : followUpScheduled ? (
-                        <div className="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs text-muted-foreground">
-                          <Clock3 className="size-3.5" />
-  
-                          Waiting
-                        </div>
-                      ) : null}
+                        </p>
+                      )}
                     </div>
                   </div>
-  
-                  {draft.follow_up_send_error ? (
-                    <div className="border-t border-red-200 bg-red-50 px-5 py-3">
-                      <div className="flex items-start gap-2 text-red-700">
-                        <AlertCircle className="mt-0.5 size-4 shrink-0" />
-  
-                        <div>
-                          <p className="text-xs font-medium">
-                            Follow-up could not be sent
-                          </p>
-  
-                          <p className="mt-1 text-xs leading-5">
-                            {
-                              draft.follow_up_send_error
-                            }
-                          </p>
-                        </div>
+
+                  <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">
+                    {draft.follow_up_sent_at ? (
+                      <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 sm:h-8 sm:w-auto dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400">
+                        <MailCheck className="size-3.5" />
+
+                        {
+                          text.followUpSent
+                        }
                       </div>
-                    </div>
-                  ) : null}
-  
-                  <details className="group border-t">
-                    <summary className="cursor-pointer list-none px-5 py-4 text-sm font-medium transition-colors hover:bg-muted/30">
-                      <div className="flex items-center justify-between gap-3">
-                        <span>
-                          Preview follow-up
-                        </span>
-  
-                        <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                    ) : followUpDue &&
+                      recipientEmail &&
+                      gmailReady ? (
+                      <SendFollowUpButton
+                        leadId={
+                          leadId
+                        }
+                        draftId={
+                          draft.id
+                        }
+                        recipientEmail={
+                          recipientEmail
+                        }
+                      />
+                    ) : followUpScheduled ? (
+                      <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border px-3 text-xs text-muted-foreground sm:h-8 sm:w-auto">
+                        <Clock3 className="size-3.5" />
+
+                        {
+                          text.waiting
+                        }
                       </div>
-                    </summary>
-  
-                    <div className="border-t px-5 py-6">
-                      <div className="mx-auto max-w-[760px]">
-                        <EmailBody
-                          body={
-                            draft.follow_up_body
-                          }
-                        />
-                      </div>
-                    </div>
-                  </details>
+                    ) : null}
+                  </div>
                 </div>
-              ) : null}
-  
-              {/* EDIT */}
-  
-              {canEdit ? (
-                <details className="group border-t">
-                  <summary className="cursor-pointer list-none px-5 py-4 transition-colors hover:bg-muted/30">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <PencilLine className="size-4 text-muted-foreground" />
-  
-                        <span className="text-sm font-medium">
-                          Edit draft
-                        </span>
-                      </div>
-  
-                      <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-                    </div>
-                  </summary>
-  
-                  <form
-                    action={
-                      updateOutreachDraft
-                    }
-                    className="border-t bg-muted/10 px-5 py-5"
-                  >
-                    <input
-                      type="hidden"
-                      name="draftId"
-                      value={
-                        draft.id
-                      }
-                    />
-  
-                    <input
-                      type="hidden"
-                      name="leadId"
-                      value={
-                        leadId
-                      }
-                    />
-  
-                    <div className="mx-auto max-w-[760px] space-y-5">
-                      <div>
-                        <label
-                          htmlFor={`outreach-subject-${draft.id}`}
-                          className="text-xs font-medium text-muted-foreground"
-                        >
-                          Subject
-                        </label>
-  
-                        <input
-                          id={`outreach-subject-${draft.id}`}
-                          name="subject"
-                          type="text"
-                          required
-                          defaultValue={
-                            draft.subject ??
-                            ""
+
+                {draft.follow_up_send_error ? (
+                  <div className="border-t border-red-200 bg-red-50 px-4 py-3 sm:px-5 dark:border-red-900 dark:bg-red-950/40">
+                    <div className="flex min-w-0 items-start gap-2 text-red-700 dark:text-red-400">
+                      <AlertCircle className="mt-0.5 size-4 shrink-0" />
+
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">
+                          {
+                            text.followUpCouldNotBeSent
                           }
-                          className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring"
-                        />
-                      </div>
-  
-                      <div>
-                        <label
-                          htmlFor={`outreach-body-${draft.id}`}
-                          className="text-xs font-medium text-muted-foreground"
-                        >
-                          Message
-                        </label>
-  
-                        <textarea
-                          id={`outreach-body-${draft.id}`}
-                          name="body"
-                          required
-                          rows={
-                            12
-                          }
-                          defaultValue={
-                            getEditableMessage(
-                              draft.body
-                            )
-                          }
-                          className="mt-2 min-h-[260px] w-full resize-y rounded-md border bg-background px-3 py-3 text-sm leading-7 outline-none transition-shadow focus:ring-2 focus:ring-ring"
-                        />
-  
-                        <div className="mt-3 rounded-md border bg-background px-3 py-3">
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Signature added automatically
-                          </p>
-  
-                          <div className="mt-2 text-xs leading-5 text-muted-foreground">
-                            <p>
-                              Mit freundlichen Grüßen / Kind regards,
-                            </p>
-  
-                            <p className="mt-2 font-medium text-foreground">
-                              Joel Cimpean
-                            </p>
-  
-                            <p>
-                              hello@joelcimpean.com / joelcimpean.com
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-  
-                      <div>
-                        <label
-                          htmlFor={`outreach-followup-${draft.id}`}
-                          className="text-xs font-medium text-muted-foreground"
-                        >
-                          Follow-up
-                        </label>
-  
-                        <textarea
-                          id={`outreach-followup-${draft.id}`}
-                          name="followUpBody"
-                          rows={
-                            7
-                          }
-                          defaultValue={
-                            getEditableMessage(
-                              draft.follow_up_body
-                            )
-                          }
-                          className="mt-2 min-h-[170px] w-full resize-y rounded-md border bg-background px-3 py-3 text-sm leading-7 outline-none transition-shadow focus:ring-2 focus:ring-ring"
-                        />
-                      </div>
-  
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-                        <p className="max-w-md text-xs leading-5 text-muted-foreground">
-                          Editing an approved draft will require approval again before sending.
                         </p>
-  
-                        <button
-                          type="submit"
-                          className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
-                        >
-                          <Save className="size-3.5" />
-  
-                          Save changes
-                        </button>
+
+                        <p className="mt-1 break-words text-xs leading-5">
+                          {
+                            draft.follow_up_send_error
+                          }
+                        </p>
                       </div>
                     </div>
-                  </form>
-                </details>
-              ) : null}
-  
-              {/* PERSONALIZATION */}
-  
-              {personalizationPoints.length >
-              0 ? (
+                  </div>
+                ) : null}
+
                 <details className="group border-t">
-                  <summary className="cursor-pointer list-none px-5 py-4 text-sm font-medium transition-colors hover:bg-muted/30">
+                  <summary className="cursor-pointer list-none px-4 py-4 text-sm font-medium transition-colors hover:bg-muted/30 sm:px-5">
                     <div className="flex items-center justify-between gap-3">
                       <span>
-                        Personalization details
-                      </span>
-  
-                      <span className="text-xs font-normal text-muted-foreground">
                         {
-                          personalizationPoints.length
-                        }{" "}
-                        insights
+                          text.previewFollowUp
+                        }
                       </span>
+
+                      <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                     </div>
                   </summary>
-  
-                  <div className="border-t bg-muted/10 px-5 py-4">
-                    <div className="space-y-2.5">
-                      {personalizationPoints.map(
-                        (
-                          point,
-                          index
-                        ) => (
-                          <div
-                            key={`${point}-${index}`}
-                            className="flex items-start gap-2.5 text-sm leading-6"
-                          >
-                            <CheckCircle2 className="mt-1 size-3.5 shrink-0 text-emerald-600" />
-  
-                            <span>
-                              {
-                                point
-                              }
-                            </span>
-                          </div>
-                        )
-                      )}
+
+                  <div className="min-w-0 border-t px-4 py-5 sm:px-5 sm:py-6">
+                    <div className="mx-auto min-w-0 max-w-[760px]">
+                      <EmailBody
+                        body={
+                          draft.follow_up_body
+                        }
+                      />
                     </div>
                   </div>
                 </details>
-              ) : null}
-  
-              {/* DETAILS */}
-  
-              <details className="border-t">
-                <summary className="cursor-pointer list-none px-5 py-3 text-xs text-muted-foreground transition-colors hover:bg-muted/30">
-                  Generation & delivery details
+              </div>
+            ) : null}
+
+            {canEdit ? (
+              <details className="group border-t">
+                <summary className="cursor-pointer list-none px-4 py-4 transition-colors hover:bg-muted/30 sm:px-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <PencilLine className="size-4 shrink-0 text-muted-foreground" />
+
+                      <span className="text-sm font-medium">
+                        {
+                          text.editDraft
+                        }
+                      </span>
+                    </div>
+
+                    <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </div>
                 </summary>
-  
-                <div className="grid gap-4 border-t bg-muted/10 px-5 py-4 text-xs text-muted-foreground sm:grid-cols-2">
-                  <div>
-                    <p>
-                      Model
-                    </p>
-  
-                    <p className="mt-1 text-foreground">
-                      {draft.model ??
-                        "—"}
-                    </p>
-                  </div>
-  
-                  <div>
-                    <p>
-                      Generated
-                    </p>
-  
-                    <p className="mt-1 text-foreground">
-                      {formatDateTime(
-                        draft.created_at
-                      )}
-                    </p>
-                  </div>
-  
-                  <div>
-                    <p>
-                      Total tokens
-                    </p>
-  
-                    <p className="mt-1 text-foreground">
-                      {draft.total_tokens?.toLocaleString(
-                        "de-DE"
-                      ) ??
-                        "—"}
-                    </p>
-                  </div>
-  
-                  <div>
-                    <p>
-                      Channel
-                    </p>
-  
-                    <p className="mt-1 text-foreground">
-                      {draft.channel}
-                      {" · "}
-                      {draft.language}
-                    </p>
-                  </div>
-  
-                  {draft.gmail_message_id ? (
-                    <div>
-                      <p>
-                        Gmail message ID
-                      </p>
-  
-                      <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+
+                <form
+                  action={
+                    updateOutreachDraft
+                  }
+                  className="border-t bg-muted/10 px-4 py-5 sm:px-5"
+                >
+                  <input
+                    type="hidden"
+                    name="draftId"
+                    value={
+                      draft.id
+                    }
+                  />
+
+                  <input
+                    type="hidden"
+                    name="leadId"
+                    value={
+                      leadId
+                    }
+                  />
+
+                  <div className="mx-auto min-w-0 max-w-[760px] space-y-5">
+                    <div className="min-w-0">
+                      <label
+                        htmlFor={`outreach-subject-${draft.id}`}
+                        className="text-xs font-medium text-muted-foreground"
+                      >
                         {
-                          draft.gmail_message_id
+                          text.subject
+                        }
+                      </label>
+
+                      <input
+                        id={`outreach-subject-${draft.id}`}
+                        name="subject"
+                        type="text"
+                        required
+                        defaultValue={
+                          draft.subject ??
+                          ""
+                        }
+                        className="mt-2 h-11 w-full min-w-0 rounded-md border bg-background px-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring sm:h-10"
+                      />
+                    </div>
+
+                    <div className="min-w-0">
+                      <label
+                        htmlFor={`outreach-body-${draft.id}`}
+                        className="text-xs font-medium text-muted-foreground"
+                      >
+                        {
+                          text.message
+                        }
+                      </label>
+
+                      <textarea
+                        id={`outreach-body-${draft.id}`}
+                        name="body"
+                        required
+                        rows={
+                          12
+                        }
+                        defaultValue={
+                          getEditableMessage(
+                            draft.body
+                          )
+                        }
+                        className="mt-2 min-h-[300px] w-full min-w-0 resize-y rounded-md border bg-background px-3 py-3 text-sm leading-7 outline-none transition-shadow focus:ring-2 focus:ring-ring sm:min-h-[260px]"
+                      />
+
+                      <div className="mt-3 rounded-md border bg-background px-3 py-3">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {
+                            text.signatureAddedAutomatically
+                          }
+                        </p>
+
+                        <div className="mt-2 break-words text-xs leading-5 text-muted-foreground">
+                          <p>
+                            Mit freundlichen Grüßen / Kind regards,
+                          </p>
+
+                          <p className="mt-2 font-medium text-foreground">
+                            Joel Cimpean
+                          </p>
+
+                          <p className="break-all">
+                            hello@joelcimpean.com / joelcimpean.com
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <label
+                        htmlFor={`outreach-followup-${draft.id}`}
+                        className="text-xs font-medium text-muted-foreground"
+                      >
+                        {
+                          text.followUp
+                        }
+                      </label>
+
+                      <textarea
+                        id={`outreach-followup-${draft.id}`}
+                        name="followUpBody"
+                        rows={
+                          7
+                        }
+                        defaultValue={
+                          getEditableMessage(
+                            draft.follow_up_body
+                          )
+                        }
+                        className="mt-2 min-h-[190px] w-full min-w-0 resize-y rounded-md border bg-background px-3 py-3 text-sm leading-7 outline-none transition-shadow focus:ring-2 focus:ring-ring sm:min-h-[170px]"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                      <p className="max-w-md text-xs leading-5 text-muted-foreground">
+                        {
+                          text.editApprovedWarning
                         }
                       </p>
-                    </div>
-                  ) : null}
-  
-                  {draft.gmail_follow_up_message_id ? (
-                    <div>
-                      <p>
-                        Follow-up Gmail ID
-                      </p>
-  
-                      <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+
+                      <button
+                        type="submit"
+                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9 sm:w-auto"
+                      >
+                        <Save className="size-3.5" />
+
                         {
-                          draft.gmail_follow_up_message_id
+                          leadsCopy[
+                            language
+                          ].common.saveChanges
                         }
-                      </p>
+                      </button>
                     </div>
-                  ) : null}
+                  </div>
+                </form>
+              </details>
+            ) : null}
+
+            {personalizationPoints.length >
+            0 ? (
+              <details className="group border-t">
+                <summary className="cursor-pointer list-none px-4 py-4 text-sm font-medium transition-colors hover:bg-muted/30 sm:px-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>
+                      {
+                        text.personalizationDetails
+                      }
+                    </span>
+
+                    <span className="shrink-0 text-xs font-normal text-muted-foreground">
+                      {personalizationPoints.length ===
+                      1
+                        ? text.oneInsight
+                        : text.manyInsights.replace(
+                            "{count}",
+                            String(
+                              personalizationPoints.length
+                            )
+                          )}
+                    </span>
+                  </div>
+                </summary>
+
+                <div className="border-t bg-muted/10 px-4 py-4 sm:px-5">
+                  <div className="space-y-2.5">
+                    {personalizationPoints.map(
+                      (
+                        point,
+                        index
+                      ) => (
+                        <div
+                          key={`${point}-${index}`}
+                          className="flex min-w-0 items-start gap-2.5 text-sm leading-6"
+                        >
+                          <CheckCircle2 className="mt-1 size-3.5 shrink-0 text-emerald-600" />
+
+                          <span className="break-words">
+                            {
+                              point
+                            }
+                          </span>
+                        </div>
+                      )
+                    )}
+                  </div>
                 </div>
               </details>
-            </>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
+            ) : null}
+
+            <details className="border-t">
+              <summary className="cursor-pointer list-none px-4 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted/30 sm:px-5 sm:py-3">
+                {
+                  text.generationDeliveryDetails
+                }
+              </summary>
+
+              <div className="grid gap-4 border-t bg-muted/10 px-4 py-4 text-xs text-muted-foreground sm:grid-cols-2 sm:px-5">
+                <div className="min-w-0">
+                  <p>
+                    {
+                      text.model
+                    }
+                  </p>
+
+                  <p className="mt-1 break-words text-foreground">
+                    {draft.model ??
+                      "—"}
+                  </p>
+                </div>
+
+                <div className="min-w-0">
+                  <p>
+                    {
+                      text.generated
+                    }
+                  </p>
+
+                  <p className="mt-1 text-foreground">
+                    {formatDateTime(
+                      draft.created_at,
+                      language
+                    )}
+                  </p>
+                </div>
+
+                <div className="min-w-0">
+                  <p>
+                    {
+                      text.totalTokens
+                    }
+                  </p>
+
+                  <p className="mt-1 text-foreground">
+                    {draft.total_tokens?.toLocaleString(
+                      locale
+                    ) ??
+                      "—"}
+                  </p>
+                </div>
+
+                <div className="min-w-0">
+                  <p>
+                    {
+                      text.channel
+                    }
+                  </p>
+
+                  <p className="mt-1 break-words text-foreground">
+                    {
+                      draft.channel
+                    }
+
+                    {" · "}
+
+                    {
+                      draft.language
+                    }
+                  </p>
+                </div>
+
+                {draft.gmail_message_id ? (
+                  <div className="min-w-0">
+                    <p>
+                      {
+                        text.gmailMessageId
+                      }
+                    </p>
+
+                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {
+                        draft.gmail_message_id
+                      }
+                    </p>
+                  </div>
+                ) : null}
+
+                {draft.gmail_follow_up_message_id ? (
+                  <div className="min-w-0">
+                    <p>
+                      {
+                        text.followUpGmailId
+                      }
+                    </p>
+
+                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {
+                        draft.gmail_follow_up_message_id
+                      }
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

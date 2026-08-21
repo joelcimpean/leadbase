@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+
+import {
+  notFound,
+} from "next/navigation";
 
 import {
   AlertCircle,
@@ -17,17 +20,56 @@ import {
   XCircle,
 } from "lucide-react";
 
+import {
+  updateLeadStatus,
+} from "../actions";
 
-import { updateLeadStatus } from "../actions";
+import {
+  AnalyzeWebsiteButton,
+} from "./analyze-button";
 
-import { AnalyzeWebsiteButton } from "./analyze-button";
-import { DeleteLeadDialog } from "./delete-lead-dialog";
-import { OutreachSection } from "./outreach-section";
+import {
+  DeleteLeadDialog,
+} from "./delete-lead-dialog";
 
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
+import {
+  LocalizedVisualAnalysis,
+} from "./localized-visual-analysis";
+
+import {
+  OutreachSection,
+} from "./outreach-section";
+
+import {
+  Badge,
+} from "@/components/ui/badge";
+
+import {
+  buttonVariants,
+} from "@/components/ui/button";
+
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card";
+
+import {
+  type AppLanguage,
+} from "@/lib/i18n";
+
+import {
+  getAppLanguage,
+} from "@/lib/i18n-server";
+
+import {
+  getLeadPriorityLabel,
+  getLeadStatusLabel,
+  leadsCopy,
+} from "@/lib/leads-i18n";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
 /* =========================================================
    TYPES
@@ -41,85 +83,124 @@ type LeadDetailPageProps = {
 
 type WebsiteFinding = {
   key: string;
+
   label: string;
+
   passed: boolean;
+
   detail?: string;
 };
 
 type VisualAnalysis = {
-  visualScore: number | null;
-  redesignPotential: number | null;
+  visualScore:
+    | number
+    | null;
 
-  modernity: number | null;
-  visualHierarchy: number | null;
-  typography: number | null;
-  spacing: number | null;
-  branding: number | null;
-  imagery: number | null;
-  ctaVisibility: number | null;
-  mobileQuality: number | null;
-  projectPresentation: number | null;
+  redesignPotential:
+    | number
+    | null;
+
+  modernity:
+    | number
+    | null;
+
+  visualHierarchy:
+    | number
+    | null;
+
+  typography:
+    | number
+    | null;
+
+  spacing:
+    | number
+    | null;
+
+  branding:
+    | number
+    | null;
+
+  imagery:
+    | number
+    | null;
+
+  ctaVisibility:
+    | number
+    | null;
+
+  mobileQuality:
+    | number
+    | null;
+
+  projectPresentation:
+    | number
+    | null;
 
   strengths: string[];
+
   weaknesses: string[];
 
-  summary: string | null;
-  redesignReason: string | null;
-  outreachAngle: string | null;
+  summary:
+    | string
+    | null;
+
+  redesignReason:
+    | string
+    | null;
+
+  outreachAngle:
+    | string
+    | null;
 };
 
 /* =========================================================
-   STATUS
+   STATUS CLASSES
 ========================================================= */
 
-function statusLabel(status: string) {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
-function statusClass(status: string) {
-  switch (status) {
+function statusClass(
+  status: string
+) {
+  switch (
+    status
+  ) {
     case "NEW":
-      return "border-sky-200 bg-sky-50 text-sky-700";
+      return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-400";
 
     case "RESEARCHING":
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
 
     case "QUALIFIED":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
 
     case "NOT_A_FIT":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600";
+      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
 
     case "DRAFT_READY":
-      return "border-violet-200 bg-violet-50 text-violet-700";
+      return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400";
 
     case "CONTACTED":
-      return "border-blue-200 bg-blue-50 text-blue-700";
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
 
     case "REPLIED":
-      return "border-cyan-200 bg-cyan-50 text-cyan-700";
+      return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-400";
 
     case "CALL_BOOKED":
-      return "border-indigo-200 bg-indigo-50 text-indigo-700";
+      return "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-400";
 
     case "PROPOSAL":
-      return "border-purple-200 bg-purple-50 text-purple-700";
+      return "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-400";
 
     case "WON":
-      return "border-green-200 bg-green-50 text-green-700";
+      return "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400";
 
     case "LOST":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600";
+      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
 
     case "DO_NOT_CONTACT":
-      return "border-red-200 bg-red-50 text-red-700";
+      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
 
     default:
-      return "border-zinc-200 bg-zinc-50 text-zinc-700";
+      return "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300";
   }
 }
 
@@ -127,35 +208,50 @@ function statusClass(status: string) {
    ANALYSIS STATUS
 ========================================================= */
 
-function analysisStatusClass(status: string) {
-  switch (status) {
+function analysisStatusClass(
+  status: string
+) {
+  switch (
+    status
+  ) {
     case "COMPLETED":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
 
     case "ANALYZING":
-      return "border-blue-200 bg-blue-50 text-blue-700";
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
 
     case "FAILED":
-      return "border-red-200 bg-red-50 text-red-700";
+      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
 
     default:
-      return "border-zinc-200 bg-zinc-50 text-zinc-600";
+      return "border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
   }
 }
 
-function analysisStatusLabel(status: string) {
-  switch (status) {
+function analysisStatusLabel(
+  status: string,
+  language:
+    AppLanguage
+) {
+  const text =
+    leadsCopy[
+      language
+    ].detail;
+
+  switch (
+    status
+  ) {
     case "COMPLETED":
-      return "Analyzed";
+      return text.analyzed;
 
     case "ANALYZING":
-      return "Analyzing";
+      return text.analyzing;
 
     case "FAILED":
-      return "Failed";
+      return text.failed;
 
     default:
-      return "Not analyzed";
+      return text.notAnalyzed;
   }
 }
 
@@ -163,41 +259,115 @@ function analysisStatusLabel(status: string) {
    DATE
 ========================================================= */
 
-function formatDate(date: string | null) {
-  if (!date) {
+function formatDate(
+  date:
+    | string
+    | null,
+  language:
+    AppLanguage
+) {
+  if (
+    !date
+  ) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("de-DE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(date));
+  return new Intl.DateTimeFormat(
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-IE",
+    {
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+    }
+  ).format(
+    new Date(
+      date
+    )
+  );
 }
 
-function formatDateTime(date: string | null) {
-  if (!date) {
+function formatDateTime(
+  date:
+    | string
+    | null,
+  language:
+    AppLanguage
+) {
+  if (
+    !date
+  ) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("de-DE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
+  return new Intl.DateTimeFormat(
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-IE",
+    {
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
+
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
+    }
+  ).format(
+    new Date(
+      date
+    )
+  );
 }
 
 /* =========================================================
-   RELATION HELPER
+   URL
+========================================================= */
+
+function normalizeUrl(
+  url: string
+) {
+  return url.startsWith(
+    "http"
+  )
+    ? url
+    : `https://${url}`;
+}
+
+/* =========================================================
+   RELATION
 ========================================================= */
 
 function getSingleRelation<T>(
-  value: T | T[] | null
+  value:
+    | T
+    | T[]
+    | null
 ): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      null
+    );
   }
 
   return value;
@@ -208,35 +378,55 @@ function getSingleRelation<T>(
 ========================================================= */
 
 function parseWebsiteFindings(
-  value: unknown
+  value: unknown,
+  fallbackLabel: string
 ): WebsiteFinding[] {
-  if (!Array.isArray(value)) {
+  if (
+    !Array.isArray(
+      value
+    )
+  ) {
     return [];
   }
 
   return value
     .filter(
-      (item): item is Record<string, unknown> =>
-        typeof item === "object" && item !== null
+      (
+        item
+      ): item is Record<string, unknown> =>
+        typeof item ===
+          "object" &&
+        item !==
+          null
     )
-    .map((item, index) => ({
-      key:
-        typeof item.key === "string"
-          ? item.key
-          : `finding-${index}`,
+    .map(
+      (
+        item,
+        index
+      ) => ({
+        key:
+          typeof item.key ===
+          "string"
+            ? item.key
+            : `finding-${index}`,
 
-      label:
-        typeof item.label === "string"
-          ? item.label
-          : "Finding",
+        label:
+          typeof item.label ===
+          "string"
+            ? item.label
+            : fallbackLabel,
 
-      passed: item.passed === true,
+        passed:
+          item.passed ===
+          true,
 
-      detail:
-        typeof item.detail === "string"
-          ? item.detail
-          : undefined,
-    }));
+        detail:
+          typeof item.detail ===
+          "string"
+            ? item.detail
+            : undefined,
+      })
+    );
 }
 
 /* =========================================================
@@ -246,101 +436,241 @@ function parseWebsiteFindings(
 function parseVisualAnalysis(
   value: unknown
 ): VisualAnalysis {
-  const empty: VisualAnalysis = {
-    visualScore: null,
-    redesignPotential: null,
+  const empty:
+    VisualAnalysis = {
+    visualScore:
+      null,
 
-    modernity: null,
-    visualHierarchy: null,
-    typography: null,
-    spacing: null,
-    branding: null,
-    imagery: null,
-    ctaVisibility: null,
-    mobileQuality: null,
-    projectPresentation: null,
+    redesignPotential:
+      null,
 
-    strengths: [],
-    weaknesses: [],
+    modernity:
+      null,
 
-    summary: null,
-    redesignReason: null,
-    outreachAngle: null,
+    visualHierarchy:
+      null,
+
+    typography:
+      null,
+
+    spacing:
+      null,
+
+    branding:
+      null,
+
+    imagery:
+      null,
+
+    ctaVisibility:
+      null,
+
+    mobileQuality:
+      null,
+
+    projectPresentation:
+      null,
+
+    strengths:
+      [],
+
+    weaknesses:
+      [],
+
+    summary:
+      null,
+
+    redesignReason:
+      null,
+
+    outreachAngle:
+      null,
   };
 
   if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
+    typeof value !==
+      "object" ||
+    value ===
+      null ||
+    Array.isArray(
+      value
+    )
   ) {
     return empty;
   }
 
-  const data = value as Record<string, unknown>;
+  const data =
+    value as Record<
+      string,
+      unknown
+    >;
 
-  const numberValue = (key: string) => {
-    return typeof data[key] === "number"
+  const numberValue = (
+    key: string
+  ) =>
+    typeof data[key] ===
+    "number"
       ? (data[key] as number)
       : null;
-  };
 
-  const stringValue = (key: string) => {
-    return typeof data[key] === "string"
+  const stringValue = (
+    key: string
+  ) =>
+    typeof data[key] ===
+    "string"
       ? (data[key] as string)
       : null;
-  };
 
-  const stringArray = (key: string) => {
-    if (!Array.isArray(data[key])) {
+  const stringArray = (
+    key: string
+  ) => {
+    if (
+      !Array.isArray(
+        data[key]
+      )
+    ) {
       return [];
     }
 
-    return (data[key] as unknown[]).filter(
-      (item): item is string =>
-        typeof item === "string"
+    return (
+      data[key] as unknown[]
+    ).filter(
+      (
+        item
+      ): item is string =>
+        typeof item ===
+        "string"
     );
   };
 
   return {
-    visualScore: numberValue("visualScore"),
+    visualScore:
+      numberValue(
+        "visualScore"
+      ),
 
     redesignPotential:
-      numberValue("redesignPotential"),
+      numberValue(
+        "redesignPotential"
+      ),
 
-    modernity: numberValue("modernity"),
+    modernity:
+      numberValue(
+        "modernity"
+      ),
 
     visualHierarchy:
-      numberValue("visualHierarchy"),
+      numberValue(
+        "visualHierarchy"
+      ),
 
-    typography: numberValue("typography"),
+    typography:
+      numberValue(
+        "typography"
+      ),
 
-    spacing: numberValue("spacing"),
+    spacing:
+      numberValue(
+        "spacing"
+      ),
 
-    branding: numberValue("branding"),
+    branding:
+      numberValue(
+        "branding"
+      ),
 
-    imagery: numberValue("imagery"),
+    imagery:
+      numberValue(
+        "imagery"
+      ),
 
     ctaVisibility:
-      numberValue("ctaVisibility"),
+      numberValue(
+        "ctaVisibility"
+      ),
 
     mobileQuality:
-      numberValue("mobileQuality"),
+      numberValue(
+        "mobileQuality"
+      ),
 
     projectPresentation:
-      numberValue("projectPresentation"),
+      numberValue(
+        "projectPresentation"
+      ),
 
-    strengths: stringArray("strengths"),
+    strengths:
+      stringArray(
+        "strengths"
+      ),
 
-    weaknesses: stringArray("weaknesses"),
+    weaknesses:
+      stringArray(
+        "weaknesses"
+      ),
 
-    summary: stringValue("summary"),
+    summary:
+      stringValue(
+        "summary"
+      ),
 
     redesignReason:
-      stringValue("redesignReason"),
+      stringValue(
+        "redesignReason"
+      ),
 
     outreachAngle:
-      stringValue("outreachAngle"),
+      stringValue(
+        "outreachAngle"
+      ),
   };
+}
+
+/* =========================================================
+   VISUAL SOURCE LANGUAGE
+========================================================= */
+
+function parseVisualSourceLanguage(
+  value: unknown
+): AppLanguage {
+  if (
+    typeof value !==
+      "object" ||
+    value ===
+      null ||
+    Array.isArray(
+      value
+    )
+  ) {
+    return "en";
+  }
+
+  const data =
+    value as Record<
+      string,
+      unknown
+    >;
+
+  if (
+    data.sourceLanguage ===
+    "de"
+  ) {
+    return "de";
+  }
+
+  if (
+    data.sourceLanguage ===
+    "en"
+  ) {
+    return "en";
+  }
+
+  /*
+   * Existing Leadbase analyses were generated in English
+   * before sourceLanguage was stored explicitly.
+   */
+
+  return "en";
 }
 
 /* =========================================================
@@ -350,76 +680,100 @@ function parseVisualAnalysis(
 export default async function LeadDetailPage({
   params,
 }: LeadDetailPageProps) {
-  const { id } = await params;
-
-  const supabase = await createClient();
-
-  const { data: lead, error } = await supabase
-    .from("leads")
-    .select(`
+  const [
+    {
       id,
-      status,
+    },
+    language,
+  ] =
+    await Promise.all([
+      params,
+      getAppLanguage(),
+    ]);
 
-      website_score,
-      opportunity_score,
-      priority,
+  const text =
+    leadsCopy[
+      language
+    ];
 
-      structural_score,
-      visual_score,
-      redesign_potential,
+  const supabase =
+    await createClient();
 
-      visual_analysis,
-      visual_analysis_status,
-      visual_analysis_error,
-      visual_analyzed_at,
+  const {
+    data:
+      lead,
 
-      visual_model,
-      visual_input_tokens,
-      visual_output_tokens,
-      visual_total_tokens,
-
-      estimated_project_value,
-      currency,
-
-      last_contacted_at,
-      next_follow_up_at,
-
-      notes,
-      created_at,
-
-      research_summary,
-      website_findings,
-      analysis_status,
-      analyzed_at,
-      analysis_error,
-
-      company:companies (
-        id,
-        name,
-        website_url,
-        industry,
-        location,
-        description,
-        phone,
-        contact_form_url,
-        linkedin_url,
-        instagram_url
-      ),
-
-      primary_contact:contacts (
-        id,
-        full_name,
-        job_title,
-        email,
-        phone,
-        linkedin_url
+    error,
+  } =
+    await supabase
+      .from(
+        "leads"
       )
-    `)
-    .eq("id", id)
-    .single();
+      .select(`
+        id,
+        status,
+        website_score,
+        opportunity_score,
+        priority,
+        structural_score,
+        visual_score,
+        redesign_potential,
+        visual_analysis,
+        visual_analysis_status,
+        visual_analysis_error,
+        visual_analyzed_at,
+        visual_model,
+        visual_input_tokens,
+        visual_output_tokens,
+        visual_total_tokens,
+        estimated_project_value,
+        currency,
+        last_contacted_at,
+        next_follow_up_at,
+        notes,
+        created_at,
+        research_summary,
+        website_findings,
+        analysis_status,
+        analyzed_at,
+        analysis_error,
 
-  if (error || !lead) {
-    console.error("Could not load lead:", error);
+        company:companies (
+          id,
+          name,
+          website_url,
+          industry,
+          location,
+          description,
+          phone,
+          contact_form_url,
+          linkedin_url,
+          instagram_url
+        ),
+
+        primary_contact:contacts (
+          id,
+          full_name,
+          job_title,
+          email,
+          phone,
+          linkedin_url
+        )
+      `)
+      .eq(
+        "id",
+        id
+      )
+      .single();
+
+  if (
+    error ||
+    !lead
+  ) {
+    console.error(
+      "Could not load lead:",
+      error
+    );
 
     notFound();
   }
@@ -436,11 +790,17 @@ export default async function LeadDetailPage({
 
   const findings =
     parseWebsiteFindings(
-      lead.website_findings
+      lead.website_findings,
+      text.detail.finding
     );
 
   const visual =
     parseVisualAnalysis(
+      lead.visual_analysis
+    );
+
+  const visualSourceLanguage =
+    parseVisualSourceLanguage(
       lead.visual_analysis
     );
 
@@ -453,91 +813,121 @@ export default async function LeadDetailPage({
     "NOT_ANALYZED";
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-8 py-8 lg:px-10 lg:py-10">
+    <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      {/* ===================================================
+          BACK
+      =================================================== */}
+
       <Link
         href="/leads"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
 
-        Back to leads
+        {
+          text.detail
+            .backToLeads
+        }
       </Link>
 
-      {/* =====================================================
+      {/* ===================================================
           HEADER
-      ===================================================== */}
+      =================================================== */}
 
-      <header className="mt-6 flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
-        <div>
+      <header className="mt-5 flex flex-col justify-between gap-5 sm:mt-6 lg:flex-row lg:items-start lg:gap-6">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
               {company?.name ??
-                "Unknown company"}
+                text.common
+                  .unknownCompany}
             </h1>
 
             <Badge
               variant="outline"
-              className={`font-medium ${statusClass(
+              className={`shrink-0 font-medium ${statusClass(
                 lead.status
               )}`}
             >
-              {statusLabel(
-                lead.status
+              {getLeadStatusLabel(
+                lead.status,
+                language
               )}
             </Badge>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+          <div className="mt-3 flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
             {company?.industry ? (
-              <span className="flex items-center gap-1.5">
-                <Building2 className="size-4" />
+              <span className="flex min-w-0 items-start gap-1.5">
+                <Building2 className="mt-0.5 size-4 shrink-0" />
 
-                {company.industry}
+                <span className="break-words">
+                  {
+                    company.industry
+                  }
+                </span>
               </span>
             ) : null}
 
             {company?.location ? (
-              <span className="flex items-center gap-1.5">
-                <MapPin className="size-4" />
+              <span className="flex min-w-0 items-start gap-1.5">
+                <MapPin className="mt-0.5 size-4 shrink-0" />
 
-                {company.location}
+                <span className="break-words">
+                  {
+                    company.location
+                  }
+                </span>
               </span>
             ) : null}
           </div>
         </div>
 
-        {/* ACTIONS */}
+        {/* =================================================
+            ACTIONS
+        ================================================= */}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <AnalyzeWebsiteButton
-            leadId={lead.id}
-            hasWebsite={Boolean(
-              company?.website_url
-            )}
-          />
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center lg:max-w-[720px] lg:justify-end">
+          <div className="[&>*]:w-full sm:[&>*]:w-auto">
+            <AnalyzeWebsiteButton
+              leadId={
+                lead.id
+              }
+              hasWebsite={Boolean(
+                company?.website_url
+              )}
+            />
+          </div>
 
           <Link
             href={`/leads/${lead.id}/edit`}
             className={buttonVariants({
-              variant: "outline",
+              variant:
+                "outline",
 
               className:
-                "h-9 gap-2",
+                "h-10 w-full gap-2 sm:h-9 sm:w-auto",
             })}
           >
             <Pencil className="size-4" />
 
-            Edit
+            {
+              text.detail.edit
+            }
           </Link>
 
           <form
-            action={updateLeadStatus}
-            className="flex items-center gap-2"
+            action={
+              updateLeadStatus
+            }
+            className="col-span-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:items-center"
           >
             <input
               type="hidden"
               name="leadId"
-              value={lead.id}
+              value={
+                lead.id
+              }
             />
 
             <select
@@ -545,121 +935,130 @@ export default async function LeadDetailPage({
               defaultValue={
                 lead.status
               }
-              className="h-9 rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/50 focus:ring-2 focus:ring-ring"
+              className="h-10 min-w-0 rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/50 focus:ring-2 focus:ring-ring sm:h-9"
             >
-              <option value="NEW">
-                New
-              </option>
-
-              <option value="RESEARCHING">
-                Researching
-              </option>
-
-              <option value="QUALIFIED">
-                Qualified
-              </option>
-
-              <option value="NOT_A_FIT">
-                Not a fit
-              </option>
-
-              <option value="DRAFT_READY">
-                Draft ready
-              </option>
-
-              <option value="CONTACTED">
-                Contacted
-              </option>
-
-              <option value="REPLIED">
-                Replied
-              </option>
-
-              <option value="CALL_BOOKED">
-                Call booked
-              </option>
-
-              <option value="PROPOSAL">
-                Proposal
-              </option>
-
-              <option value="WON">
-                Won
-              </option>
-
-              <option value="LOST">
-                Lost
-              </option>
-
-              <option value="DO_NOT_CONTACT">
-                Do not contact
-              </option>
+              {[
+                "NEW",
+                "RESEARCHING",
+                "QUALIFIED",
+                "NOT_A_FIT",
+                "DRAFT_READY",
+                "CONTACTED",
+                "REPLIED",
+                "CALL_BOOKED",
+                "PROPOSAL",
+                "WON",
+                "LOST",
+                "DO_NOT_CONTACT",
+              ].map(
+                (
+                  item
+                ) => (
+                  <option
+                    key={
+                      item
+                    }
+                    value={
+                      item
+                    }
+                  >
+                    {getLeadStatusLabel(
+                      item,
+                      language
+                    )}
+                  </option>
+                )
+              )}
             </select>
 
             <button
               type="submit"
-              className="h-9 rounded-lg bg-foreground px-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
+              className="h-10 whitespace-nowrap rounded-lg bg-foreground px-3 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9"
             >
-              Update status
+              {
+                text.detail
+                  .update
+              }
             </button>
           </form>
 
           {company?.website_url ? (
             <a
-                href={
-                    company.website_url.startsWith("http")
-                    ? company.website_url
-                    : `https://${company.website_url}`
-                        }
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-muted"
+              href={
+                normalizeUrl(
+                  company.website_url
+                )
+              }
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-muted sm:h-9 sm:w-auto"
             >
-                Visit website
+              {
+                text.common
+                  .visitWebsite
+              }
 
-                <ExternalLink className="size-4" />
+              <ExternalLink className="size-4" />
             </a>
-            ) : null}
+          ) : null}
 
-          <DeleteLeadDialog
-            leadId={lead.id}
-            companyName={
-              company?.name ??
-              "this lead"
-            }
-          />
+          <div className="[&>*]:w-full sm:[&>*]:w-auto">
+            <DeleteLeadDialog
+              leadId={
+                lead.id
+              }
+              companyName={
+                company?.name ??
+                text.detail
+                  .thisLead
+              }
+            />
+          </div>
         </div>
       </header>
 
-      {/* =====================================================
-          FINAL SCORES
-      ===================================================== */}
+      {/* ===================================================
+          TOP SCORES
+      =================================================== */}
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-2 gap-3 md:mt-8 lg:grid-cols-3 lg:gap-4">
         <ScoreCard
-          label="Website score"
+          label={
+            text.detail
+              .websiteScore
+          }
           value={
             lead.website_score
           }
         />
 
         <ScoreCard
-          label="Opportunity score"
+          label={
+            text.detail
+              .opportunityScore
+          }
           value={
             lead.opportunity_score
           }
         />
 
-        <Card className="shadow-none">
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">
-              Estimated value
+        <Card className="col-span-2 min-w-0 shadow-none lg:col-span-1">
+          <CardContent className="p-4 sm:p-5">
+            <p className="text-xs text-muted-foreground sm:text-sm">
+              {
+                text.detail
+                  .estimatedValue
+              }
             </p>
 
-            <p className="mt-5 text-2xl font-semibold tracking-tight">
-              {lead.estimated_project_value !== null
+            <p className="mt-4 break-words text-xl font-semibold tracking-tight sm:mt-5 sm:text-2xl">
+              {lead.estimated_project_value !==
+              null
                 ? new Intl.NumberFormat(
-                    "de-DE",
+                    language ===
+                      "de"
+                      ? "de-DE"
+                      : "en-IE",
                     {
                       style:
                         "currency",
@@ -668,7 +1067,8 @@ export default async function LeadDetailPage({
                         lead.currency ??
                         "EUR",
 
-                      maximumFractionDigits: 0,
+                      maximumFractionDigits:
+                        0,
                     }
                   ).format(
                     lead.estimated_project_value
@@ -679,23 +1079,35 @@ export default async function LeadDetailPage({
         </Card>
       </div>
 
-      {/* =====================================================
+      {/* ===================================================
           MAIN GRID
-      ===================================================== */}
+      =================================================== */}
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_380px]">
-        <div className="space-y-4">
-          {/* OVERVIEW */}
+      <div className="mt-4 grid min-w-0 gap-4 sm:mt-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        {/* =================================================
+            LEFT COLUMN
+        ================================================= */}
 
-          <Card className="shadow-none">
-            <CardContent className="p-5">
+        <div className="min-w-0 space-y-4">
+          {/* =================================================
+              OVERVIEW
+          ================================================= */}
+
+          <Card className="min-w-0 shadow-none">
+            <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
-                Overview
+                {
+                  text.detail
+                    .overview
+                }
               </h2>
 
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5">
                 <DetailItem
-                  label="Industry"
+                  label={
+                    text.common
+                      .industry
+                  }
                   value={
                     company?.industry ??
                     "—"
@@ -703,7 +1115,10 @@ export default async function LeadDetailPage({
                 />
 
                 <DetailItem
-                  label="Location"
+                  label={
+                    text.common
+                      .location
+                  }
                   value={
                     company?.location ??
                     "—"
@@ -711,35 +1126,57 @@ export default async function LeadDetailPage({
                 />
 
                 <DetailItem
-                  label="Priority"
+                  label={
+                    text.common
+                      .priority
+                  }
                   value={
                     lead.priority
-                      ? statusLabel(
-                          lead.priority
+                      ? getLeadPriorityLabel(
+                          lead.priority,
+                          language
                         )
                       : "—"
                   }
                 />
 
                 <DetailItem
-                  label="Created"
-                  value={formatDate(
-                    lead.created_at
-                  )}
+                  label={
+                    text.detail
+                      .created
+                  }
+                  value={
+                    formatDate(
+                      lead.created_at,
+                      language
+                    )
+                  }
                 />
 
                 <DetailItem
-                  label="Last contact"
-                  value={formatDate(
-                    lead.last_contacted_at
-                  )}
+                  label={
+                    text.detail
+                      .lastContact
+                  }
+                  value={
+                    formatDate(
+                      lead.last_contacted_at,
+                      language
+                    )
+                  }
                 />
 
                 <DetailItem
-                  label="Next follow-up"
-                  value={formatDate(
-                    lead.next_follow_up_at
-                  )}
+                  label={
+                    text.detail
+                      .nextFollowUp
+                  }
+                  value={
+                    formatDate(
+                      lead.next_follow_up_at,
+                      language
+                    )
+                  }
                 />
               </div>
             </CardContent>
@@ -750,6 +1187,15 @@ export default async function LeadDetailPage({
           ================================================= */}
 
           <VisualAnalysisCard
+            leadId={
+              lead.id
+            }
+            language={
+              language
+            }
+            sourceLanguage={
+              visualSourceLanguage
+            }
             status={
               visualStatus
             }
@@ -790,6 +1236,9 @@ export default async function LeadDetailPage({
           ================================================= */}
 
           <StructuralAnalysisCard
+            language={
+              language
+            }
             status={
               structuralStatus
             }
@@ -803,70 +1252,102 @@ export default async function LeadDetailPage({
               lead.analysis_error
             }
           />
-          
+
           {/* =================================================
-    OUTREACH
-================================================= */}
+              OUTREACH
+          ================================================= */}
 
-<OutreachSection
-  leadId={lead.id}
-/>
+          <OutreachSection
+            leadId={
+              lead.id
+            }
+          />
 
-          {/* COMPANY DESCRIPTION */}
+          {/* =================================================
+              DESCRIPTION
+          ================================================= */}
 
-          <Card className="shadow-none">
-            <CardContent className="p-5">
+          <Card className="min-w-0 shadow-none">
+            <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
-                Company description
+                {
+                  text.detail
+                    .companyDescription
+                }
               </h2>
 
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
                 {company?.description ??
-                  "No company description available yet."}
+                  text.detail
+                    .noCompanyDescription}
               </p>
             </CardContent>
           </Card>
 
-          {/* NOTES */}
+          {/* =================================================
+              NOTES
+          ================================================= */}
 
-          <Card className="shadow-none">
-            <CardContent className="p-5">
+          <Card className="min-w-0 shadow-none">
+            <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
-                Notes
+                {
+                  text.detail
+                    .notes
+                }
               </h2>
 
-              <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+              <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
                 {lead.notes ??
-                  "No notes yet."}
+                  text.detail
+                    .noNotes}
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* ===================================================
+        {/* =================================================
             RIGHT COLUMN
-        =================================================== */}
+        ================================================= */}
 
-        <div className="space-y-4">
-          <Card className="shadow-none">
-            <CardContent className="p-5">
+        <div className="min-w-0 space-y-4">
+          {/* =================================================
+              CONTACT
+          ================================================= */}
+
+          <Card className="min-w-0 shadow-none">
+            <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
-                Primary contact
+                {
+                  text.detail
+                    .primaryContact
+                }
               </h2>
 
               <div className="mt-5 space-y-4">
                 <ContactRow
-                  icon={User}
-                  label="Contact person"
+                  icon={
+                    User
+                  }
+                  label={
+                    text.detail
+                      .contactPerson
+                  }
                   value={
                     contact?.full_name ??
-                    "No contact person found"
+                    text.detail
+                      .noContactPerson
                   }
                 />
 
                 <ContactRow
-                  icon={Building2}
-                  label="Job title"
+                  icon={
+                    Building2
+                  }
+                  label={
+                    text.detail
+                      .jobTitle
+                  }
                   value={
                     contact?.job_title ??
                     "—"
@@ -874,63 +1355,110 @@ export default async function LeadDetailPage({
                 />
 
                 <ContactRow
-                  icon={Mail}
-                  label="Email"
+                  icon={
+                    Mail
+                  }
+                  label={
+                    text.detail.email
+                  }
                   value={
                     contact?.email ??
-                    "No email found"
+                    text.common
+                      .noEmailFound
                   }
                 />
 
                 <ContactRow
-                  icon={Phone}
-                  label="Phone"
+                  icon={
+                    Phone
+                  }
+                  label={
+                    text.detail.phone
+                  }
                   value={
                     contact?.phone ??
                     company?.phone ??
-                    "No phone found"
+                    text.detail
+                      .noPhoneFound
                   }
                 />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-none">
-            <CardContent className="p-5">
+          {/* =================================================
+              COMPANY LINKS
+          ================================================= */}
+
+          <Card className="min-w-0 shadow-none">
+            <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
-                Company links
+                {
+                  text.detail
+                    .companyLinks
+                }
               </h2>
 
               <div className="mt-5 space-y-3">
                 <CompanyLink
-                  icon={Globe2}
-                  label="Website"
+                  icon={
+                    Globe2
+                  }
+                  label={
+                    text.common
+                      .website
+                  }
                   href={
                     company?.website_url
                   }
-                />
-
-                <CompanyLink
-                  icon={Mail}
-                  label="Contact form"
-                  href={
-                    company?.contact_form_url
+                  notFoundLabel={
+                    text.detail
+                      .notFound
                   }
                 />
 
                 <CompanyLink
-                  icon={ExternalLink}
+                  icon={
+                    Mail
+                  }
+                  label={
+                    text.detail
+                      .contactForm
+                  }
+                  href={
+                    company?.contact_form_url
+                  }
+                  notFoundLabel={
+                    text.detail
+                      .notFound
+                  }
+                />
+
+                <CompanyLink
+                  icon={
+                    ExternalLink
+                  }
                   label="LinkedIn"
                   href={
                     company?.linkedin_url
                   }
+                  notFoundLabel={
+                    text.detail
+                      .notFound
+                  }
                 />
 
                 <CompanyLink
-                  icon={ExternalLink}
+                  icon={
+                    ExternalLink
+                  }
                   label="Instagram"
                   href={
                     company?.instagram_url
+                  }
+                  notFoundLabel={
+                    text.detail
+                      .notFound
                   }
                 />
               </div>
@@ -947,6 +1475,9 @@ export default async function LeadDetailPage({
 ========================================================= */
 
 function VisualAnalysisCard({
+  leadId,
+  language,
+  sourceLanguage,
   status,
   structuralScore,
   visualScore,
@@ -959,7 +1490,17 @@ function VisualAnalysisCard({
   outputTokens,
   totalTokens,
 }: {
-  status: string;
+  leadId:
+    string;
+
+  language:
+    AppLanguage;
+
+  sourceLanguage:
+    AppLanguage;
+
+  status:
+    string;
 
   structuralScore:
     | number
@@ -973,7 +1514,8 @@ function VisualAnalysisCard({
     | number
     | null;
 
-  analysis: VisualAnalysis;
+  analysis:
+    VisualAnalysis;
 
   analyzedAt:
     | string
@@ -999,302 +1541,336 @@ function VisualAnalysisCard({
     | number
     | null;
 }) {
+  const text =
+    leadsCopy[
+      language
+    ].detail;
+
+  const locale =
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-IE";
+
   return (
-    <Card className="shadow-none">
-      <CardContent className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex gap-3">
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="p-4 sm:p-5">
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
+        <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
+          <div className="flex min-w-0 gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
               <Sparkles className="size-4" />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold">
-                Visual analysis
+                {
+                  text.visualAnalysis
+                }
               </h2>
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                AI review of desktop and mobile presentation.
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {
+                  text.visualAnalysisDescription
+                }
               </p>
             </div>
           </div>
 
           <Badge
             variant="outline"
-            className={
-              analysisStatusClass(
-                status
-              )
-            }
+            className={`w-fit shrink-0 ${analysisStatusClass(
+              status
+            )}`}
           >
             {analysisStatusLabel(
-              status
+              status,
+              language
             )}
           </Badge>
         </div>
 
-        {status === "FAILED" ? (
-          <div className="mt-5 flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4">
-            <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
+        {/* =================================================
+            FAILED
+        ================================================= */}
 
-            <div>
-              <p className="text-sm font-medium text-red-700">
-                Visual analysis failed
+        {status ===
+        "FAILED" ? (
+          <div className="mt-5 flex min-w-0 gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4 dark:border-red-900 dark:bg-red-950/40">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" />
+
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                {
+                  text.visualAnalysisFailed
+                }
               </p>
 
-              <p className="mt-1 break-words text-sm leading-6 text-red-700/80">
+              <p className="mt-1 break-words text-sm leading-6 text-red-700/80 dark:text-red-400/80">
                 {error ??
-                  "Visual analysis could not be completed."}
+                  text.visualAnalysisFailedDescription}
               </p>
             </div>
           </div>
         ) : null}
 
-        {status === "NOT_ANALYZED" ? (
+        {/* =================================================
+            NOT ANALYZED
+        ================================================= */}
+
+        {status ===
+        "NOT_ANALYZED" ? (
           <div className="mt-5 rounded-lg border border-dashed px-4 py-5">
             <p className="text-sm font-medium">
-              No visual analysis yet
+              {
+                text.noVisualAnalysis
+              }
             </p>
 
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Analyze the website to create desktop and mobile screenshots and evaluate the design.
+              {
+                text.noVisualAnalysisDescription
+              }
             </p>
           </div>
         ) : null}
 
-        {status === "ANALYZING" ? (
+        {/* =================================================
+            ANALYZING
+        ================================================= */}
+
+        {status ===
+        "ANALYZING" ? (
           <div className="mt-5 rounded-lg border px-4 py-5">
             <p className="text-sm font-medium">
-              Visual analysis in progress
+              {
+                text.visualAnalysisInProgress
+              }
             </p>
           </div>
         ) : null}
 
-        {status === "COMPLETED" ? (
+        {/* =================================================
+            COMPLETED
+        ================================================= */}
+
+        {status ===
+        "COMPLETED" ? (
           <>
-            {/* THREE SOURCE SCORES */}
+            {/* =============================================
+                SCORE OVERVIEW
+            ============================================= */}
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <MiniScore
-                label="Structural"
+                label={
+                  text.structural
+                }
                 value={
                   structuralScore
                 }
               />
 
               <MiniScore
-                label="Visual"
+                label={
+                  text.visual
+                }
                 value={
                   visualScore
                 }
               />
 
               <MiniScore
-                label="Redesign potential"
+                label={
+                  text.redesignPotential
+                }
                 value={
                   redesignPotential
                 }
               />
             </div>
 
-            {/* VISUAL METRICS */}
+            {/* =============================================
+                VISUAL METRICS
+            ============================================= */}
 
             <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2">
               <VisualMetric
-                label="Modernity"
+                label={
+                  text.modernity
+                }
                 value={
                   analysis.modernity
                 }
               />
 
               <VisualMetric
-                label="Visual hierarchy"
+                label={
+                  text.visualHierarchy
+                }
                 value={
                   analysis.visualHierarchy
                 }
               />
 
               <VisualMetric
-                label="Typography"
+                label={
+                  text.typography
+                }
                 value={
                   analysis.typography
                 }
               />
 
               <VisualMetric
-                label="Spacing"
+                label={
+                  text.spacing
+                }
                 value={
                   analysis.spacing
                 }
               />
 
               <VisualMetric
-                label="Branding"
+                label={
+                  text.branding
+                }
                 value={
                   analysis.branding
                 }
               />
 
               <VisualMetric
-                label="Imagery"
+                label={
+                  text.imagery
+                }
                 value={
                   analysis.imagery
                 }
               />
 
               <VisualMetric
-                label="CTA visibility"
+                label={
+                  text.ctaVisibility
+                }
                 value={
                   analysis.ctaVisibility
                 }
               />
 
               <VisualMetric
-                label="Mobile quality"
+                label={
+                  text.mobileQuality
+                }
                 value={
                   analysis.mobileQuality
                 }
               />
 
               <VisualMetric
-                label="Project presentation"
+                label={
+                  text.projectPresentation
+                }
                 value={
                   analysis.projectPresentation
                 }
               />
             </div>
 
-            {/* STRENGTH / WEAKNESS */}
+            {/* =============================================
+                LOCALIZED AI NARRATIVE
 
-            {(analysis.strengths.length >
-              0 ||
-              analysis.weaknesses.length >
-                0) && (
-              <div className="mt-6 grid gap-4 border-t pt-5 sm:grid-cols-2">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Strengths
-                  </p>
+                Strengths
+                Weaknesses
+                Summary
+                Redesign reason
+                Outreach angle
 
-                  <div className="mt-3 space-y-2">
-                    {analysis.strengths.map(
-                      (
-                        strength,
-                        index
-                      ) => (
-                        <div
-                          key={`${strength}-${index}`}
-                          className="flex gap-2 text-sm"
-                        >
-                          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                Existing analyses default to English as the
+                original source language.
 
-                          <span>
-                            {
-                              strength
-                            }
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
+                The component automatically loads/caches the
+                other language when required.
+            ============================================= */}
 
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Weaknesses
-                  </p>
+            <LocalizedVisualAnalysis
+              leadId={
+                leadId
+              }
+              sourceLanguage={
+                sourceLanguage
+              }
+              narrative={{
+                strengths:
+                  analysis.strengths,
 
-                  <div className="mt-3 space-y-2">
-                    {analysis.weaknesses.map(
-                      (
-                        weakness,
-                        index
-                      ) => (
-                        <div
-                          key={`${weakness}-${index}`}
-                          className="flex gap-2 text-sm"
-                        >
-                          <XCircle className="mt-0.5 size-4 shrink-0 text-red-500" />
+                weaknesses:
+                  analysis.weaknesses,
 
-                          <span>
-                            {
-                              weakness
-                            }
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+                summary:
+                  analysis.summary,
 
-            {analysis.summary ? (
-              <AnalysisTextSection
-                label="Visual summary"
-                value={
-                  analysis.summary
-                }
-              />
-            ) : null}
+                redesignReason:
+                  analysis.redesignReason,
 
-            {analysis.redesignReason ? (
-              <AnalysisTextSection
-                label="Redesign reason"
-                value={
-                  analysis.redesignReason
-                }
-              />
-            ) : null}
+                outreachAngle:
+                  analysis.outreachAngle,
+              }}
+            />
 
-            {analysis.outreachAngle ? (
-              <div className="mt-5 rounded-lg border bg-muted/30 px-4 py-4">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Suggested outreach angle
-                </p>
+            {/* =============================================
+                ANALYSIS META
+            ============================================= */}
 
-                <p className="mt-2 text-sm leading-6">
-                  {
-                    analysis.outreachAngle
-                  }
-                </p>
-              </div>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-xs text-muted-foreground">
+            <div className="mt-5 flex flex-col gap-1.5 border-t pt-4 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
               <span>
-                Last analyzed{" "}
+                {
+                  text.lastAnalyzed
+                }{" "}
                 {formatDateTime(
-                  analyzedAt
+                  analyzedAt,
+                  language
                 )}
               </span>
 
-              <span>
+              <span className="break-words">
                 {model ??
                   "Visual AI"}
 
-                {totalTokens !== null
+                {totalTokens !==
+                null
                   ? ` · ${totalTokens.toLocaleString(
-                      "de-DE"
+                      locale
                     )} tokens`
                   : ""}
               </span>
             </div>
 
-            {(inputTokens !== null ||
+            {(inputTokens !==
+              null ||
               outputTokens !==
-                null) && (
+                null) ? (
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Input{" "}
+                {
+                  text.input
+                }{" "}
                 {inputTokens?.toLocaleString(
-                  "de-DE"
-                ) ?? "—"}{" "}
-                · Output{" "}
+                  locale
+                ) ??
+                  "—"}{" "}
+                ·{" "}
+                {
+                  text.output
+                }{" "}
                 {outputTokens?.toLocaleString(
-                  "de-DE"
-                ) ?? "—"}
+                  locale
+                ) ??
+                  "—"}
               </p>
-            )}
+            ) : null}
           </>
         ) : null}
       </CardContent>
@@ -1307,11 +1883,15 @@ function VisualAnalysisCard({
 ========================================================= */
 
 function StructuralAnalysisCard({
+  language,
   status,
   findings,
   analyzedAt,
   error,
 }: {
+  language:
+    AppLanguage;
+
   status: string;
 
   findings:
@@ -1325,62 +1905,77 @@ function StructuralAnalysisCard({
     | string
     | null;
 }) {
+  const text =
+    leadsCopy[
+      language
+    ].detail;
+
   return (
-    <Card className="shadow-none">
-      <CardContent className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold">
-              Structural analysis
+              {
+                text.structuralAnalysis
+              }
             </h2>
 
-            <p className="mt-1 text-xs text-muted-foreground">
-              Multi-page analysis of structure, content and conversion signals.
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {
+                text.structuralAnalysisDescription
+              }
             </p>
           </div>
 
           <Badge
             variant="outline"
-            className={
-              analysisStatusClass(
-                status
-              )
-            }
+            className={`w-fit shrink-0 ${analysisStatusClass(
+              status
+            )}`}
           >
             {analysisStatusLabel(
-              status
+              status,
+              language
             )}
           </Badge>
         </div>
 
-        {status === "FAILED" ? (
-          <div className="mt-5 flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4">
-            <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
+        {status ===
+        "FAILED" ? (
+          <div className="mt-5 flex min-w-0 gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4 dark:border-red-900 dark:bg-red-950/40">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" />
 
-            <div>
-              <p className="text-sm font-medium text-red-700">
-                Structural analysis failed
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                {
+                  text.structuralAnalysisFailed
+                }
               </p>
 
-              <p className="mt-1 text-sm text-red-700/80">
+              <p className="mt-1 break-words text-sm leading-6 text-red-700/80 dark:text-red-400/80">
                 {error ??
-                  "Analysis failed."}
+                  text.analysisFailed}
               </p>
             </div>
           </div>
         ) : null}
 
-        {status === "COMPLETED" &&
-        findings.length > 0 ? (
+        {status ===
+          "COMPLETED" &&
+        findings.length >
+          0 ? (
           <>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               {findings.map(
-                (finding) => (
+                (
+                  finding
+                ) => (
                   <div
                     key={
                       finding.key
                     }
-                    className="flex items-start gap-3 rounded-lg border px-3 py-3"
+                    className="flex min-w-0 items-start gap-3 rounded-lg border px-3 py-3"
                   >
                     {finding.passed ? (
                       <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
@@ -1389,17 +1984,17 @@ function StructuralAnalysisCard({
                     )}
 
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">
+                      <p className="break-words text-sm font-medium">
                         {
                           finding.label
                         }
                       </p>
 
-                      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                      <p className="mt-0.5 break-words text-xs leading-5 text-muted-foreground">
                         {finding.detail ??
                           (finding.passed
-                            ? "Detected"
-                            : "Not detected")}
+                            ? text.detected
+                            : text.notDetected)}
                       </p>
                     </div>
                   </div>
@@ -1408,9 +2003,12 @@ function StructuralAnalysisCard({
             </div>
 
             <p className="mt-5 border-t pt-4 text-xs text-muted-foreground">
-              Last analyzed{" "}
+              {
+                text.lastAnalyzed
+              }{" "}
               {formatDateTime(
-                analyzedAt
+                analyzedAt,
+                language
               )}
             </p>
           </>
@@ -1435,17 +2033,21 @@ function VisualMetric({
     | null;
 }) {
   const safeValue =
-    value ?? 0;
+    value ??
+    0;
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="flex items-center justify-between gap-4">
-        <p className="text-xs text-muted-foreground">
-          {label}
+        <p className="min-w-0 truncate text-xs text-muted-foreground">
+          {
+            label
+          }
         </p>
 
-        <p className="text-xs font-medium">
-          {value !== null
+        <p className="shrink-0 text-xs font-medium">
+          {value !==
+          null
             ? `${value}/100`
             : "—"}
         </p>
@@ -1484,15 +2086,20 @@ function MiniScore({
     | null;
 }) {
   return (
-    <div className="rounded-lg border px-4 py-3">
-      <p className="text-xs text-muted-foreground">
-        {label}
+    <div className="min-w-0 rounded-lg border px-4 py-3">
+      <p className="break-words text-xs text-muted-foreground">
+        {
+          label
+        }
       </p>
 
       <p className="mt-2 text-xl font-semibold tracking-tight">
-        {value !== null ? (
+        {value !==
+        null ? (
           <>
-            {value}
+            {
+              value
+            }
 
             <span className="text-xs font-normal text-muted-foreground">
               /100
@@ -1501,30 +2108,6 @@ function MiniScore({
         ) : (
           "—"
         )}
-      </p>
-    </div>
-  );
-}
-
-/* =========================================================
-   TEXT SECTION
-========================================================= */
-
-function AnalysisTextSection({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="mt-5 border-t pt-5">
-      <p className="text-xs font-medium text-muted-foreground">
-        {label}
-      </p>
-
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-        {value}
       </p>
     </div>
   );
@@ -1545,18 +2128,23 @@ function ScoreCard({
     | null;
 }) {
   return (
-    <Card className="shadow-none">
-      <CardContent className="p-5">
-        <p className="text-sm text-muted-foreground">
-          {label}
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="p-4 sm:p-5">
+        <p className="text-xs text-muted-foreground sm:text-sm">
+          {
+            label
+          }
         </p>
 
-        <p className="mt-5 text-2xl font-semibold tracking-tight">
-          {value !== null ? (
+        <p className="mt-4 text-xl font-semibold tracking-tight sm:mt-5 sm:text-2xl">
+          {value !==
+          null ? (
             <>
-              {value}
+              {
+                value
+              }
 
-              <span className="text-base font-normal text-muted-foreground">
+              <span className="text-sm font-normal text-muted-foreground sm:text-base">
                 /100
               </span>
             </>
@@ -1578,16 +2166,21 @@ function DetailItem({
   value,
 }: {
   label: string;
+
   value: string;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs font-medium text-muted-foreground">
-        {label}
+        {
+          label
+        }
       </p>
 
-      <p className="mt-1.5 text-sm">
-        {value}
+      <p className="mt-1.5 break-words text-sm">
+        {
+          value
+        }
       </p>
     </div>
   );
@@ -1602,23 +2195,30 @@ function ContactRow({
   label,
   value,
 }: {
-  icon: React.ElementType;
+  icon:
+    React.ElementType;
+
   label: string;
+
   value: string;
 }) {
   return (
-    <div className="flex gap-3">
+    <div className="flex min-w-0 gap-3">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border">
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
 
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-xs text-muted-foreground">
-          {label}
+          {
+            label
+          }
         </p>
 
         <p className="mt-0.5 break-words text-sm">
-          {value}
+          {
+            value
+          }
         </p>
       </div>
     </div>
@@ -1633,53 +2233,67 @@ function CompanyLink({
   icon: Icon,
   label,
   href,
+  notFoundLabel,
 }: {
-  icon: React.ElementType;
+  icon:
+    React.ElementType;
+
   label: string;
+
   href:
     | string
     | null
     | undefined;
-}) {
-  if (!href) {
-    return (
-      <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-        <div className="flex items-center gap-2.5">
-          <Icon className="size-4 text-muted-foreground" />
 
-          <span className="text-sm">
-            {label}
+  notFoundLabel:
+    string;
+}) {
+  if (
+    !href
+  ) {
+    return (
+      <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border px-3 py-3 sm:py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Icon className="size-4 shrink-0 text-muted-foreground" />
+
+          <span className="truncate text-sm">
+            {
+              label
+            }
           </span>
         </div>
 
-        <span className="text-xs text-muted-foreground">
-          Not found
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {
+            notFoundLabel
+          }
         </span>
       </div>
     );
   }
 
-  const url =
-    href.startsWith("http")
-      ? href
-      : `https://${href}`;
-
   return (
     <a
-      href={url}
+      href={
+        normalizeUrl(
+          href
+        )
+      }
       target="_blank"
       rel="noreferrer"
-      className="flex items-center justify-between rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted/50"
+      className="flex min-w-0 items-center justify-between gap-3 rounded-lg border px-3 py-3 transition-colors hover:bg-muted/50 sm:py-2.5"
     >
-      <div className="flex items-center gap-2.5">
-        <Icon className="size-4 text-muted-foreground" />
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Icon className="size-4 shrink-0 text-muted-foreground" />
 
-        <span className="text-sm">
-          {label}
+        <span className="truncate text-sm">
+          {
+            label
+          }
         </span>
       </div>
 
-      <ExternalLink className="size-3.5 text-muted-foreground" />
+      <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
     </a>
   );
 }

@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   Archive,
+  ArrowLeft,
   ArrowUpRight,
   Download,
   FileText,
@@ -20,6 +21,10 @@ import {
 import Link from "next/link";
 
 import {
+  cookies,
+} from "next/headers";
+
+import {
   redirect,
 } from "next/navigation";
 
@@ -32,6 +37,11 @@ import {
   permanentlyDeleteLeadConversation,
   restoreLeadConversation,
 } from "./actions";
+
+import {
+  ConversationList,
+  type InboxConversationListItem,
+} from "./conversation-list";
 
 import {
   ReplyComposer,
@@ -58,6 +68,15 @@ import {
 } from "@/components/ui/separator";
 
 import {
+  APP_LANGUAGE_COOKIE,
+  type AppLanguage,
+} from "@/lib/i18n";
+
+import {
+  inboxCopy,
+} from "@/lib/inbox-i18n";
+
+import {
   createClient,
 } from "@/lib/supabase/server";
 
@@ -76,32 +95,35 @@ type ConversationState =
   | "TRASH"
   | "DELETED";
 
+type InboxSearchParams = {
+  lead?:
+    | string
+    | string[];
+
+  q?:
+    | string
+    | string[];
+
+  sync?:
+    | string
+    | string[];
+
+  new?:
+    | string
+    | string[];
+
+  reply?:
+    | string
+    | string[];
+
+  view?:
+    | string
+    | string[];
+};
+
 type InboxPageProps = {
-  searchParams?: Promise<{
-    lead?:
-      | string
-      | string[];
-
-    q?:
-      | string
-      | string[];
-
-    sync?:
-      | string
-      | string[];
-
-    new?:
-      | string
-      | string[];
-
-    reply?:
-      | string
-      | string[];
-
-    view?:
-      | string
-      | string[];
-  }>;
+  searchParams?:
+    Promise<InboxSearchParams>;
 };
 
 type TimelineAttachment = {
@@ -487,7 +509,9 @@ function buildInboxHref({
 }
 
 function formatConversationTime(
-  value: string
+  value: string,
+  language:
+    AppLanguage
 ) {
   const date =
     new Date(
@@ -524,7 +548,10 @@ function formatConversationTime(
     )
   ) {
     return new Intl.DateTimeFormat(
-      "de-DE",
+      language ===
+        "de"
+        ? "de-DE"
+        : "en-GB",
       {
         timeZone:
           "Europe/Berlin",
@@ -541,7 +568,10 @@ function formatConversationTime(
   }
 
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-GB",
     {
       timeZone:
         "Europe/Berlin",
@@ -558,10 +588,15 @@ function formatConversationTime(
 }
 
 function formatFullDate(
-  value: string
+  value: string,
+  language:
+    AppLanguage
 ) {
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-GB",
     {
       timeZone:
         "Europe/Berlin",
@@ -634,16 +669,69 @@ function messageStatusClass(
 }
 
 /* =========================================================
+   ARCHIVE THREAD + RETURN TO INBOX HOME
+========================================================= */
+
+async function archiveConversationAndReturnToInbox(
+  leadId: string
+) {
+  "use server";
+
+  await archiveLeadConversation(
+    leadId
+  );
+
+  redirect(
+    "/inbox"
+  );
+}
+
+/* =========================================================
    PAGE
 ========================================================= */
 
 export default async function InboxPage({
   searchParams,
 }: InboxPageProps) {
-  const params =
+  /* =======================================================
+     SEARCH PARAMS
+
+     Explicit typing here fixes the six TS2339 errors.
+  ======================================================= */
+
+  const params:
+    InboxSearchParams =
     searchParams
       ? await searchParams
       : {};
+
+  /* =======================================================
+     LANGUAGE
+
+     Read the same cookie that LanguageProvider writes.
+     router.refresh() makes this server component receive
+     the newly selected language automatically.
+  ======================================================= */
+
+  const cookieStore =
+    await cookies();
+
+  const storedLanguage =
+    cookieStore.get(
+      APP_LANGUAGE_COOKIE
+    )?.value;
+
+  const language:
+    AppLanguage =
+    storedLanguage ===
+    "de"
+      ? "de"
+      : "en";
+
+  const text =
+    inboxCopy[
+      language
+    ].page;
 
   const requestedLeadId =
     getQueryValue(
@@ -1140,6 +1228,10 @@ export default async function InboxPage({
       TimelineMessage[] =
       [];
 
+    /* =====================================================
+       ORIGINAL OUTREACH
+    ===================================================== */
+
     if (
       draft.sent_at
     ) {
@@ -1169,6 +1261,10 @@ export default async function InboxPage({
           [],
       });
     }
+
+    /* =====================================================
+       FOLLOW UP
+    ===================================================== */
 
     if (
       draft.follow_up_sent_at &&
@@ -1200,6 +1296,10 @@ export default async function InboxPage({
           [],
       });
     }
+
+    /* =====================================================
+       INCOMING
+    ===================================================== */
 
     for (
       const message of
@@ -1237,6 +1337,10 @@ export default async function InboxPage({
           ),
       });
     }
+
+    /* =====================================================
+       OUTGOING REPLIES
+    ===================================================== */
 
     for (
       const message of
@@ -1308,13 +1412,13 @@ export default async function InboxPage({
 
         company:
           company?.name ??
-          "Unknown company",
+          text.unknownCompany,
 
         contact:
           contact?.full_name ??
           latestIncoming
             ?.from_name ??
-          "Company inbox",
+          text.companyInbox,
 
         email:
           contact?.email ??
@@ -1326,7 +1430,7 @@ export default async function InboxPage({
           draft.subject ??
           latestIncoming
             ?.subject ??
-          "Outreach",
+          text.outreach,
 
         preview:
           latestTimeline
@@ -1562,13 +1666,13 @@ export default async function InboxPage({
 
         company:
           company?.name ??
-          "Unknown company",
+          text.unknownCompany,
 
         contact:
           contact?.full_name ??
           latestIncoming
             .from_name ??
-          "Company inbox",
+          text.companyInbox,
 
         email:
           latestIncoming
@@ -1577,7 +1681,7 @@ export default async function InboxPage({
         subject:
           sortedIncoming[0]
             ?.subject ??
-          "Email",
+          text.email,
 
         preview:
           compactPreview(
@@ -1694,6 +1798,10 @@ export default async function InboxPage({
         desiredState
     );
 
+  /* =======================================================
+     SEARCH
+  ======================================================= */
+
   const filtered =
     query
       ? folderConversations.filter(
@@ -1720,6 +1828,10 @@ export default async function InboxPage({
         )
       : folderConversations;
 
+  /* =======================================================
+     SELECTED THREAD
+  ======================================================= */
+
   const selected =
     filtered.find(
       (
@@ -1730,6 +1842,10 @@ export default async function InboxPage({
     ) ??
     filtered[0] ??
     null;
+
+  /* =======================================================
+     STATUS CLEANUP
+  ======================================================= */
 
   const cleanStatusHref =
     buildInboxHref({
@@ -1746,29 +1862,161 @@ export default async function InboxPage({
     });
 
   /* =======================================================
+     MOBILE
+  ======================================================= */
+
+  const mobileThreadOpen =
+    Boolean(
+      requestedLeadId &&
+      selected
+    );
+
+  const inboxListHref =
+    buildInboxHref({
+      view:
+        currentView,
+
+      q:
+        rawQuery ||
+        undefined,
+    });
+
+  /* =======================================================
+     OPEN LEAD
+  ======================================================= */
+
+  const selectedThreadHref =
+    selected
+      ? buildInboxHref({
+          view:
+            currentView,
+
+          leadId:
+            selected.leadId,
+
+          q:
+            rawQuery ||
+            undefined,
+        })
+      : null;
+
+  const openLeadHref =
+    selected &&
+    selectedThreadHref
+      ? `/leads/${selected.leadId}?returnTo=${encodeURIComponent(
+          selectedThreadHref
+        )}`
+      : selected
+        ? `/leads/${selected.leadId}`
+        : "/leads";
+
+  /* =======================================================
+     CONVERSATION LIST
+  ======================================================= */
+
+  const conversationListItems:
+    InboxConversationListItem[] =
+    filtered.map(
+      (
+        conversation
+      ) => ({
+        leadId:
+          conversation.leadId,
+
+        href:
+          buildInboxHref({
+            view:
+              currentView,
+
+            leadId:
+              conversation.leadId,
+
+            q:
+              rawQuery ||
+              undefined,
+          }),
+
+        company:
+          conversation.company,
+
+        contact:
+          conversation.contact,
+
+        subject:
+          conversation.subject,
+
+        preview:
+          conversation.preview,
+
+        lastTimeLabel:
+          formatConversationTime(
+            conversation.lastDate,
+            language
+          ),
+
+        unread:
+          conversation.unread,
+
+        unreadCount:
+          conversation.unreadCount,
+
+        status:
+          conversation.status,
+
+        initials:
+          getInitials(
+            conversation.company
+          ),
+      })
+    );
+
+  const searchPlaceholder =
+    currentView ===
+    "archived"
+      ? text.searchArchived
+      : currentView ===
+          "trash"
+        ? text.searchTrash
+        : text.searchInbox;
+
+  /* =======================================================
      UI
   ======================================================= */
 
   return (
-    <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-      {/* HEADER */}
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
-      <header className="flex shrink-0 items-end justify-between gap-6 border-b px-8 py-7 lg:px-10">
-        <div>
+      <header
+        className={`shrink-0 items-start justify-between gap-4 border-b px-4 py-5 sm:px-6 md:flex md:items-end md:gap-6 md:px-8 md:py-7 lg:px-10 ${
+          mobileThreadOpen
+            ? "hidden"
+            : "flex"
+        }`}
+      >
+        <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
-            Communication
+            {
+              text.eyebrow
+            }
           </p>
 
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Inbox
+            {
+              text.title
+            }
           </h1>
 
-          <p className="mt-2 text-sm text-muted-foreground">
-            Lead emails and replies synchronized from Gmail.
+          <p className="mt-2 hidden text-sm text-muted-foreground sm:block">
+            {
+              text.description
+            }
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {currentView ===
             "trash" &&
           trashCount >
@@ -1784,7 +2032,11 @@ export default async function InboxPage({
               >
                 <Trash2 className="size-4" />
 
-                Empty trash
+                <span className="hidden sm:inline">
+                  {
+                    text.emptyTrash
+                  }
+                </span>
               </button>
             </form>
           ) : null}
@@ -1797,7 +2049,9 @@ export default async function InboxPage({
         </div>
       </header>
 
-      {/* SUCCESS */}
+      {/* ===================================================
+          STATUS BANNERS
+      =================================================== */}
 
       {syncStatus ===
       "done" ? (
@@ -1808,13 +2062,16 @@ export default async function InboxPage({
           message={
             newReplies >
             0
-              ? `${newReplies} new message${
-                  newReplies ===
-                  1
-                    ? ""
-                    : "s"
-                } synced.`
-              : "Inbox is up to date."
+              ? newReplies ===
+                1
+                ? text.syncOne
+                : text.syncMany.replace(
+                    "{count}",
+                    String(
+                      newReplies
+                    )
+                  )
+              : text.upToDate
           }
         />
       ) : null}
@@ -1825,39 +2082,57 @@ export default async function InboxPage({
           cleanupHref={
             cleanStatusHref
           }
-          message="Reply sent successfully."
+          message={
+            text.replySent
+          }
         />
       ) : null}
 
-      {/* ERRORS */}
+      {/* ===================================================
+          GMAIL ERRORS
+      =================================================== */}
 
       {!gmailReadReady ? (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-8 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-          <AlertCircle className="size-3.5" />
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 sm:px-6 md:px-8 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertCircle className="size-3.5 shrink-0" />
 
-          Gmail read access is required.
+          {
+            text.gmailReadRequired
+          }
         </div>
       ) : null}
 
       {syncStatus ===
       "error" ? (
-        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-8 py-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-          <AlertCircle className="size-3.5" />
+        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 sm:px-6 md:px-8 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+          <AlertCircle className="size-3.5 shrink-0" />
 
-          Gmail sync failed. Check the development terminal for details.
+          {
+            text.syncFailed
+          }
         </div>
       ) : null}
 
-      {/* FOLDER NAV */}
+      {/* ===================================================
+          FOLDERS
+      =================================================== */}
 
-      <div className="flex shrink-0 items-center gap-1 border-b px-6 py-2">
+      <div
+        className={`shrink-0 items-center gap-1 overflow-x-auto border-b px-3 py-2 sm:px-4 md:flex md:px-6 ${
+          mobileThreadOpen
+            ? "hidden"
+            : "flex"
+        }`}
+      >
         <FolderTab
           href="/inbox"
           active={
             currentView ===
             "inbox"
           }
-          label="Inbox"
+          label={
+            text.inbox
+          }
           count={
             inboxCount
           }
@@ -1872,7 +2147,9 @@ export default async function InboxPage({
             currentView ===
             "archived"
           }
-          label="Archived"
+          label={
+            text.archived
+          }
           count={
             archivedCount
           }
@@ -1887,7 +2164,9 @@ export default async function InboxPage({
             currentView ===
             "trash"
           }
-          label="Trash"
+          label={
+            text.trash
+          }
           count={
             trashCount
           }
@@ -1897,11 +2176,23 @@ export default async function InboxPage({
         />
       </div>
 
-      <div className="flex min-h-0 flex-1">
-        {/* LIST */}
+      {/* ===================================================
+          BODY
+      =================================================== */}
 
-        <aside className="flex w-[390px] shrink-0 flex-col border-r">
-          <div className="border-b p-4">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* =================================================
+            CONVERSATION LIST
+        ================================================= */}
+
+        <aside
+          className={`w-full shrink-0 flex-col border-r md:flex md:w-[390px] ${
+            mobileThreadOpen
+              ? "hidden"
+              : "flex"
+          }`}
+        >
+          <div className="border-b p-3 sm:p-4">
             <form>
               {currentView !==
               "inbox" ? (
@@ -1922,14 +2213,16 @@ export default async function InboxPage({
                   defaultValue={
                     rawQuery
                   }
-                  placeholder={`Search ${currentView}...`}
+                  placeholder={
+                    searchPlaceholder
+                  }
                   className="pl-9"
                 />
               </div>
             </form>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {filtered.length ===
             0 ? (
               <div className="px-6 py-12 text-center">
@@ -1946,275 +2239,187 @@ export default async function InboxPage({
                 <p className="mt-3 text-sm font-medium">
                   {currentView ===
                   "archived"
-                    ? "No archived conversations"
+                    ? text.noArchived
                     : currentView ===
                         "trash"
-                      ? "Trash is empty"
-                      : "No lead conversations yet"}
+                      ? text.trashEmpty
+                      : text.noConversations}
                 </p>
               </div>
             ) : (
-              filtered.map(
-                (
-                  conversation
-                ) => (
-                  <Link
-                    key={
-                      conversation.leadId
-                    }
-                    href={
-                      buildInboxHref({
-                        view:
-                          currentView,
-
-                        leadId:
-                          conversation.leadId,
-
-                        q:
-                          rawQuery ||
-                          undefined,
-                      })
-                    }
-                    className={`block border-b px-4 py-4 transition-colors hover:bg-muted/50 ${
-                      selected
-                        ?.leadId ===
-                      conversation.leadId
-                        ? "bg-muted/70"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
-                        {getInitials(
-                          conversation.company
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex justify-between gap-3">
-                          <p
-                            className={`truncate text-sm ${
-                              conversation.unread
-                                ? "font-semibold"
-                                : "font-medium"
-                            }`}
-                          >
-                            {
-                              conversation.company
-                            }
-                          </p>
-
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {formatConversationTime(
-                              conversation.lastDate
-                            )}
-                          </span>
-                        </div>
-
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {
-                            conversation.contact
-                          }
-                        </p>
-
-                        <p
-                          className={`mt-3 truncate text-sm ${
-                            conversation.unread
-                              ? "font-semibold"
-                              : ""
-                          }`}
-                        >
-                          {
-                            conversation.subject
-                          }
-                        </p>
-
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                          {
-                            conversation.preview
-                          }
-                        </p>
-
-                        <div className="mt-3 flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={
-                              messageStatusClass(
-                                conversation.status
-                              )
-                            }
-                          >
-                            {
-                              conversation.status
-                            }
-                          </Badge>
-
-                          {conversation.unread ? (
-                            <>
-                              <span className="size-2 rounded-full bg-blue-500" />
-
-                              {conversation.unreadCount >
-                              1 ? (
-                                <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                                  {
-                                    conversation.unreadCount
-                                  }{" "}
-                                  new
-                                </span>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                )
-              )
+              <ConversationList
+                conversations={
+                  conversationListItems
+                }
+                selectedLeadId={
+                  requestedLeadId ||
+                  null
+                }
+                view={
+                  currentView
+                }
+              />
             )}
           </div>
         </aside>
 
-        {/* THREAD */}
+        {/* =================================================
+            THREAD
+        ================================================= */}
 
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <main
+          className={`min-w-0 flex-1 overflow-y-auto md:block ${
+            mobileThreadOpen
+              ? "block"
+              : "hidden"
+          }`}
+        >
           {selected ? (
-            <div className="mx-auto max-w-4xl px-8 py-8 lg:px-12 lg:py-10">
-              {/* THREAD HEADER */}
+            <div className="mx-auto w-full max-w-4xl px-4 pb-5 sm:px-6 sm:pb-6 md:px-8 md:py-8 lg:px-12 lg:py-10">
+              {/* ===========================================
+                  MOBILE / THREAD HEADER
+              =========================================== */}
 
-              <div className="flex items-start justify-between gap-6">
-                <div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      messageStatusClass(
-                        selected.status
-                      )
+              <div className="sticky top-0 z-30 -mx-4 mb-6 border-b bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:static md:mx-0 md:mb-0 md:border-b-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+                <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
+                  <Link
+                    href={
+                      inboxListHref
                     }
+                    className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors hover:bg-muted"
                   >
-                    {selected.status ===
-                    "Replied"
-                      ? "Reply received"
-                      : "Email sent"}
-                  </Badge>
+                    <ArrowLeft className="size-5" />
 
-                  <h2 className="mt-4 text-xl font-semibold">
                     {
-                      selected.subject
+                      text.inbox
                     }
-                  </h2>
+                  </Link>
 
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {selected.contact} · {selected.company}
-                  </p>
+                  <span className="text-xs text-muted-foreground">
+                    {
+                      selected.timeline
+                        .length
+                    }{" "}
+                    {selected.timeline
+                      .length ===
+                    1
+                      ? text.message
+                      : text.messages}
+                  </span>
                 </div>
 
-                {/* ACTIONS */}
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+                  <div className="min-w-0">
+                    <Badge
+                      variant="outline"
+                      className={
+                        messageStatusClass(
+                          selected.status
+                        )
+                      }
+                    >
+                      {selected.status ===
+                      "Replied"
+                        ? text.replyReceived
+                        : text.emailSent}
+                    </Badge>
 
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {currentView !==
-                  "trash" ? (
-                    selected.unread ? (
+                    <h2 className="mt-4 break-words text-xl font-semibold">
+                      {
+                        selected.subject
+                      }
+                    </h2>
+
+                    <p className="mt-2 break-words text-sm text-muted-foreground">
+                      {selected.contact} ·{" "}
+                      {selected.company}
+                    </p>
+                  </div>
+
+                  {/* =======================================
+                      ACTIONS
+                  ======================================= */}
+
+                  <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+                    {currentView !==
+                    "trash" ? (
+                      selected.unread ? (
+                        <form
+                          action={
+                            markLeadConversationReadFromForm.bind(
+                              null,
+                              selected.leadId
+                            )
+                          }
+                        >
+                          <button
+                            type="submit"
+                            title={
+                              text.markAsRead
+                            }
+                            className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                          >
+                            <MailOpen className="size-4" />
+
+                            <span className="hidden sm:inline">
+                              {
+                                text.read
+                              }
+                            </span>
+                          </button>
+                        </form>
+                      ) : selected.replyToMessageId ? (
+                        <form
+                          action={
+                            markLeadConversationUnreadFromForm.bind(
+                              null,
+                              selected.leadId
+                            )
+                          }
+                        >
+                          <button
+                            type="submit"
+                            title={
+                              text.markAsUnread
+                            }
+                            className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                          >
+                            <Mail className="size-4" />
+
+                            <span className="hidden sm:inline">
+                              {
+                                text.unread
+                              }
+                            </span>
+                          </button>
+                        </form>
+                      ) : null
+                    ) : null}
+
+                    {currentView ===
+                    "inbox" ? (
                       <form
-  action={
-    markLeadConversationReadFromForm.bind(
-      null,
-      selected.leadId
-    )
-  }
->
+                        action={
+                          archiveConversationAndReturnToInbox.bind(
+                            null,
+                            selected.leadId
+                          )
+                        }
+                      >
                         <button
                           type="submit"
-                          title="Mark as read"
-                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                          title={
+                            text.archive
+                          }
+                          className="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-muted"
                         >
-                          <MailOpen className="size-4" />
-
-                          Read
+                          <Archive className="size-4" />
                         </button>
                       </form>
-                    ) : selected.replyToMessageId ? (
-                      <form
-  action={
-    markLeadConversationUnreadFromForm.bind(
-      null,
-      selected.leadId
-    )
-  }
->
-                        <button
-                          type="submit"
-                          title="Mark as unread"
-                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-                        >
-                          <Mail className="size-4" />
+                    ) : null}
 
-                          Unread
-                        </button>
-                      </form>
-                    ) : null
-                  ) : null}
-
-                  {currentView ===
-                  "inbox" ? (
-                    <form
-                      action={
-                        archiveLeadConversation.bind(
-                          null,
-                          selected.leadId
-                        )
-                      }
-                    >
-                      <button
-                        type="submit"
-                        title="Archive"
-                        className="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-muted"
-                      >
-                        <Archive className="size-4" />
-                      </button>
-                    </form>
-                  ) : null}
-
-                  {currentView ===
-                  "archived" ? (
-                    <form
-                      action={
-                        restoreLeadConversation.bind(
-                          null,
-                          selected.leadId
-                        )
-                      }
-                    >
-                      <button
-                        type="submit"
-                        className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-                      >
-                        <RotateCcw className="size-4" />
-
-                        Restore
-                      </button>
-                    </form>
-                  ) : null}
-
-                  {currentView !==
-                  "trash" ? (
-                    <form
-                      action={
-                        moveLeadConversationToTrash.bind(
-                          null,
-                          selected.leadId
-                        )
-                      }
-                    >
-                      <button
-                        type="submit"
-                        title="Move to trash"
-                        className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-red-600"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </form>
-                  ) : (
-                    <>
+                    {currentView ===
+                    "archived" ? (
                       <form
                         action={
                           restoreLeadConversation.bind(
@@ -2229,13 +2434,20 @@ export default async function InboxPage({
                         >
                           <RotateCcw className="size-4" />
 
-                          Restore
+                          <span className="hidden sm:inline">
+                            {
+                              text.restore
+                            }
+                          </span>
                         </button>
                       </form>
+                    ) : null}
 
+                    {currentView !==
+                    "trash" ? (
                       <form
                         action={
-                          permanentlyDeleteLeadConversation.bind(
+                          moveLeadConversationToTrash.bind(
                             null,
                             selected.leadId
                           )
@@ -2243,33 +2455,90 @@ export default async function InboxPage({
                       >
                         <button
                           type="submit"
-                          title="Delete permanently"
-                          className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-background px-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/40"
+                          title={
+                            text.moveToTrash
+                          }
+                          className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-red-600"
                         >
-                          <XCircle className="size-4" />
-
-                          Delete permanently
+                          <Trash2 className="size-4" />
                         </button>
                       </form>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <form
+                          action={
+                            restoreLeadConversation.bind(
+                              null,
+                              selected.leadId
+                            )
+                          }
+                        >
+                          <button
+                            type="submit"
+                            className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                          >
+                            <RotateCcw className="size-4" />
 
-                  <Link
-                    href={`/leads/${selected.leadId}`}
-                    className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-                  >
-                    Open lead
+                            <span className="hidden sm:inline">
+                              {
+                                text.restore
+                              }
+                            </span>
+                          </button>
+                        </form>
 
-                    <ArrowUpRight className="size-4" />
-                  </Link>
+                        <form
+                          action={
+                            permanentlyDeleteLeadConversation.bind(
+                              null,
+                              selected.leadId
+                            )
+                          }
+                        >
+                          <button
+                            type="submit"
+                            title={
+                              text.deletePermanently
+                            }
+                            className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-background px-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/40"
+                          >
+                            <XCircle className="size-4" />
+
+                            <span className="hidden sm:inline">
+                              {
+                                text.deletePermanently
+                              }
+                            </span>
+                          </button>
+                        </form>
+                      </>
+                    )}
+
+                    <Link
+                      href={
+                        openLeadHref
+                      }
+                      className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                    >
+                      <span className="hidden sm:inline">
+                        {
+                          text.openLead
+                        }
+                      </span>
+
+                      <ArrowUpRight className="size-4" />
+                    </Link>
+                  </div>
                 </div>
               </div>
 
-              <Separator className="my-8" />
+              <Separator className="hidden md:my-8 md:block" />
 
-              {/* MESSAGES */}
+              {/* =================================================
+                  MESSAGES
+              ================================================= */}
 
-              <div className="space-y-6">
+              <div className="space-y-4 md:space-y-6">
                 {selected.timeline.map(
                   (
                     message
@@ -2284,12 +2553,17 @@ export default async function InboxPage({
                       conversationSubject={
                         selected.subject
                       }
+                      language={
+                        language
+                      }
                     />
                   )
                 )}
               </div>
 
-              {/* REPLY */}
+              {/* =================================================
+                  REPLY
+              ================================================= */}
 
               {currentView !==
                 "trash" &&
@@ -2319,7 +2593,9 @@ export default async function InboxPage({
                 <Inbox className="mx-auto size-6 text-muted-foreground" />
 
                 <p className="mt-4 text-sm font-medium">
-                  No conversation selected
+                  {
+                    text.noConversationSelected
+                  }
                 </p>
               </div>
             </div>
@@ -2365,12 +2641,16 @@ function FolderTab({
     >
       <Icon className="size-4" />
 
-      {label}
+      {
+        label
+      }
 
       {count >
       0 ? (
         <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {count}
+          {
+            count
+          }
         </span>
       ) : null}
     </Link>
@@ -2384,13 +2664,22 @@ function FolderTab({
 function MessageCard({
   message,
   conversationSubject,
+  language,
 }: {
   message:
     TimelineMessage;
 
   conversationSubject:
     string;
+
+  language:
+    AppLanguage;
 }) {
+  const text =
+    inboxCopy[
+      language
+    ].page;
+
   const outgoing =
     message.direction ===
     "outgoing";
@@ -2408,7 +2697,7 @@ function MessageCard({
 
   return (
     <article className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex justify-between gap-5 border-b px-5 py-4">
+      <div className="flex items-start justify-between gap-3 border-b px-4 py-4 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
             {outgoing ? (
@@ -2435,14 +2724,19 @@ function MessageCard({
 
         <span className="shrink-0 text-xs text-muted-foreground">
           {formatFullDate(
-            message.date
+            message.date,
+            language
           )}
         </span>
       </div>
 
       {differentSubject ? (
-        <div className="border-b bg-muted/20 px-5 py-2.5 text-xs text-muted-foreground">
-          Subject:{" "}
+        <div className="border-b bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground sm:px-5">
+          {
+            text.subject
+          }
+          :{" "}
+
           <span className="font-medium text-foreground">
             {
               message.subject
@@ -2451,7 +2745,7 @@ function MessageCard({
         </div>
       ) : null}
 
-      <div className="whitespace-pre-wrap px-5 py-5 text-sm leading-7">
+      <div className="break-words whitespace-pre-wrap px-4 py-4 text-sm leading-7 sm:px-5 sm:py-5">
         {
           message.body
         }
@@ -2459,11 +2753,13 @@ function MessageCard({
 
       {message.attachments.length >
       0 ? (
-        <div className="border-t px-5 py-4">
+        <div className="border-t px-4 py-4 sm:px-5">
           <div className="mb-3 flex items-center gap-2 text-xs font-medium">
             <Paperclip className="size-3.5" />
 
-            Attachments
+            {
+              text.attachments
+            }
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -2475,6 +2771,9 @@ function MessageCard({
                   key={`${message.id}-${attachment.name}`}
                   attachment={
                     attachment
+                  }
+                  downloadLabel={
+                    text.downloadAttachment
                   }
                 />
               )
@@ -2492,9 +2791,13 @@ function MessageCard({
 
 function AttachmentCard({
   attachment,
+  downloadLabel,
 }: {
   attachment:
     TimelineAttachment;
+
+  downloadLabel:
+    string;
 }) {
   const isImage =
     attachment.type.startsWith(
@@ -2553,7 +2856,9 @@ function AttachmentCard({
           <a
             href={`${baseUrl}&download=1`}
             className="flex size-8 items-center justify-center rounded-md hover:bg-muted"
-            title="Download attachment"
+            title={
+              downloadLabel
+            }
           >
             <Download className="size-3.5" />
           </a>
@@ -2586,6 +2891,9 @@ function AttachmentCard({
         <a
           href={`${baseUrl}&download=1`}
           className="flex size-8 items-center justify-center rounded-md hover:bg-muted"
+          title={
+            downloadLabel
+          }
         >
           <Download className="size-3.5" />
         </a>

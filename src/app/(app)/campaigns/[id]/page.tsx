@@ -1,8 +1,12 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+
+import {
+  notFound,
+} from "next/navigation";
 
 import {
   ArrowLeft,
+  ArrowRight,
   Building2,
   CalendarClock,
   Mail,
@@ -12,10 +16,18 @@ import {
   Users,
 } from "lucide-react";
 
-import { CampaignActions } from "./campaign-actions";
+import {
+  CampaignActions,
+} from "./campaign-actions";
 
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import {
+  Badge,
+} from "@/components/ui/badge";
+
+import {
+  buttonVariants,
+} from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -30,7 +42,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  acquisitionCopy,
+  getAcquisitionLeadStatusLabel,
+  getAcquisitionPriorityLabel,
+  getCampaignStatusLabel,
+  localizeCampaignStrategyText,
+  localizeCompanySizePreference,
+  localizeTargetRoles,
+} from "@/lib/acquisition-i18n";
+
+import {
+  type AppLanguage,
+} from "@/lib/i18n";
+
+import {
+  getAppLanguage,
+} from "@/lib/i18n-server";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type CampaignDetailPageProps = {
   params: Promise<{
@@ -38,31 +74,25 @@ type CampaignDetailPageProps = {
   }>;
 };
 
-function statusLabel(status: string) {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map(
-      (word) =>
-        word.charAt(0).toUpperCase() +
-        word.slice(1)
-    )
-    .join(" ");
-}
+/* =========================================================
+   STATUS
+========================================================= */
 
-function statusClass(status: string) {
+function statusClass(
+  status: string
+) {
   switch (status) {
     case "ACTIVE":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
 
     case "PAUSED":
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
 
     case "ARCHIVED":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600";
+      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
 
     default:
-      return "border-blue-200 bg-blue-50 text-blue-700";
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
   }
 }
 
@@ -71,90 +101,152 @@ function leadStatusClass(
 ) {
   switch (status) {
     case "NEW":
-      return "border-sky-200 bg-sky-50 text-sky-700";
+      return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-400";
 
     case "RESEARCHING":
-      return "border-amber-200 bg-amber-50 text-amber-700";
+      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
 
     case "QUALIFIED":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
 
     case "DRAFT_READY":
-      return "border-violet-200 bg-violet-50 text-violet-700";
+      return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400";
 
     case "CONTACTED":
-      return "border-blue-200 bg-blue-50 text-blue-700";
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
 
     case "REPLIED":
-      return "border-cyan-200 bg-cyan-50 text-cyan-700";
+      return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-400";
 
     case "CALL_BOOKED":
-      return "border-indigo-200 bg-indigo-50 text-indigo-700";
+      return "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-400";
 
     case "PROPOSAL":
-      return "border-purple-200 bg-purple-50 text-purple-700";
+      return "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-400";
 
     case "WON":
-      return "border-green-200 bg-green-50 text-green-700";
+      return "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400";
 
     case "DO_NOT_CONTACT":
-      return "border-red-200 bg-red-50 text-red-700";
+      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
 
     default:
-      return "border-zinc-200 bg-zinc-100 text-zinc-600";
+      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
   }
 }
 
-function formatDate(date: string) {
+/* =========================================================
+   DATE
+========================================================= */
+
+function formatDate(
+  date: string,
+  language: AppLanguage
+) {
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-GB",
     {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
+      day:
+        "2-digit",
+
+      month:
+        "short",
+
+      year:
+        "numeric",
     }
-  ).format(new Date(date));
+  ).format(
+    new Date(
+      date
+    )
+  );
 }
 
+/* =========================================================
+   RELATION
+========================================================= */
+
 function getSingleRelation<T>(
-  value: T | T[] | null
+  value:
+    | T
+    | T[]
+    | null
 ): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      null
+    );
   }
 
   return value;
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default async function CampaignDetailPage({
   params,
 }: CampaignDetailPageProps) {
-  const { id } = await params;
+  const {
+    id,
+  } =
+    await params;
 
-  const supabase = await createClient();
+  const language =
+    await getAppLanguage();
+
+  const text =
+    acquisitionCopy[
+      language
+    ].campaignDetail;
+
+  const supabase =
+    await createClient();
+
+  /* =======================================================
+     CAMPAIGN
+  ======================================================= */
 
   const {
-    data: campaign,
-    error: campaignError,
-  } = await supabase
-    .from("campaigns")
-    .select(`
-      id,
-      name,
-      target_industry,
-      target_geography,
-      company_size_preference,
-      target_roles,
-      research_criteria,
-      website_criteria,
-      outreach_angle,
-      email_tone,
-      follow_up_days,
-      status,
-      created_at
-    `)
-    .eq("id", id)
-    .single();
+    data:
+      campaign,
+
+    error:
+      campaignError,
+  } =
+    await supabase
+      .from(
+        "campaigns"
+      )
+      .select(`
+        id,
+        name,
+        target_industry,
+        target_geography,
+        company_size_preference,
+        target_roles,
+        research_criteria,
+        website_criteria,
+        outreach_angle,
+        email_tone,
+        follow_up_days,
+        status,
+        created_at
+      `)
+      .eq(
+        "id",
+        id
+      )
+      .single();
 
   if (
     campaignError ||
@@ -163,37 +255,50 @@ export default async function CampaignDetailPage({
     notFound();
   }
 
+  /* =======================================================
+     LEADS
+  ======================================================= */
+
   const {
-    data: leads,
-    error: leadsError,
-  } = await supabase
-    .from("leads")
-    .select(`
-      id,
-      status,
-      priority,
-      website_score,
-      opportunity_score,
+    data:
+      leads,
 
-      company:companies (
-        id,
-        name,
-        industry,
-        location
+    error:
+      leadsError,
+  } =
+    await supabase
+      .from(
+        "leads"
       )
-    `)
-    .eq(
-      "campaign_id",
-      id
-    )
-    .order(
-      "created_at",
-      {
-        ascending: false,
-      }
-    );
+      .select(`
+        id,
+        status,
+        priority,
+        website_score,
+        opportunity_score,
 
-  if (leadsError) {
+        company:companies (
+          id,
+          name,
+          industry,
+          location
+        )
+      `)
+      .eq(
+        "campaign_id",
+        id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      );
+
+  if (
+    leadsError
+  ) {
     console.error(
       "Could not load campaign leads:",
       leadsError
@@ -203,74 +308,119 @@ export default async function CampaignDetailPage({
   const campaignLeads =
     leads ?? [];
 
+  const companySize =
+    localizeCompanySizePreference(
+      campaign.company_size_preference,
+      language
+    );
+
+  const targetRoles =
+    localizeTargetRoles(
+      campaign.target_roles,
+      language
+    );
+
+  const researchCriteria =
+    localizeCampaignStrategyText(
+      campaign.research_criteria,
+      language
+    );
+
+  const websiteCriteria =
+    localizeCampaignStrategyText(
+      campaign.website_criteria,
+      language
+    );
+
+  const outreachAngle =
+    localizeCampaignStrategyText(
+      campaign.outreach_angle,
+      language
+    );
+
+  const emailTone =
+    localizeCampaignStrategyText(
+      campaign.email_tone,
+      language
+    );
+
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-8 py-8 lg:px-10 lg:py-10">
-      {/* BACK */}
+    <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      {/* ===================================================
+          BACK
+      =================================================== */}
 
       <Link
         href="/campaigns"
-        className="
-          inline-flex
-          items-center
-          gap-2
-          text-sm
-          text-muted-foreground
-          transition-colors
-          hover:text-foreground
-        "
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
 
-        Back to campaigns
+        {
+          text.back
+        }
       </Link>
 
-      {/* HEADER */}
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
-      <header className="mt-6 flex flex-col justify-between gap-6 xl:flex-row xl:items-start">
-        <div>
+      <header className="mt-5 flex flex-col justify-between gap-5 md:mt-6 xl:flex-row xl:items-start xl:gap-6">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {campaign.name}
+            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
+              {
+                campaign.name
+              }
             </h1>
 
             <Badge
               variant="outline"
-              className={`font-medium ${statusClass(
+              className={`shrink-0 font-medium ${statusClass(
                 campaign.status
               )}`}
             >
-              {statusLabel(
-                campaign.status
+              {getCampaignStatusLabel(
+                campaign.status,
+                language
               )}
             </Badge>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
+          <div className="mt-3 flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-5 sm:gap-y-2">
             {campaign.target_industry ? (
-              <span className="flex items-center gap-1.5">
-                <Target className="size-4" />
+              <span className="flex min-w-0 items-start gap-1.5">
+                <Target className="mt-0.5 size-4 shrink-0" />
 
-                {
-                  campaign.target_industry
-                }
+                <span className="break-words">
+                  {
+                    campaign.target_industry
+                  }
+                </span>
               </span>
             ) : null}
 
             {campaign.target_geography ? (
-              <span className="flex items-center gap-1.5">
-                <MapPin className="size-4" />
+              <span className="flex min-w-0 items-start gap-1.5">
+                <MapPin className="mt-0.5 size-4 shrink-0" />
 
-                {
-                  campaign.target_geography
-                }
+                <span className="break-words">
+                  {
+                    campaign.target_geography
+                  }
+                </span>
               </span>
             ) : null}
           </div>
         </div>
 
         <CampaignActions
-          campaignId={campaign.id}
-          campaignName={campaign.name}
+          campaignId={
+            campaign.id
+          }
+          campaignName={
+            campaign.name
+          }
           initialStatus={
             campaign.status
           }
@@ -280,121 +430,168 @@ export default async function CampaignDetailPage({
         />
       </header>
 
-      {/* STATS */}
+      {/* ===================================================
+          STATS
+      =================================================== */}
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 md:mt-8 xl:grid-cols-4 xl:gap-4">
         <StatCard
-          icon={Users}
-          label="Leads"
+          icon={
+            Users
+          }
+          label={
+            text.leads
+          }
           value={String(
             campaignLeads.length
           )}
         />
 
         <StatCard
-          icon={Building2}
-          label="Company size"
+          icon={
+            Building2
+          }
+          label={
+            text.companySize
+          }
           value={
-            campaign.company_size_preference ??
-            "Any"
+            companySize ??
+            text.any
           }
         />
 
         <StatCard
-          icon={Mail}
-          label="Target roles"
+          icon={
+            Mail
+          }
+          label={
+            text.targetRoles
+          }
           value={
-            campaign.target_roles ??
-            "Any"
+            targetRoles ??
+            text.any
           }
         />
 
         <StatCard
-          icon={CalendarClock}
-          label="Follow-up"
-          value={`${campaign.follow_up_days} days`}
+          icon={
+            CalendarClock
+          }
+          label={
+            text.followUp
+          }
+          value={`${campaign.follow_up_days} ${text.days}`}
         />
       </div>
 
-      {/* STRATEGY */}
+      {/* ===================================================
+          STRATEGY
+      =================================================== */}
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:mt-6 xl:gap-4">
         <InfoCard
-          title="Research criteria"
-          value={
-            campaign.research_criteria
+          title={
+            text.researchCriteria
           }
-          empty="No research criteria defined."
+          value={
+            researchCriteria
+          }
+          empty={
+            text.noResearchCriteria
+          }
         />
 
         <InfoCard
-          title="Website criteria"
-          value={
-            campaign.website_criteria
+          title={
+            text.websiteCriteria
           }
-          empty="No website criteria defined."
+          value={
+            websiteCriteria
+          }
+          empty={
+            text.noWebsiteCriteria
+          }
         />
 
         <InfoCard
-          title="Outreach angle"
-          value={
-            campaign.outreach_angle
+          title={
+            text.outreachAngle
           }
-          empty="No outreach angle defined."
+          value={
+            outreachAngle
+          }
+          empty={
+            text.noOutreachAngle
+          }
         />
 
         <InfoCard
-          title="Email tone"
-          value={
-            campaign.email_tone
+          title={
+            text.emailTone
           }
-          empty="No email tone defined."
+          value={
+            emailTone
+          }
+          empty={
+            text.noEmailTone
+          }
         />
       </div>
 
-      {/* CAMPAIGN LEADS */}
+      {/* ===================================================
+          CAMPAIGN LEADS
+      =================================================== */}
 
-      <Card className="mt-6 shadow-none">
+      <Card className="mt-4 min-w-0 shadow-none xl:mt-6">
         <CardContent className="p-0">
-          <div className="flex items-center justify-between border-b px-6 py-5">
-            <div>
+          <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:items-center sm:px-6 sm:py-5">
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold">
-                Campaign leads
+                {
+                  text.campaignLeads
+                }
               </h2>
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                Companies currently
-                assigned to this campaign.
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {
+                  text.campaignLeadsDescription
+                }
               </p>
             </div>
 
-            <span className="text-xs text-muted-foreground">
-              {campaignLeads.length}{" "}
+            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+              {
+                campaignLeads.length
+              }{" "}
               {campaignLeads.length ===
               1
-                ? "lead"
-                : "leads"}
+                ? text.lead
+                : text.leadsPlural}
             </span>
           </div>
 
+          {/* =================================================
+              EMPTY STATE
+          ================================================= */}
+
           {campaignLeads.length ===
           0 ? (
-            <div className="flex min-h-48 items-center justify-center px-6 py-10">
+            <div className="flex min-h-48 items-center justify-center px-4 py-10 sm:px-6">
               <div className="max-w-sm text-center">
                 <div className="mx-auto flex size-9 items-center justify-center rounded-lg border">
                   <Users className="size-4" />
                 </div>
 
                 <p className="mt-4 text-sm font-medium">
-                  No leads in this
-                  campaign yet
+                  {
+                    text.noLeads
+                  }
                 </p>
 
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Leads discovered or
-                  assigned to this
-                  campaign will appear
-                  here.
+                  {
+                    text.noLeadsDescription
+                  }
                 </p>
 
                 <Link
@@ -404,160 +601,340 @@ export default async function CampaignDetailPage({
                       "outline",
 
                     className:
-                      "mt-4 gap-2",
+                      "mt-4 w-full gap-2 sm:w-auto",
                   })}
                 >
                   <Plus className="size-4" />
 
-                  Add first lead
+                  {
+                    text.addFirstLead
+                  }
                 </Link>
               </div>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>
-                    Company
-                  </TableHead>
+            <>
+              {/* =============================================
+                  MOBILE CARDS
+              ============================================= */}
 
-                  <TableHead>
-                    Industry
-                  </TableHead>
-
-                  <TableHead>
-                    Location
-                  </TableHead>
-
-                  <TableHead>
-                    Website
-                  </TableHead>
-
-                  <TableHead>
-                    Opportunity
-                  </TableHead>
-
-                  <TableHead>
-                    Status
-                  </TableHead>
-
-                  <TableHead>
-                    Priority
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
+              <div className="divide-y md:hidden">
                 {campaignLeads.map(
-                  (lead) => {
+                  (
+                    lead
+                  ) => {
                     const company =
                       getSingleRelation(
                         lead.company
                       );
 
                     return (
-                      <TableRow
+                      <Link
                         key={
                           lead.id
                         }
+                        href={`/leads/${lead.id}`}
+                        className="group block px-4 py-4 transition-colors hover:bg-muted/40 active:bg-muted/60"
                       >
-                        <TableCell>
-                          <Link
-                            href={`/leads/${lead.id}`}
-                            className="
-                              font-medium
-                              transition-colors
-                              hover:text-muted-foreground
-                              hover:underline
-                            "
-                          >
-                            {company?.name ??
-                              "Unknown company"}
-                          </Link>
-                        </TableCell>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-sm font-semibold">
+                              {company?.name ??
+                                text.unknownCompany}
+                            </p>
 
-                        <TableCell className="text-muted-foreground">
-                          {company?.industry ??
-                            "—"}
-                        </TableCell>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={`whitespace-nowrap ${leadStatusClass(
+                                  lead.status
+                                )}`}
+                              >
+                                {getAcquisitionLeadStatusLabel(
+                                  lead.status,
+                                  language
+                                )}
+                              </Badge>
 
-                        <TableCell className="text-muted-foreground">
-                          {company?.location ??
-                            "—"}
-                        </TableCell>
+                              {lead.priority ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {language ===
+                                  "de"
+                                    ? `${text.priority}: ${getAcquisitionPriorityLabel(
+                                        lead.priority,
+                                        language
+                                      )}`
+                                    : `${getAcquisitionPriorityLabel(
+                                        lead.priority,
+                                        language
+                                      )} priority`}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  {
+                                    text.noPriority
+                                  }
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                        <TableCell>
-                          {lead.website_score !==
-                          null ? (
-                            <>
+                          <ArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                               {
-                                lead.website_score
+                                text.industry
                               }
+                            </p>
 
-                              <span className="text-muted-foreground">
-                                /100
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">
-                              —
-                            </span>
-                          )}
-                        </TableCell>
+                            <p className="mt-1 break-words text-xs">
+                              {company?.industry ??
+                                "—"}
+                            </p>
+                          </div>
 
-                        <TableCell>
-                          {lead.opportunity_score !==
-                          null ? (
-                            <>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                               {
-                                lead.opportunity_score
+                                text.location
                               }
+                            </p>
 
-                              <span className="text-muted-foreground">
-                                /100
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">
-                              —
-                            </span>
-                          )}
-                        </TableCell>
+                            <p className="mt-1 break-words text-xs">
+                              {company?.location ??
+                                "—"}
+                            </p>
+                          </div>
+                        </div>
 
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`whitespace-nowrap ${leadStatusClass(
-                              lead.status
-                            )}`}
-                          >
-                            {statusLabel(
-                              lead.status
-                            )}
-                          </Badge>
-                        </TableCell>
+                        <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-lg border">
+                          <div className="border-r px-3 py-3">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {
+                                text.website
+                              }
+                            </p>
 
-                        <TableCell className="text-muted-foreground">
-                          {lead.priority
-                            ? statusLabel(
-                                lead.priority
-                              )
-                            : "No priority"}
-                        </TableCell>
-                      </TableRow>
+                            <p className="mt-1 text-base font-semibold">
+                              {lead.website_score !==
+                              null ? (
+                                <>
+                                  {
+                                    lead.website_score
+                                  }
+
+                                  <span className="ml-0.5 text-xs font-normal text-muted-foreground">
+                                    /100
+                                  </span>
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="px-3 py-3">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {
+                                text.opportunity
+                              }
+                            </p>
+
+                            <p className="mt-1 text-base font-semibold">
+                              {lead.opportunity_score !==
+                              null ? (
+                                <>
+                                  {
+                                    lead.opportunity_score
+                                  }
+
+                                  <span className="ml-0.5 text-xs font-normal text-muted-foreground">
+                                    /100
+                                  </span>
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </Link>
                     );
                   }
                 )}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* =============================================
+                  DESKTOP TABLE
+              ============================================= */}
+
+              <div className="hidden overflow-x-auto md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>
+                        {language ===
+                        "de"
+                          ? "Unternehmen"
+                          : "Company"}
+                      </TableHead>
+
+                      <TableHead>
+                        {
+                          text.industry
+                        }
+                      </TableHead>
+
+                      <TableHead>
+                        {
+                          text.location
+                        }
+                      </TableHead>
+
+                      <TableHead>
+                        {
+                          text.website
+                        }
+                      </TableHead>
+
+                      <TableHead>
+                        {
+                          text.opportunity
+                        }
+                      </TableHead>
+
+                      <TableHead>
+                        {
+                          text.status
+                        }
+                      </TableHead>
+
+                      <TableHead>
+                        {
+                          text.priority
+                        }
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody>
+                    {campaignLeads.map(
+                      (
+                        lead
+                      ) => {
+                        const company =
+                          getSingleRelation(
+                            lead.company
+                          );
+
+                        return (
+                          <TableRow
+                            key={
+                              lead.id
+                            }
+                          >
+                            <TableCell>
+                              <Link
+                                href={`/leads/${lead.id}`}
+                                className="font-medium transition-colors hover:text-muted-foreground hover:underline"
+                              >
+                                {company?.name ??
+                                  text.unknownCompany}
+                              </Link>
+                            </TableCell>
+
+                            <TableCell className="text-muted-foreground">
+                              {company?.industry ??
+                                "—"}
+                            </TableCell>
+
+                            <TableCell className="text-muted-foreground">
+                              {company?.location ??
+                                "—"}
+                            </TableCell>
+
+                            <TableCell>
+                              {lead.website_score !==
+                              null ? (
+                                <>
+                                  {
+                                    lead.website_score
+                                  }
+
+                                  <span className="text-muted-foreground">
+                                    /100
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {lead.opportunity_score !==
+                              null ? (
+                                <>
+                                  {
+                                    lead.opportunity_score
+                                  }
+
+                                  <span className="text-muted-foreground">
+                                    /100
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={`whitespace-nowrap ${leadStatusClass(
+                                  lead.status
+                                )}`}
+                              >
+                                {getAcquisitionLeadStatusLabel(
+                                  lead.status,
+                                  language
+                                )}
+                              </Badge>
+                            </TableCell>
+
+                            <TableCell className="text-muted-foreground">
+                              {lead.priority
+                                ? getAcquisitionPriorityLabel(
+                                    lead.priority,
+                                    language
+                                  )
+                                : text.noPriority}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Created{" "}
+        {
+          text.created
+        }{" "}
         {formatDate(
-          campaign.created_at
+          campaign.created_at,
+          language
         )}
       </p>
     </div>
@@ -573,23 +950,30 @@ function StatCard({
   label,
   value,
 }: {
-  icon: React.ElementType;
+  icon:
+    React.ElementType;
+
   label: string;
+
   value: string;
 }) {
   return (
-    <Card className="shadow-none">
-      <CardContent className="p-5">
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="p-4 sm:p-5">
         <div className="flex size-8 items-center justify-center rounded-lg border">
           <Icon className="size-3.5 text-muted-foreground" />
         </div>
 
         <p className="mt-4 text-xs text-muted-foreground">
-          {label}
+          {
+            label
+          }
         </p>
 
-        <p className="mt-1 text-sm font-medium">
-          {value}
+        <p className="mt-1 break-words text-sm font-medium">
+          {
+            value
+          }
         </p>
       </CardContent>
     </Card>
@@ -606,18 +990,25 @@ function InfoCard({
   empty,
 }: {
   title: string;
-  value: string | null;
+
+  value:
+    | string
+    | null;
+
   empty: string;
 }) {
   return (
-    <Card className="shadow-none">
-      <CardContent className="p-5">
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="p-4 sm:p-5">
         <h2 className="text-sm font-semibold">
-          {title}
+          {
+            title
+          }
         </h2>
 
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-          {value ?? empty}
+        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">
+          {value ??
+            empty}
         </p>
       </CardContent>
     </Card>

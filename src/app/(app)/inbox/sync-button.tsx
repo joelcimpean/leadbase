@@ -13,8 +13,16 @@ import {
 } from "./actions";
 
 import {
+  useLanguage,
+} from "@/components/language-provider";
+
+import {
   Button,
 } from "@/components/ui/button";
+
+import {
+  inboxCopy,
+} from "@/lib/inbox-i18n";
 
 /* =========================================================
    COMPONENT
@@ -50,6 +58,16 @@ function SyncButtonContent({
   disabled: boolean;
 }) {
   const {
+    language,
+  } =
+    useLanguage();
+
+  const text =
+    inboxCopy[
+      language
+    ].sync;
+
+  const {
     pending,
   } =
     useFormStatus();
@@ -73,8 +91,8 @@ function SyncButtonContent({
       />
 
       {pending
-        ? "Syncing..."
-        : "Sync"}
+        ? text.syncing
+        : text.sync}
     </Button>
   );
 }

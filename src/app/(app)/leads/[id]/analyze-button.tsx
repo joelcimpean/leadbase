@@ -22,6 +22,10 @@ import {
 } from "../analysis-actions";
 
 import {
+  useLanguage,
+} from "@/components/language-provider";
+
+import {
   Button,
 } from "@/components/ui/button";
 
@@ -40,7 +44,8 @@ type AnalyzeWebsiteButtonProps = {
 
 function createAudioContext() {
   if (
-    typeof window === "undefined"
+    typeof window ===
+    "undefined"
   ) {
     return null;
   }
@@ -60,10 +65,6 @@ function playSuccessChime(
 
   const now =
     audioContext.currentTime;
-
-  /*
-   * Master volume.
-   */
 
   const masterGain =
     audioContext.createGain();
@@ -258,14 +259,6 @@ export function AnalyzeWebsiteButton({
       null
     );
 
-  /*
-   * Browsers can block audio that starts only after
-   * a long asynchronous operation.
-   *
-   * Therefore we initialize/unlock the AudioContext
-   * immediately when the user clicks Analyze.
-   */
-
   const unlockAudio =
     useCallback(() => {
       try {
@@ -292,10 +285,6 @@ export function AnalyzeWebsiteButton({
         );
       }
     }, []);
-
-  /*
-   * Called after the server action is finished.
-   */
 
   const handleComplete =
     useCallback(() => {
@@ -359,6 +348,11 @@ function AnalyzeButtonContent({
   onComplete: () => void;
 }) {
   const {
+    language,
+  } =
+    useLanguage();
+
+  const {
     pending,
   } =
     useFormStatus();
@@ -376,12 +370,38 @@ function AnalyzeButtonContent({
       false
     );
 
+  const text =
+    language ===
+    "de"
+      ? {
+          analyzing:
+            "Wird analysiert...",
+
+          complete:
+            "Analyse abgeschlossen",
+
+          website:
+            "Website analysieren",
+
+          opportunity:
+            "Potenzial analysieren",
+        }
+      : {
+          analyzing:
+            "Analyzing...",
+
+          complete:
+            "Analysis complete",
+
+          website:
+            "Analyze website",
+
+          opportunity:
+            "Analyze opportunity",
+        };
+
   useEffect(
     () => {
-      /*
-       * Server action started.
-       */
-
       if (
         pending
       ) {
@@ -394,10 +414,6 @@ function AnalyzeButtonContent({
 
         return;
       }
-
-      /*
-       * Server action was pending before and has now finished.
-       */
 
       if (
         wasPendingRef.current
@@ -448,21 +464,25 @@ function AnalyzeButtonContent({
         <>
           <Loader2 className="size-4 animate-spin" />
 
-          Analyzing...
+          {
+            text.analyzing
+          }
         </>
       ) : showSuccess ? (
         <>
           <Check className="size-4 text-emerald-600" />
 
-          Analysis complete
+          {
+            text.complete
+          }
         </>
       ) : (
         <>
           <Sparkles className="size-4" />
 
           {hasWebsite
-            ? "Analyze website"
-            : "Analyze opportunity"}
+            ? text.website
+            : text.opportunity}
         </>
       )}
     </Button>

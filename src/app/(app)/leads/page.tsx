@@ -1,129 +1,241 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+
+import {
+  Plus,
+} from "lucide-react";
 
 import {
   LeadsTable,
   type LeadTableRow,
 } from "./leads-table";
 
-import { buttonVariants } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/server";
+import {
+  buttonVariants,
+} from "@/components/ui/button";
 
-function getSingleRelation<T>(value: T | T[] | null): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
+import {
+  leadsCopy,
+} from "@/lib/leads-i18n";
+
+import {
+  getAppLanguage,
+} from "@/lib/i18n-server";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+/* =========================================================
+   RELATION HELPER
+========================================================= */
+
+function getSingleRelation<T>(
+  value:
+    | T
+    | T[]
+    | null
+): T | null {
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      null
+    );
   }
 
   return value;
 }
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default async function LeadsPage() {
-  const supabase = await createClient();
+  const [
+    supabase,
+    language,
+  ] =
+    await Promise.all([
+      createClient(),
+      getAppLanguage(),
+    ]);
 
-  const { data: leads, error } = await supabase
-    .from("leads")
-    .select(`
-      id,
-      status,
-      priority,
-      website_score,
-      opportunity_score,
-      last_contacted_at,
-      created_at,
-      company:companies (
-        id,
-        name,
-        website_url,
-        industry,
-        location,
-        contact_form_url
-      ),
-      primary_contact:contacts (
-        id,
-        full_name,
-        email
+  const text =
+    leadsCopy[
+      language
+    ];
+
+  const {
+    data:
+      leads,
+
+    error,
+  } =
+    await supabase
+      .from(
+        "leads"
       )
-    `)
-    .order("created_at", {
-      ascending: false,
-    });
+      .select(`
+        id,
+        status,
+        priority,
+        website_score,
+        opportunity_score,
+        last_contacted_at,
+        created_at,
 
-  if (error) {
-    console.error("Could not load leads:", error);
+        company:companies (
+          id,
+          name,
+          website_url,
+          industry,
+          location,
+          contact_form_url
+        ),
+
+        primary_contact:contacts (
+          id,
+          full_name,
+          email
+        )
+      `)
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not load leads:",
+      error
+    );
   }
 
-  const leadRows: LeadTableRow[] = (leads ?? []).map((lead) => {
-    const company = getSingleRelation(lead.company);
-    const contact = getSingleRelation(lead.primary_contact);
+  /* =======================================================
+     MAP DATABASE DATA
+  ======================================================= */
 
-    return {
-      id: lead.id,
+  const leadRows:
+    LeadTableRow[] =
+    (
+      leads ??
+      []
+    ).map(
+      (
+        lead
+      ) => {
+        const company =
+          getSingleRelation(
+            lead.company
+          );
 
-      companyName:
-        company?.name ?? "Unknown company",
+        const contact =
+          getSingleRelation(
+            lead.primary_contact
+          );
 
-      industry:
-        company?.industry ?? null,
+        return {
+          id:
+            lead.id,
 
-      location:
-        company?.location ?? null,
+          companyName:
+            company?.name ??
+            text.common
+              .unknownCompany,
 
-      websiteUrl:
-        company?.website_url ?? null,
+          industry:
+            company?.industry ??
+            null,
 
-      contactFormUrl:
-        company?.contact_form_url ?? null,
+          location:
+            company?.location ??
+            null,
 
-      contactEmail:
-        contact?.email ?? null,
+          websiteUrl:
+            company?.website_url ??
+            null,
 
-      websiteScore:
-        lead.website_score,
+          contactFormUrl:
+            company?.contact_form_url ??
+            null,
 
-      opportunityScore:
-        lead.opportunity_score,
+          contactEmail:
+            contact?.email ??
+            null,
 
-      status:
-        lead.status,
+          websiteScore:
+            lead.website_score,
 
-      priority:
-        lead.priority,
+          opportunityScore:
+            lead.opportunity_score,
 
-      lastContactedAt:
-        lead.last_contacted_at,
-    };
-  });
+          status:
+            lead.status,
+
+          priority:
+            lead.priority,
+
+          lastContactedAt:
+            lead.last_contacted_at,
+        };
+      }
+    );
+
+  /* =======================================================
+     UI
+  ======================================================= */
 
   return (
-    <div className="mx-auto w-full max-w-[1700px] px-8 py-8 lg:px-10 lg:py-10">
+    <div className="mx-auto w-full max-w-[1700px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
-            CRM
+            {
+              text.page.eyebrow
+            }
           </p>
 
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Leads
+            {
+              text.page.title
+            }
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Review companies, track outreach and see what
-            needs your attention next.
+            {
+              text.page.description
+            }
           </p>
         </div>
 
         <Link
           href="/leads/new"
           className={buttonVariants({
-            className: "w-fit gap-2",
+            className:
+              "w-full gap-2 sm:w-fit",
           })}
         >
           <Plus className="size-4" />
-          Add lead
+
+          {
+            text.page.addLead
+          }
         </Link>
       </header>
 
-      <LeadsTable leads={leadRows} />
+      <LeadsTable
+        leads={
+          leadRows
+        }
+      />
     </div>
   );
 }

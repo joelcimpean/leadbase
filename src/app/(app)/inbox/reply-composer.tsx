@@ -4,7 +4,7 @@ import {
   CalendarClock,
   ChevronDown,
   Clock3,
-  File,
+  File as FileIcon,
   Loader2,
   MessageSquareReply,
   Paperclip,
@@ -28,11 +28,24 @@ import {
   useRouter,
 } from "next/navigation";
 
+import {
+  useLanguage,
+} from "@/components/language-provider";
+
+import {
+  type AppLanguage,
+} from "@/lib/i18n";
+
+import {
+  inboxCopy,
+} from "@/lib/inbox-i18n";
+
 /* =========================================================
    CONFIG
 ========================================================= */
 
-const MAX_ATTACHMENTS = 8;
+const MAX_ATTACHMENTS =
+  8;
 
 const MAX_FILE_SIZE =
   8 * 1024 * 1024;
@@ -133,7 +146,153 @@ type AttachmentPayload = {
 };
 
 /* =========================================================
-   FILE HELPERS
+   LOCAL DRAFTS
+========================================================= */
+
+type StoredReplyDraft = {
+  body: string;
+  cc: string;
+  bcc: string;
+  showCc: boolean;
+  showBcc: boolean;
+  hadAttachments: boolean;
+};
+
+const REPLY_DRAFT_STORAGE_PREFIX =
+  "leadbase:reply-draft:v1";
+
+function getReplyDraftStorageKey(
+  leadId: string
+) {
+  return `${REPLY_DRAFT_STORAGE_PREFIX}:${leadId}`;
+}
+
+function readStoredReplyDraft(
+  storageKey: string
+): StoredReplyDraft | null {
+  try {
+    const raw =
+      window.localStorage.getItem(
+        storageKey
+      );
+
+    if (
+      !raw
+    ) {
+      return null;
+    }
+
+    const parsed =
+      JSON.parse(
+        raw
+      ) as Partial<StoredReplyDraft>;
+
+    const body =
+      typeof parsed.body ===
+      "string"
+        ? parsed.body
+        : "";
+
+    const cc =
+      typeof parsed.cc ===
+      "string"
+        ? parsed.cc
+        : "";
+
+    const bcc =
+      typeof parsed.bcc ===
+      "string"
+        ? parsed.bcc
+        : "";
+
+    const showCc =
+      Boolean(
+        parsed.showCc
+      );
+
+    const showBcc =
+      Boolean(
+        parsed.showBcc
+      );
+
+    const hadAttachments =
+      Boolean(
+        parsed.hadAttachments
+      );
+
+    if (
+      !body.trim() &&
+      !cc.trim() &&
+      !bcc.trim()
+    ) {
+      window.localStorage.removeItem(
+        storageKey
+      );
+
+      return null;
+    }
+
+    return {
+      body,
+      cc,
+      bcc,
+      showCc,
+      showBcc,
+      hadAttachments,
+    };
+  } catch (
+    draftError
+  ) {
+    console.warn(
+      "Could not read saved reply draft:",
+      draftError
+    );
+
+    return null;
+  }
+}
+
+function writeStoredReplyDraft(
+  storageKey: string,
+  draft:
+    StoredReplyDraft
+) {
+  try {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(
+        draft
+      )
+    );
+  } catch (
+    draftError
+  ) {
+    console.warn(
+      "Could not save reply draft:",
+      draftError
+    );
+  }
+}
+
+function removeStoredReplyDraft(
+  storageKey: string
+) {
+  try {
+    window.localStorage.removeItem(
+      storageKey
+    );
+  } catch (
+    draftError
+  ) {
+    console.warn(
+      "Could not remove reply draft:",
+      draftError
+    );
+  }
+}
+
+/* =========================================================
+   FILES
 ========================================================= */
 
 function formatFileSize(
@@ -148,7 +307,8 @@ function formatFileSize(
 
   if (
     bytes <
-    1024 * 1024
+    1024 *
+      1024
   ) {
     return `${(
       bytes /
@@ -168,8 +328,15 @@ function formatFileSize(
 }
 
 function fileToBase64(
-  file: File
+  file: File,
+  language:
+    AppLanguage
 ): Promise<string> {
+  const text =
+    inboxCopy[
+      language
+    ].composer;
+
   return new Promise(
     (
       resolve,
@@ -186,7 +353,10 @@ function fileToBase64(
           ) {
             reject(
               new Error(
-                `Could not read ${file.name}.`
+                text.fileReadFailed.replace(
+                  "{name}",
+                  file.name
+                )
               )
             );
 
@@ -199,11 +369,15 @@ function fileToBase64(
             );
 
           if (
-            commaIndex === -1
+            commaIndex ===
+            -1
           ) {
             reject(
               new Error(
-                `Could not encode ${file.name}.`
+                text.fileEncodeFailed.replace(
+                  "{name}",
+                  file.name
+                )
               )
             );
 
@@ -212,7 +386,8 @@ function fileToBase64(
 
           resolve(
             reader.result.slice(
-              commaIndex + 1
+              commaIndex +
+              1
             )
           );
         };
@@ -221,7 +396,10 @@ function fileToBase64(
         () => {
           reject(
             new Error(
-              `Could not read ${file.name}.`
+              text.fileReadFailed.replace(
+                "{name}",
+                file.name
+              )
             )
           );
         };
@@ -238,12 +416,15 @@ function fileToBase64(
 ========================================================= */
 
 async function parseJsonResponse<T>(
-  response: Response
+  response: Response,
+  fallbackError:
+    string
 ): Promise<T> {
   const contentType =
     response.headers.get(
       "content-type"
-    ) ?? "";
+    ) ??
+    "";
 
   if (
     contentType.includes(
@@ -253,7 +434,7 @@ async function parseJsonResponse<T>(
     return await response.json();
   }
 
-  const text =
+  const responseText =
     await response.text();
 
   console.warn(
@@ -263,7 +444,7 @@ async function parseJsonResponse<T>(
         response.status,
 
       response:
-        text.slice(
+        responseText.slice(
           0,
           1000
         ),
@@ -271,12 +452,12 @@ async function parseJsonResponse<T>(
   );
 
   throw new Error(
-    `The server could not process the request (${response.status}).`
+    `${fallbackError} (${response.status})`
   );
 }
 
 /* =========================================================
-   TIMEZONE HELPERS
+   TIMEZONE
 ========================================================= */
 
 function getZonedParts(
@@ -321,7 +502,8 @@ function getZonedParts(
     > = {};
 
   for (
-    const part of parts
+    const part of
+      parts
   ) {
     if (
       part.type !==
@@ -380,7 +562,8 @@ function getTimeZoneOffsetMs(
   const representedAsUtc =
     Date.UTC(
       parts.year,
-      parts.month - 1,
+      parts.month -
+        1,
       parts.day,
       parts.hour,
       parts.minute,
@@ -437,7 +620,8 @@ function localDateTimeToIso(
     new Date(
       Date.UTC(
         year,
-        month - 1,
+        month -
+          1,
         day,
         hour,
         minute,
@@ -469,8 +653,7 @@ function localDateTimeToIso(
       offset
     );
 
-  return result
-    .toISOString();
+  return result.toISOString();
 }
 
 function pad2(
@@ -495,14 +678,15 @@ function getTomorrowMorningLocalValue() {
     new Date(
       Date.UTC(
         nowParts.year,
-        nowParts.month - 1,
+        nowParts.month -
+          1,
         nowParts.day
       )
     );
 
   date.setUTCDate(
     date.getUTCDate() +
-    1
+      1
   );
 
   return [
@@ -510,7 +694,7 @@ function getTomorrowMorningLocalValue() {
     "-",
     pad2(
       date.getUTCMonth() +
-      1
+        1
     ),
     "-",
     pad2(
@@ -534,10 +718,10 @@ function getLaterTodayDate() {
   const target =
     new Date(
       now.getTime() +
-      2 *
-        60 *
-        60 *
-        1000
+        2 *
+          60 *
+          60 *
+          1000
     );
 
   const nowParts =
@@ -602,10 +786,15 @@ function isoToBerlinLocalInput(
 }
 
 function formatScheduledDate(
-  value: string
+  value: string,
+  language:
+    AppLanguage
 ) {
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-GB",
     {
       timeZone:
         SCHEDULE_TIME_ZONE,
@@ -633,10 +822,15 @@ function formatScheduledDate(
 }
 
 function formatTimeOnly(
-  date: Date
+  date: Date,
+  language:
+    AppLanguage
 ) {
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language ===
+      "de"
+      ? "de-DE"
+      : "en-GB",
     {
       timeZone:
         SCHEDULE_TIME_ZONE,
@@ -665,6 +859,16 @@ export function ReplyComposer({
   const router =
     useRouter();
 
+  const {
+    language,
+  } =
+    useLanguage();
+
+  const text =
+    inboxCopy[
+      language
+    ].composer;
+
   const fileInputRef =
     useRef<HTMLInputElement>(
       null
@@ -674,37 +878,49 @@ export function ReplyComposer({
     open,
     setOpen,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     body,
     setBody,
   ] =
-    useState("");
+    useState(
+      ""
+    );
 
   const [
     cc,
     setCc,
   ] =
-    useState("");
+    useState(
+      ""
+    );
 
   const [
     bcc,
     setBcc,
   ] =
-    useState("");
+    useState(
+      ""
+    );
 
   const [
     showCc,
     setShowCc,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     showBcc,
     setShowBcc,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     files,
@@ -718,37 +934,49 @@ export function ReplyComposer({
     sending,
     setSending,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     generating,
     setGenerating,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     scheduling,
     setScheduling,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     cancelling,
     setCancelling,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     scheduleMenuOpen,
     setScheduleMenuOpen,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     customScheduleOpen,
     setCustomScheduleOpen,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     customDateTime,
@@ -800,7 +1028,36 @@ export function ReplyComposer({
     sent,
     setSent,
   ] =
-    useState(false);
+    useState(
+      false
+    );
+
+  const [
+    draftLoaded,
+    setDraftLoaded,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    draftExists,
+    setDraftExists,
+  ] =
+    useState(
+      false
+    );
+
+  const draftStorageKey =
+    useMemo(
+      () =>
+        getReplyDraftStorageKey(
+          leadId
+        ),
+      [
+        leadId,
+      ]
+    );
 
   const busy =
     sending ||
@@ -821,7 +1078,7 @@ export function ReplyComposer({
     );
 
   /* =======================================================
-     LOAD PERSISTENT SCHEDULE
+     LOAD SCHEDULE
   ======================================================= */
 
   useEffect(
@@ -851,7 +1108,8 @@ export function ReplyComposer({
 
           const result =
             await parseJsonResponse<ScheduleReplyResponse>(
-              response
+              response,
+              text.serverError
             );
 
           if (
@@ -896,6 +1154,148 @@ export function ReplyComposer({
     },
     [
       leadId,
+      text.serverError,
+    ]
+  );
+
+  /* =======================================================
+     LOAD DRAFT
+  ======================================================= */
+
+  useEffect(
+    () => {
+      setDraftLoaded(
+        false
+      );
+
+      const savedDraft =
+        readStoredReplyDraft(
+          draftStorageKey
+        );
+
+      if (
+        savedDraft
+      ) {
+        setBody(
+          savedDraft.body
+        );
+
+        setCc(
+          savedDraft.cc
+        );
+
+        setBcc(
+          savedDraft.bcc
+        );
+
+        setShowCc(
+          savedDraft.showCc ||
+            Boolean(
+              savedDraft.cc.trim()
+            )
+        );
+
+        setShowBcc(
+          savedDraft.showBcc ||
+            Boolean(
+              savedDraft.bcc.trim()
+            )
+        );
+
+        setDraftExists(
+          true
+        );
+
+        setOpen(
+          true
+        );
+
+        if (
+          savedDraft.hadAttachments
+        ) {
+          setError(
+            text.draftRestoredAttachments
+          );
+        }
+      } else {
+        setDraftExists(
+          false
+        );
+      }
+
+      setDraftLoaded(
+        true
+      );
+    },
+    [
+      draftStorageKey,
+      text.draftRestoredAttachments,
+    ]
+  );
+
+  /* =======================================================
+     AUTO SAVE
+  ======================================================= */
+
+  useEffect(
+    () => {
+      if (
+        !draftLoaded ||
+        editingSchedule
+      ) {
+        return;
+      }
+
+      const hasContent =
+        Boolean(
+          body.trim() ||
+          cc.trim() ||
+          bcc.trim()
+        );
+
+      if (
+        !hasContent
+      ) {
+        removeStoredReplyDraft(
+          draftStorageKey
+        );
+
+        setDraftExists(
+          false
+        );
+
+        return;
+      }
+
+      writeStoredReplyDraft(
+        draftStorageKey,
+        {
+          body,
+          cc,
+          bcc,
+          showCc,
+          showBcc,
+
+          hadAttachments:
+            files.length >
+            0,
+        }
+      );
+
+      setDraftExists(
+        true
+      );
+    },
+    [
+      body,
+      bcc,
+      cc,
+      draftLoaded,
+      draftStorageKey,
+      editingSchedule,
+      files.length,
+      showBcc,
+      showCc,
     ]
   );
 
@@ -927,7 +1327,7 @@ export function ReplyComposer({
       editingSchedule
     ) {
       setError(
-        "Existing scheduled attachments are preserved. Cancel and create a new schedule if you need to change the attachments."
+        text.scheduledAttachmentsPreserved
       );
 
       return;
@@ -959,7 +1359,8 @@ export function ReplyComposer({
                 file.size &&
               candidate.lastModified ===
                 file.lastModified
-          ) === index
+          ) ===
+          index
       );
 
     if (
@@ -967,7 +1368,12 @@ export function ReplyComposer({
       MAX_ATTACHMENTS
     ) {
       setError(
-        `You can attach up to ${MAX_ATTACHMENTS} files.`
+        text.maxAttachments.replace(
+          "{count}",
+          String(
+            MAX_ATTACHMENTS
+          )
+        )
       );
 
       return;
@@ -986,7 +1392,10 @@ export function ReplyComposer({
       tooLarge
     ) {
       setError(
-        `${tooLarge.name} is larger than 8 MB.`
+        text.fileTooLarge.replace(
+          "{name}",
+          tooLarge.name
+        )
       );
 
       return;
@@ -1008,7 +1417,7 @@ export function ReplyComposer({
       MAX_TOTAL_SIZE
     ) {
       setError(
-        "Attachments may be up to 12 MB in total."
+        text.totalTooLarge
       );
 
       return;
@@ -1041,10 +1450,6 @@ export function ReplyComposer({
     );
   }
 
-  /* =======================================================
-     ATTACHMENT PAYLOAD
-  ======================================================= */
-
   async function createAttachmentPayload() {
     return await Promise.all(
       files.map(
@@ -1063,7 +1468,8 @@ export function ReplyComposer({
 
           base64:
             await fileToBase64(
-              file
+              file,
+              language
             ),
         })
       )
@@ -1086,7 +1492,7 @@ export function ReplyComposer({
     ) {
       const replace =
         window.confirm(
-          "Replace your current reply with an AI-generated draft?"
+          text.replaceWithAi
         );
 
       if (
@@ -1127,7 +1533,8 @@ export function ReplyComposer({
 
       const result =
         await parseJsonResponse<GenerateReplyResponse>(
-          response
+          response,
+          text.serverError
         );
 
       if (
@@ -1135,9 +1542,13 @@ export function ReplyComposer({
         !result.ok ||
         !result.body
       ) {
+        console.error(
+          "Reply generation API error:",
+          result.error
+        );
+
         throw new Error(
-          result.error ||
-          "Reply generation failed."
+          text.generationFailed
         );
       }
 
@@ -1151,7 +1562,7 @@ export function ReplyComposer({
         generationError instanceof
           Error
           ? generationError.message
-          : "Reply generation failed."
+          : text.generationFailed
       );
     } finally {
       setGenerating(
@@ -1161,8 +1572,56 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     RESET
+     DRAFT
   ======================================================= */
+
+  function clearSavedDraft() {
+    removeStoredReplyDraft(
+      draftStorageKey
+    );
+
+    setDraftExists(
+      false
+    );
+  }
+
+  function discardDraft() {
+    if (
+      busy
+    ) {
+      return;
+    }
+
+    const hasContent =
+      Boolean(
+        body.trim() ||
+        cc.trim() ||
+        bcc.trim()
+      );
+
+    if (
+      hasContent
+    ) {
+      const confirmed =
+        window.confirm(
+          text.discardDraftConfirm
+        );
+
+      if (
+        !confirmed
+      ) {
+        return;
+      }
+    }
+
+    clearSavedDraft();
+
+    resetComposer();
+
+    setOpen(
+      false
+    );
+  }
 
   function resetComposer() {
     setBody(
@@ -1217,7 +1676,25 @@ export function ReplyComposer({
       return;
     }
 
-    resetComposer();
+    if (
+      editingSchedule
+    ) {
+      resetComposer();
+
+      setOpen(
+        false
+      );
+
+      return;
+    }
+
+    setScheduleMenuOpen(
+      false
+    );
+
+    setCustomScheduleOpen(
+      false
+    );
 
     setOpen(
       false
@@ -1225,7 +1702,11 @@ export function ReplyComposer({
   }
 
   function openNewReply() {
-    resetComposer();
+    if (
+      !draftExists
+    ) {
+      resetComposer();
+    }
 
     setOpen(
       true
@@ -1237,7 +1718,7 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     EDIT EXISTING SCHEDULE
+     SCHEDULE EDIT
   ======================================================= */
 
   function openScheduleEditor() {
@@ -1375,7 +1856,7 @@ export function ReplyComposer({
       !body.trim()
     ) {
       setError(
-        "Write a message first."
+        text.writeMessageFirst
       );
 
       return false;
@@ -1397,7 +1878,7 @@ export function ReplyComposer({
       MAX_TOTAL_SIZE
     ) {
       setError(
-        "Attachments may be up to 12 MB in total."
+        text.totalTooLarge
       );
 
       return false;
@@ -1407,7 +1888,7 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     SEND NOW
+     SEND
   ======================================================= */
 
   async function handleSubmit(
@@ -1477,22 +1958,29 @@ export function ReplyComposer({
 
       const result =
         await parseJsonResponse<ReplyApiResponse>(
-          response
+          response,
+          text.serverError
         );
 
       if (
         !response.ok ||
         !result.ok
       ) {
+        console.error(
+          "Reply API error:",
+          result.error
+        );
+
         throw new Error(
-          result.error ||
-          "Reply could not be sent."
+          text.replyCouldNotBeSent
         );
       }
 
       setSchedule(
         null
       );
+
+      clearSavedDraft();
 
       resetComposer();
 
@@ -1520,7 +2008,7 @@ export function ReplyComposer({
         submitError instanceof
           Error
           ? submitError.message
-          : "Reply could not be sent."
+          : text.replyCouldNotBeSent
       );
     } finally {
       setSending(
@@ -1588,7 +2076,8 @@ export function ReplyComposer({
 
       const result =
         await parseJsonResponse<ScheduleReplyResponse>(
-          response
+          response,
+          text.serverError
         );
 
       if (
@@ -1596,15 +2085,21 @@ export function ReplyComposer({
         !result.ok ||
         !result.schedule
       ) {
+        console.error(
+          "Schedule reply API error:",
+          result.error
+        );
+
         throw new Error(
-          result.error ||
-          "Reply could not be scheduled."
+          text.replyCouldNotBeScheduled
         );
       }
 
       setSchedule(
         result.schedule
       );
+
+      clearSavedDraft();
 
       resetComposer();
 
@@ -1620,7 +2115,7 @@ export function ReplyComposer({
         scheduleError instanceof
           Error
           ? scheduleError.message
-          : "Reply could not be scheduled."
+          : text.replyCouldNotBeScheduled
       );
     } finally {
       setScheduling(
@@ -1630,7 +2125,7 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     SAVE EXISTING SCHEDULE
+     SAVE SCHEDULE
   ======================================================= */
 
   async function saveScheduledReply() {
@@ -1652,7 +2147,7 @@ export function ReplyComposer({
       !iso
     ) {
       setError(
-        "Choose a valid date and time."
+        text.validDate
       );
 
       return;
@@ -1698,7 +2193,8 @@ export function ReplyComposer({
 
       const result =
         await parseJsonResponse<ScheduleReplyResponse>(
-          response
+          response,
+          text.serverError
         );
 
       if (
@@ -1706,9 +2202,13 @@ export function ReplyComposer({
         !result.ok ||
         !result.schedule
       ) {
+        console.error(
+          "Update schedule API error:",
+          result.error
+        );
+
         throw new Error(
-          result.error ||
-          "Scheduled reply could not be updated."
+          text.scheduledReplyUpdateFailed
         );
       }
 
@@ -1730,7 +2230,7 @@ export function ReplyComposer({
         updateError instanceof
           Error
           ? updateError.message
-          : "Scheduled reply could not be updated."
+          : text.scheduledReplyUpdateFailed
       );
     } finally {
       setScheduling(
@@ -1740,7 +2240,7 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     CANCEL EXISTING SCHEDULE
+     CANCEL SCHEDULE
   ======================================================= */
 
   async function cancelScheduledReply() {
@@ -1755,7 +2255,7 @@ export function ReplyComposer({
 
     const confirmed =
       window.confirm(
-        "Cancel this scheduled reply? It will not be sent."
+        text.cancelScheduledConfirm
       );
 
     if (
@@ -1786,7 +2286,8 @@ export function ReplyComposer({
 
       const result =
         await parseJsonResponse<ScheduleReplyResponse>(
-          response
+          response,
+          text.serverError
         );
 
       if (
@@ -1794,9 +2295,13 @@ export function ReplyComposer({
         !result.ok ||
         !result.schedule
       ) {
+        console.error(
+          "Cancel schedule API error:",
+          result.error
+        );
+
         throw new Error(
-          result.error ||
-          "Scheduled reply could not be cancelled."
+          text.scheduledReplyCancelFailed
         );
       }
 
@@ -1818,7 +2323,7 @@ export function ReplyComposer({
         cancelError instanceof
           Error
           ? cancelError.message
-          : "Scheduled reply could not be cancelled."
+          : text.scheduledReplyCancelFailed
       );
     } finally {
       setCancelling(
@@ -1828,7 +2333,7 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     CUSTOM SCHEDULE
+     CUSTOM
   ======================================================= */
 
   function handleCustomSchedule() {
@@ -1842,7 +2347,7 @@ export function ReplyComposer({
       !iso
     ) {
       setError(
-        "Choose a valid date and time."
+        text.validDate
       );
 
       return;
@@ -1871,7 +2376,9 @@ export function ReplyComposer({
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Loading reply status...
+              {
+                text.loadingReplyStatus
+              }
             </p>
           </div>
         </div>
@@ -1893,14 +2400,19 @@ export function ReplyComposer({
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-semibold">
-                    Reply scheduled
+                    {
+                      text.replyScheduled
+                    }
                   </h3>
 
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Scheduled for{" "}
+                    {
+                      text.scheduledFor
+                    }{" "}
                     <span className="font-medium text-foreground">
                       {formatScheduledDate(
-                        schedule.scheduledFor
+                        schedule.scheduledFor,
+                        language
                       )}
                     </span>
                     .
@@ -1917,7 +2429,9 @@ export function ReplyComposer({
                   >
                     <Pencil className="size-3.5" />
 
-                    Edit
+                    {
+                      text.edit
+                    }
                   </button>
 
                   <button
@@ -1925,9 +2439,8 @@ export function ReplyComposer({
                     disabled={
                       cancelling
                     }
-                    onClick={
-                      () =>
-                        void cancelScheduledReply()
+                    onClick={() =>
+                      void cancelScheduledReply()
                     }
                     className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-background px-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
                   >
@@ -1937,7 +2450,9 @@ export function ReplyComposer({
                       <Trash2 className="size-3.5" />
                     )}
 
-                    Cancel
+                    {
+                      text.cancel
+                    }
                   </button>
                 </div>
               </div>
@@ -1945,7 +2460,9 @@ export function ReplyComposer({
               {schedule.body ? (
                 <div className="mt-4 rounded-lg border bg-background/70 px-3 py-3">
                   <p className="line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
-                    {schedule.body}
+                    {
+                      schedule.body
+                    }
                   </p>
                 </div>
               ) : null}
@@ -1953,18 +2470,24 @@ export function ReplyComposer({
               {schedule.attachments.length >
               0 ? (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {schedule.attachments.length}{" "}
+                  {
+                    schedule.attachments.length
+                  }{" "}
                   {schedule.attachments.length ===
                   1
-                    ? "attachment"
-                    : "attachments"}{" "}
-                  included
+                    ? text.attachment
+                    : text.attachments}{" "}
+                  {
+                    text.included
+                  }
                 </p>
               ) : null}
 
               {error ? (
                 <p className="mt-3 text-xs text-red-600 dark:text-red-400">
-                  {error}
+                  {
+                    error
+                  }
                 </p>
               ) : null}
             </div>
@@ -1990,13 +2513,15 @@ export function ReplyComposer({
 
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold">
-                Scheduled reply cancelled
+                {
+                  text.scheduledReplyCancelled
+                }
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 {cancelledByReply
-                  ? "The scheduled reply was cancelled automatically because the lead replied before it was sent."
-                  : "The scheduled reply was cancelled and will not be sent."}
+                  ? text.cancelledByReply
+                  : text.cancelledNormally}
               </p>
 
               <button
@@ -2008,7 +2533,9 @@ export function ReplyComposer({
               >
                 <MessageSquareReply className="size-4" />
 
-                Write reply
+                {
+                  text.writeReply
+                }
               </button>
             </div>
           </div>
@@ -2029,16 +2556,24 @@ export function ReplyComposer({
 
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold">
-                Scheduled reply failed
+                {
+                  text.scheduledReplyFailed
+                }
               </h3>
 
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                The scheduled reply could not be sent.
+                {
+                  text.scheduledReplyCouldNotBeSent
+                }
               </p>
 
-              {schedule.lastError ? (
+              {schedule.lastError &&
+              language ===
+              "en" ? (
                 <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                  {schedule.lastError}
+                  {
+                    schedule.lastError
+                  }
                 </p>
               ) : null}
 
@@ -2051,8 +2586,68 @@ export function ReplyComposer({
               >
                 <Pencil className="size-4" />
 
-                Edit & reschedule
+                {
+                  text.editReschedule
+                }
               </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (
+      draftExists
+    ) {
+      return (
+        <div className="mt-8 rounded-xl border bg-muted/20 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background">
+              <Pencil className="size-4" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold">
+                {
+                  text.draftSaved
+                }
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {
+                  text.draftSavedDescription
+                }
+              </p>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={
+                    openNewReply
+                  }
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                >
+                  <Pencil className="size-4" />
+
+                  {
+                    text.continueDraft
+                  }
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    discardDraft
+                  }
+                  className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Trash2 className="size-4" />
+
+                  {
+                    text.discard
+                  }
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2068,18 +2663,26 @@ export function ReplyComposer({
 
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-semibold">
-              Reply
+              {
+                text.reply
+              }
             </h3>
 
             {sent ? (
               <p className="mt-1 text-sm text-emerald-600 dark:text-emerald-400">
-                Reply sent successfully.
+                {
+                  text.replySent
+                }
               </p>
             ) : (
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Reply directly to{" "}
+                {
+                  text.replyDirectlyTo
+                }{" "}
                 <span className="font-medium text-foreground">
-                  {recipientName}
+                  {
+                    recipientName
+                  }
                 </span>
                 .
               </p>
@@ -2094,7 +2697,9 @@ export function ReplyComposer({
             >
               <MessageSquareReply className="size-4" />
 
-              Write reply
+              {
+                text.writeReply
+              }
             </button>
           </div>
         </div>
@@ -2103,13 +2708,11 @@ export function ReplyComposer({
   }
 
   /* =======================================================
-     OPEN COMPOSER
+     OPEN
   ======================================================= */
 
   return (
     <div className="mt-8 overflow-visible rounded-xl border bg-background shadow-sm">
-      {/* HEADER */}
-
       <div className="flex items-center justify-between border-b px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-lg border bg-muted/20">
@@ -2123,14 +2726,16 @@ export function ReplyComposer({
           <div>
             <h3 className="text-sm font-semibold">
               {editingSchedule
-                ? "Edit scheduled reply"
-                : "Reply"}
+                ? text.editScheduledReply
+                : text.reply}
             </h3>
 
             <p className="mt-0.5 text-xs text-muted-foreground">
               {editingSchedule
-                ? "Update the message or scheduled send time."
-                : "Replying in the latest Gmail thread"}
+                ? text.updateScheduledMessage
+                : draftExists
+                  ? text.draftSavedAutomatically
+                  : text.replyingLatestThread}
             </p>
           </div>
         </div>
@@ -2144,22 +2749,31 @@ export function ReplyComposer({
             closeComposer
           }
           className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          title={
+            text.close
+          }
         >
           <X className="size-4" />
         </button>
       </div>
 
-      {/* RECIPIENT */}
+      {/* ===================================================
+          RECIPIENT
+      =================================================== */}
 
       <div className="border-b bg-muted/10">
         <div className="flex min-h-12 items-center gap-3 px-5 text-sm">
           <span className="w-8 shrink-0 text-xs text-muted-foreground">
-            To
+            {
+              text.to
+            }
           </span>
 
           <div className="min-w-0 flex flex-1 items-center gap-2">
             <span className="truncate font-medium">
-              {recipientName}
+              {
+                recipientName
+              }
             </span>
 
             <span className="truncate text-xs text-muted-foreground">
@@ -2174,11 +2788,10 @@ export function ReplyComposer({
                 disabled={
                   busy
                 }
-                onClick={
-                  () =>
-                    setShowCc(
-                      true
-                    )
+                onClick={() =>
+                  setShowCc(
+                    true
+                  )
                 }
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
@@ -2192,11 +2805,10 @@ export function ReplyComposer({
                 disabled={
                   busy
                 }
-                onClick={
-                  () =>
-                    setShowBcc(
-                      true
-                    )
+                onClick={() =>
+                  setShowBcc(
+                    true
+                  )
                 }
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
@@ -2219,13 +2831,12 @@ export function ReplyComposer({
               disabled={
                 busy
               }
-              onChange={
-                (
-                  event
-                ) =>
-                  setCc(
-                    event.target.value
-                  )
+              onChange={(
+                event
+              ) =>
+                setCc(
+                  event.target.value
+                )
               }
               placeholder="name@example.com"
               className="min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -2236,17 +2847,15 @@ export function ReplyComposer({
               disabled={
                 busy
               }
-              onClick={
-                () => {
-                  setCc(
-                    ""
-                  );
+              onClick={() => {
+                setCc(
+                  ""
+                );
 
-                  setShowCc(
-                    false
-                  );
-                }
-              }
+                setShowCc(
+                  false
+                );
+              }}
             >
               <X className="size-3.5" />
             </button>
@@ -2266,13 +2875,12 @@ export function ReplyComposer({
               disabled={
                 busy
               }
-              onChange={
-                (
-                  event
-                ) =>
-                  setBcc(
-                    event.target.value
-                  )
+              onChange={(
+                event
+              ) =>
+                setBcc(
+                  event.target.value
+                )
               }
               placeholder="hidden@example.com"
               className="min-w-0 flex-1 bg-transparent text-sm outline-none"
@@ -2283,17 +2891,15 @@ export function ReplyComposer({
               disabled={
                 busy
               }
-              onClick={
-                () => {
-                  setBcc(
-                    ""
-                  );
+              onClick={() => {
+                setBcc(
+                  ""
+                );
 
-                  setShowBcc(
-                    false
-                  );
-                }
-              }
+                setShowBcc(
+                  false
+                );
+              }}
             >
               <X className="size-3.5" />
             </button>
@@ -2301,14 +2907,12 @@ export function ReplyComposer({
         ) : null}
       </div>
 
-      {/* FORM */}
-
       <form
         onSubmit={
           handleSubmit
         }
       >
-        <div className="px-5 py-5">
+        <div className="px-4 py-5 sm:px-5">
           <textarea
             value={
               body
@@ -2317,18 +2921,17 @@ export function ReplyComposer({
             disabled={
               busy
             }
-            onChange={
-              (
-                event
-              ) =>
-                setBody(
-                  event.target.value
-                )
+            onChange={(
+              event
+            ) =>
+              setBody(
+                event.target.value
+              )
             }
             placeholder={
               generating
-                ? "Generating reply..."
-                : "Write your reply..."
+                ? text.generatingReply
+                : text.writeYourReply
             }
             rows={
               8
@@ -2336,14 +2939,18 @@ export function ReplyComposer({
             className="min-h-[180px] w-full resize-y bg-transparent p-0 text-sm leading-7 outline-none disabled:opacity-60"
           />
 
-          {/* NEW ATTACHMENTS */}
+          {/* =================================================
+              NEW ATTACHMENTS
+          ================================================= */}
 
           {files.length >
           0 ? (
             <div className="mt-5 border-t pt-4">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs font-medium">
-                  Attachments
+                  {
+                    text.attachments
+                  }
                 </p>
 
                 <p className="text-[11px] text-muted-foreground">
@@ -2358,7 +2965,9 @@ export function ReplyComposer({
                       0
                     )
                   )}{" "}
-                  total
+                  {
+                    text.total
+                  }
                 </p>
               </div>
 
@@ -2372,11 +2981,13 @@ export function ReplyComposer({
                       key={`${file.name}-${file.size}-${file.lastModified}`}
                       className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5"
                     >
-                      <File className="size-4 shrink-0" />
+                      <FileIcon className="size-4 shrink-0" />
 
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium">
-                          {file.name}
+                          {
+                            file.name
+                          }
                         </p>
 
                         <p className="text-[11px] text-muted-foreground">
@@ -2391,11 +3002,10 @@ export function ReplyComposer({
                         disabled={
                           busy
                         }
-                        onClick={
-                          () =>
-                            removeFile(
-                              index
-                            )
+                        onClick={() =>
+                          removeFile(
+                            index
+                          )
                         }
                       >
                         <X className="size-3.5" />
@@ -2407,13 +3017,17 @@ export function ReplyComposer({
             </div>
           ) : null}
 
-          {/* EXISTING SCHEDULED ATTACHMENTS */}
+          {/* =================================================
+              EXISTING ATTACHMENTS
+          ================================================= */}
 
           {editingSchedule &&
           schedule?.attachments.length ? (
             <div className="mt-5 border-t pt-4">
               <p className="text-xs font-medium">
-                Existing attachments
+                {
+                  text.existingAttachments
+                }
               </p>
 
               <div className="mt-3 space-y-2">
@@ -2425,11 +3039,13 @@ export function ReplyComposer({
                       key={`${attachment.name}-${attachment.size}`}
                       className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5"
                     >
-                      <File className="size-4 shrink-0" />
+                      <FileIcon className="size-4 shrink-0" />
 
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium">
-                          {attachment.name}
+                          {
+                            attachment.name
+                          }
                         </p>
 
                         <p className="text-[11px] text-muted-foreground">
@@ -2444,12 +3060,16 @@ export function ReplyComposer({
               </div>
 
               <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
-                Existing attachments are preserved when editing. Cancel and create a new scheduled reply to change them.
+                {
+                  text.existingAttachmentsDescription
+                }
               </p>
             </div>
           ) : null}
 
-          {/* SCHEDULE EDITOR */}
+          {/* =================================================
+              SCHEDULE
+          ================================================= */}
 
           {customScheduleOpen ? (
             <div className="mt-5 rounded-xl border bg-muted/20 p-4">
@@ -2461,12 +3081,15 @@ export function ReplyComposer({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">
                     {editingSchedule
-                      ? "Scheduled send time"
-                      : "Schedule reply"}
+                      ? text.scheduledSendTime
+                      : text.scheduleReply}
                   </p>
 
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Time zone: Europe/Berlin
+                    {
+                      text.timeZone
+                    }
+                    : Europe/Berlin
                   </p>
 
                   <input
@@ -2477,13 +3100,12 @@ export function ReplyComposer({
                     disabled={
                       busy
                     }
-                    onChange={
-                      (
-                        event
-                      ) =>
-                        setCustomDateTime(
-                          event.target.value
-                        )
+                    onChange={(
+                      event
+                    ) =>
+                      setCustomDateTime(
+                        event.target.value
+                      )
                     }
                     className="mt-4 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none"
                   />
@@ -2495,15 +3117,16 @@ export function ReplyComposer({
                         disabled={
                           busy
                         }
-                        onClick={
-                          () =>
-                            setCustomScheduleOpen(
-                              false
-                            )
+                        onClick={() =>
+                          setCustomScheduleOpen(
+                            false
+                          )
                         }
                         className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
                       >
-                        Cancel
+                        {
+                          text.cancel
+                        }
                       </button>
 
                       <button
@@ -2522,7 +3145,9 @@ export function ReplyComposer({
                           <Clock3 className="size-4" />
                         )}
 
-                        Schedule
+                        {
+                          text.schedule
+                        }
                       </button>
                     </div>
                   ) : null}
@@ -2531,19 +3156,28 @@ export function ReplyComposer({
             </div>
           ) : null}
 
-          {/* ERROR */}
+          {/* =================================================
+              ERROR
+          ================================================= */}
 
           {error ? (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-              {error}
+              {
+                error
+              }
             </div>
           ) : null}
 
-          {/* SIGNATURE */}
+          {/* =================================================
+              SIGNATURE
+          ================================================= */}
 
           <div className="mt-6 border-t pt-5 text-sm leading-6">
             <p className="text-muted-foreground">
-              Mit freundlichen Grüßen / Kind regards,
+              {language ===
+              "de"
+                ? "Mit freundlichen Grüßen,"
+                : "Kind regards,"}
             </p>
 
             <div className="mt-4">
@@ -2558,12 +3192,12 @@ export function ReplyComposer({
           </div>
         </div>
 
-        {/* FOOTER */}
+        {/* =================================================
+            FOOTER
+        ================================================= */}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-5 py-3">
-          {/* LEFT */}
-
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               ref={
                 fileInputRef
@@ -2586,17 +3220,16 @@ export function ReplyComposer({
                 busy ||
                 editingSchedule
               }
-              onClick={
-                () =>
-                  fileInputRef
-                    .current
-                    ?.click()
+              onClick={() =>
+                fileInputRef
+                  .current
+                  ?.click()
               }
               className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
               title={
                 editingSchedule
-                  ? "Attachments are preserved while editing"
-                  : "Attach files"
+                  ? text.attachmentsPreserved
+                  : text.attachFiles
               }
             >
               <Paperclip className="size-4" />
@@ -2615,18 +3248,22 @@ export function ReplyComposer({
               {generating ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Generating...
+
+                  {
+                    text.generating
+                  }
                 </>
               ) : (
                 <>
                   <Sparkles className="size-4" />
-                  Generate reply
+
+                  {
+                    text.generateReply
+                  }
                 </>
               )}
             </button>
           </div>
-
-          {/* RIGHT */}
 
           {editingSchedule ? (
             <div className="flex items-center gap-2">
@@ -2640,7 +3277,9 @@ export function ReplyComposer({
                 }
                 className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
               >
-                Discard changes
+                {
+                  text.discardChanges
+                }
               </button>
 
               <button
@@ -2649,9 +3288,8 @@ export function ReplyComposer({
                   busy ||
                   !body.trim()
                 }
-                onClick={
-                  () =>
-                    void saveScheduledReply()
+                onClick={() =>
+                  void saveScheduledReply()
                 }
                 className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
               >
@@ -2661,11 +3299,32 @@ export function ReplyComposer({
                   <Clock3 className="size-4" />
                 )}
 
-                Save changes
+                {
+                  text.saveChanges
+                }
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  busy
+                }
+                onClick={
+                  discardDraft
+                }
+                className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                title={
+                  text.discardDraft
+                }
+                aria-label={
+                  text.discardDraft
+                }
+              >
+                <Trash2 className="size-4" />
+              </button>
+
               <button
                 type="button"
                 disabled={
@@ -2676,10 +3335,10 @@ export function ReplyComposer({
                 }
                 className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
               >
-                Cancel
+                {
+                  text.close
+                }
               </button>
-
-              {/* SEND SPLIT BUTTON */}
 
               <div className="relative flex">
                 <button
@@ -2693,12 +3352,18 @@ export function ReplyComposer({
                   {sending ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
-                      Sending...
+
+                      {
+                        text.sending
+                      }
                     </>
                   ) : (
                     <>
                       <Send className="size-4" />
-                      Send reply
+
+                      {
+                        text.sendReply
+                      }
                     </>
                   )}
                 </button>
@@ -2709,17 +3374,18 @@ export function ReplyComposer({
                     busy ||
                     !body.trim()
                   }
-                  onClick={
-                    () =>
-                      setScheduleMenuOpen(
-                        (
-                          current
-                        ) =>
-                          !current
-                      )
+                  onClick={() =>
+                    setScheduleMenuOpen(
+                      (
+                        current
+                      ) =>
+                        !current
+                    )
                   }
                   className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-foreground text-background hover:opacity-90 disabled:opacity-50"
-                  aria-label="Schedule send"
+                  aria-label={
+                    text.scheduleSend
+                  }
                 >
                   <ChevronDown className="size-4" />
                 </button>
@@ -2728,7 +3394,9 @@ export function ReplyComposer({
                   <div className="absolute bottom-11 right-0 z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl">
                     <div className="px-2 py-2">
                       <p className="text-xs font-semibold">
-                        Send later
+                        {
+                          text.sendLater
+                        }
                       </p>
 
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -2739,29 +3407,30 @@ export function ReplyComposer({
                     {laterToday ? (
                       <button
                         type="button"
-                        onClick={
-                          () => {
-                            setScheduleMenuOpen(
-                              false
-                            );
+                        onClick={() => {
+                          setScheduleMenuOpen(
+                            false
+                          );
 
-                            void scheduleReply(
-                              laterToday.toISOString()
-                            );
-                          }
-                        }
+                          void scheduleReply(
+                            laterToday.toISOString()
+                          );
+                        }}
                         className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
                       >
                         <Clock3 className="size-4 text-muted-foreground" />
 
                         <div>
                           <p className="text-sm font-medium">
-                            Later today
+                            {
+                              text.laterToday
+                            }
                           </p>
 
                           <p className="text-xs text-muted-foreground">
                             {formatTimeOnly(
-                              laterToday
+                              laterToday,
+                              language
                             )}
                           </p>
                         </div>
@@ -2770,37 +3439,37 @@ export function ReplyComposer({
 
                     <button
                       type="button"
-                      onClick={
-                        () => {
-                          const iso =
-                            getTomorrowMorningIso();
+                      onClick={() => {
+                        const iso =
+                          getTomorrowMorningIso();
 
-                          if (
-                            !iso
-                          ) {
-                            setError(
-                              "Could not calculate tomorrow morning."
-                            );
-
-                            return;
-                          }
-
-                          setScheduleMenuOpen(
-                            false
+                        if (
+                          !iso
+                        ) {
+                          setError(
+                            text.tomorrowCalculationFailed
                           );
 
-                          void scheduleReply(
-                            iso
-                          );
+                          return;
                         }
-                      }
+
+                        setScheduleMenuOpen(
+                          false
+                        );
+
+                        void scheduleReply(
+                          iso
+                        );
+                      }}
                       className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
                     >
                       <CalendarClock className="size-4 text-muted-foreground" />
 
                       <div>
                         <p className="text-sm font-medium">
-                          Tomorrow morning
+                          {
+                            text.tomorrowMorning
+                          }
                         </p>
 
                         <p className="text-xs text-muted-foreground">
@@ -2811,28 +3480,30 @@ export function ReplyComposer({
 
                     <button
                       type="button"
-                      onClick={
-                        () => {
-                          setScheduleMenuOpen(
-                            false
-                          );
+                      onClick={() => {
+                        setScheduleMenuOpen(
+                          false
+                        );
 
-                          setCustomScheduleOpen(
-                            true
-                          );
-                        }
-                      }
+                        setCustomScheduleOpen(
+                          true
+                        );
+                      }}
                       className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
                     >
                       <CalendarClock className="size-4 text-muted-foreground" />
 
                       <div>
                         <p className="text-sm font-medium">
-                          Custom date & time
+                          {
+                            text.customDateTime
+                          }
                         </p>
 
                         <p className="text-xs text-muted-foreground">
-                          Choose exactly when to send
+                          {
+                            text.chooseSendTime
+                          }
                         </p>
                       </div>
                     </button>

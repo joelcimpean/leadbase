@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
 
 import {
-  Building2,
   Loader2,
   MapPin,
   Search,
@@ -22,6 +22,14 @@ import {
 } from "./actions";
 
 import {
+  IndustryAutocomplete,
+} from "@/components/industry-autocomplete";
+
+import {
+  useLanguage,
+} from "@/components/language-provider";
+
+import {
   Button,
 } from "@/components/ui/button";
 
@@ -33,8 +41,18 @@ import {
   Label,
 } from "@/components/ui/label";
 
+import {
+  acquisitionCopy,
+  getCampaignStatusLabel,
+} from "@/lib/acquisition-i18n";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
 export type FindLeadsCampaign = {
   id: string;
+
   name: string;
 
   target_industry:
@@ -48,25 +66,46 @@ export type FindLeadsCampaign = {
   status: string;
 };
 
+/* =========================================================
+   COMPONENT
+========================================================= */
+
 export function FindLeadsSearchForm({
   campaigns,
 }: {
-  campaigns: FindLeadsCampaign[];
+  campaigns:
+    FindLeadsCampaign[];
 }) {
+  const {
+    language,
+  } =
+    useLanguage();
+
+  const text =
+    acquisitionCopy[
+      language
+    ].findLeads;
+
   const activeCampaigns =
     useMemo(
       () =>
         campaigns.filter(
-          (campaign) =>
+          (
+            campaign
+          ) =>
             campaign.status !==
             "ARCHIVED"
         ),
-      [campaigns]
+      [
+        campaigns,
+      ]
     );
 
   const firstCampaign =
     activeCampaigns.find(
-      (campaign) =>
+      (
+        campaign
+      ) =>
         campaign.status ===
         "ACTIVE"
     ) ??
@@ -76,193 +115,340 @@ export function FindLeadsSearchForm({
   const [
     campaignId,
     setCampaignId,
-  ] = useState(
-    firstCampaign?.id ?? ""
-  );
-
-  const selectedCampaign =
-    activeCampaigns.find(
-      (campaign) =>
-        campaign.id ===
-        campaignId
-    ) ?? null;
+  ] =
+    useState(
+      firstCampaign?.id ??
+        ""
+    );
 
   const [
     industry,
     setIndustry,
-  ] = useState(
-    firstCampaign
-      ?.target_industry ?? ""
-  );
+  ] =
+    useState(
+      firstCampaign
+        ?.target_industry ??
+        ""
+    );
 
   const [
     location,
     setLocation,
-  ] = useState(
-    firstCampaign
-      ?.target_geography ?? ""
-  );
+  ] =
+    useState(
+      firstCampaign
+        ?.target_geography ??
+        ""
+    );
 
   const [
     resultLimit,
     setResultLimit,
-  ] = useState("20");
+  ] =
+    useState(
+      "20"
+    );
+
+  /* =======================================================
+     CAMPAIGN FROM URL
+
+     /find-leads?campaign=...
+  ======================================================= */
+
+  useEffect(
+    () => {
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const requestedCampaignId =
+        params.get(
+          "campaign"
+        );
+
+      if (
+        !requestedCampaignId
+      ) {
+        return;
+      }
+
+      const requestedCampaign =
+        activeCampaigns.find(
+          (
+            campaign
+          ) =>
+            campaign.id ===
+            requestedCampaignId
+        );
+
+      if (
+        !requestedCampaign
+      ) {
+        return;
+      }
+
+      setCampaignId(
+        requestedCampaign.id
+      );
+
+      setIndustry(
+        requestedCampaign
+          .target_industry ??
+          ""
+      );
+
+      setLocation(
+        requestedCampaign
+          .target_geography ??
+          ""
+      );
+    },
+    [
+      activeCampaigns,
+    ]
+  );
+
+  const selectedCampaign =
+    activeCampaigns.find(
+      (
+        campaign
+      ) =>
+        campaign.id ===
+        campaignId
+    ) ??
+    null;
+
+  /* =======================================================
+     CAMPAIGN CHANGE
+  ======================================================= */
 
   function handleCampaignChange(
-    nextCampaignId: string
+    nextCampaignId:
+      string
   ) {
     setCampaignId(
       nextCampaignId
     );
 
-    const campaign =
+    const nextCampaign =
       activeCampaigns.find(
-        (item) =>
-          item.id ===
+        (
+          campaign
+        ) =>
+          campaign.id ===
           nextCampaignId
-      ) ?? null;
-
-    if (!campaign) {
-      return;
-    }
+      );
 
     setIndustry(
-      campaign.target_industry ??
+      nextCampaign
+        ?.target_industry ??
         ""
     );
 
     setLocation(
-      campaign.target_geography ??
+      nextCampaign
+        ?.target_geography ??
         ""
     );
   }
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
     <form
-      action={runLeadSearch}
+      action={
+        runLeadSearch
+      }
     >
-      <div className="grid gap-5 lg:grid-cols-2">
-        {/* CAMPAIGN */}
+      <div className="grid gap-5 lg:grid-cols-2 lg:gap-x-6">
+        {/* =================================================
+            CAMPAIGN
+        ================================================= */}
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="campaignId">
-            Campaign
+            {
+              text.campaign
+            }
           </Label>
 
           <div className="relative">
-            <Target className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Target className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
 
             <select
               id="campaignId"
               name="campaignId"
-              value={campaignId}
-              onChange={(event) =>
+              value={
+                campaignId
+              }
+              onChange={(
+                event
+              ) =>
                 handleCampaignChange(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              className="h-10 w-full rounded-lg border bg-background pl-9 pr-3 text-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-ring"
+              className="h-11 w-full min-w-0 appearance-none rounded-lg border bg-background pl-10 pr-10 text-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-ring sm:h-10"
+              required
             >
               {activeCampaigns.length ===
               0 ? (
                 <option value="">
-                  No campaigns
-                  available
+                  {
+                    text.noCampaignsAvailable
+                  }
                 </option>
-              ) : (
-                activeCampaigns.map(
-                  (campaign) => (
-                    <option
-                      key={
-                        campaign.id
-                      }
-                      value={
-                        campaign.id
-                      }
-                    >
-                      {
-                        campaign.name
-                      }
+              ) : null}
 
-                      {campaign.status !==
-                      "ACTIVE"
-                        ? ` · ${campaign.status.toLowerCase()}`
-                        : ""}
-                    </option>
-                  )
+              {activeCampaigns.map(
+                (
+                  campaign
+                ) => (
+                  <option
+                    key={
+                      campaign.id
+                    }
+                    value={
+                      campaign.id
+                    }
+                  >
+                    {campaign.name} ·{" "}
+                    {getCampaignStatusLabel(
+                      campaign.status,
+                      language
+                    )}
+                  </option>
                 )
               )}
             </select>
+
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            >
+              <path
+                d="m6 8 4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </div>
+
+          {selectedCampaign ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              {
+                text.newLeadsSaved
+              }
+            </p>
+          ) : null}
         </div>
 
-        {/* RESULTS */}
+        {/* =================================================
+            RESULTS
+        ================================================= */}
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="resultLimit">
-            Results
+            {
+              text.resultLimit
+            }
           </Label>
 
           <select
             id="resultLimit"
             name="resultLimit"
-            value={resultLimit}
-            onChange={(event) =>
+            value={
+              resultLimit
+            }
+            onChange={(
+              event
+            ) =>
               setResultLimit(
                 event.target.value
               )
             }
-            className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-ring"
+            className="h-11 w-full min-w-0 rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-ring sm:h-10"
           >
             <option value="10">
-              10 companies
+              10{" "}
+              {
+                text.companies
+              }
             </option>
 
             <option value="20">
-              20 companies
+              20{" "}
+              {
+                text.companies
+              }
             </option>
 
             <option value="40">
-              40 companies
+              40{" "}
+              {
+                text.companies
+              }
             </option>
 
             <option value="60">
-              60 companies
+              60{" "}
+              {
+                text.companies
+              }
             </option>
           </select>
         </div>
 
-        {/* INDUSTRY */}
+        {/* =================================================
+            INDUSTRY
+        ================================================= */}
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="industry">
-            Industry
+            {
+              text.industry
+            }
           </Label>
 
-          <div className="relative">
-            <Building2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <IndustryAutocomplete
+            id="industry"
+            name="industry"
+            value={
+              industry
+            }
+            onValueChange={
+              setIndustry
+            }
+            placeholder={
+              text.industryPlaceholder
+            }
+            required
+          />
 
-            <Input
-              id="industry"
-              name="industry"
-              value={industry}
-              onChange={(event) =>
-                setIndustry(
-                  event.target.value
-                )
-              }
-              placeholder="e.g. Garten- und Landschaftsbau"
-              className="h-10 pl-9"
-              required
-            />
-          </div>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {
+              text.industryHint
+            }
+          </p>
         </div>
 
-        {/* LOCATION */}
+        {/* =================================================
+            LOCATION
+        ================================================= */}
 
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label htmlFor="location">
-            Location
+            {
+              text.location
+            }
           </Label>
 
           <div className="relative">
@@ -271,38 +457,56 @@ export function FindLeadsSearchForm({
             <Input
               id="location"
               name="location"
-              value={location}
-              onChange={(event) =>
+              value={
+                location
+              }
+              onChange={(
+                event
+              ) =>
                 setLocation(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
-              placeholder="e.g. Baden-Württemberg"
-              className="h-10 pl-9"
+              placeholder={
+                text.locationPlaceholder
+              }
+              className="h-11 pl-9 sm:h-10"
               required
             />
           </div>
+
+          <p className="text-xs leading-5 text-muted-foreground">
+            {
+              text.locationHint
+            }
+          </p>
         </div>
       </div>
 
-      {/* QUERY PREVIEW */}
+      {/* ===================================================
+          QUERY PREVIEW
+      =================================================== */}
 
-      <div className="mt-6 rounded-xl border bg-muted/20 px-4 py-4">
+      <div className="mt-5 min-w-0 rounded-xl border bg-muted/20 px-4 py-4 sm:mt-6">
         <p className="text-xs font-medium text-muted-foreground">
-          Search query
+          {
+            text.searchQuery
+          }
         </p>
 
-        <p className="mt-1.5 text-sm font-medium">
+        <p className="mt-1.5 break-words text-sm font-medium">
           {industry.trim() &&
           location.trim()
             ? `${industry.trim()} in ${location.trim()}`
-            : "Complete industry and location to build a search query."}
+            : text.incompleteQuery}
         </p>
 
         {selectedCampaign ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Results will be
-            assigned to{" "}
+          <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
+            {
+              text.savedToCampaign
+            }{" "}
             <span className="font-medium text-foreground">
               {
                 selectedCampaign.name
@@ -313,25 +517,34 @@ export function FindLeadsSearchForm({
         ) : null}
       </div>
 
-      {/* ACTION */}
+      {/* ===================================================
+          ACTION
+      =================================================== */}
 
-      <div className="mt-6 flex items-center justify-between gap-4">
-        <p className="text-xs text-muted-foreground">
-          Search powered by Google
-          Places.
+      <div className="mt-5 flex flex-col gap-3 sm:mt-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <p className="order-2 text-center text-xs text-muted-foreground sm:order-1 sm:text-left">
+          {
+            text.poweredBy
+          }
         </p>
 
-        <SearchButton
-          disabled={
-            !campaignId ||
-            !industry.trim() ||
-            !location.trim()
-          }
-        />
+        <div className="order-1 w-full sm:order-2 sm:w-auto">
+          <SearchButton
+            disabled={
+              !campaignId ||
+              !industry.trim() ||
+              !location.trim()
+            }
+          />
+        </div>
       </div>
     </form>
   );
 }
+
+/* =========================================================
+   SEARCH BUTTON
+========================================================= */
 
 function SearchButton({
   disabled,
@@ -339,8 +552,19 @@ function SearchButton({
   disabled: boolean;
 }) {
   const {
+    language,
+  } =
+    useLanguage();
+
+  const text =
+    acquisitionCopy[
+      language
+    ].findLeads;
+
+  const {
     pending,
-  } = useFormStatus();
+  } =
+    useFormStatus();
 
   return (
     <Button
@@ -349,19 +573,23 @@ function SearchButton({
         disabled ||
         pending
       }
-      className="h-10 min-w-[120px] gap-2 px-4"
+      className="h-11 w-full gap-2 px-4 sm:h-10 sm:min-w-[120px] sm:w-auto"
     >
       {pending ? (
         <>
           <Loader2 className="size-4 animate-spin" />
 
-          Searching...
+          {
+            text.searching
+          }
         </>
       ) : (
         <>
           <Search className="size-4" />
 
-          Find leads
+          {
+            text.findLeads
+          }
         </>
       )}
     </Button>
