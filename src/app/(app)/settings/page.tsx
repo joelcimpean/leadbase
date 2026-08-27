@@ -9,11 +9,16 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 
 import {
   LanguageSelector,
 } from "@/components/language-selector";
+
+import {
+  LeadSearchReset,
+} from "./lead-search-reset";
 
 import {
   ThemeSelector,
@@ -79,6 +84,24 @@ export default async function SettingsPage({
     languageCopy[
       language
     ].settings;
+
+  const resetText =
+    language ===
+    "de"
+      ? {
+          title:
+            "Lead-Suche zurücksetzen",
+
+          description:
+            "Löscht deine bisherige Find-Leads-Suchhistorie und alle noch offenen, gespeicherten oder verworfenen Suchkandidaten. Bestehende CRM-Leads bleiben erhalten und weiterhin vor Duplikaten geschützt.",
+        }
+      : {
+          title:
+            "Reset lead discovery",
+
+          description:
+            "Deletes your Find Leads search history and all discovered, saved or rejected search candidates. Existing CRM leads remain untouched and continue to be protected from duplicates.",
+        };
 
   const {
     data: {
@@ -430,6 +453,24 @@ export default async function SettingsPage({
               }
             />
           </div>
+        </SettingsSection>
+
+        {/* =================================================
+            RESET LEAD DISCOVERY
+        ================================================= */}
+
+        <SettingsSection
+          icon={
+            Trash2
+          }
+          title={
+            resetText.title
+          }
+          description={
+            resetText.description
+          }
+        >
+          <LeadSearchReset />
         </SettingsSection>
 
         {/* =================================================

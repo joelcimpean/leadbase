@@ -1,9 +1,70 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import {
+  revalidatePath,
+} from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  redirect,
+} from "next/navigation";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+/* =========================================================
+   WEBSITE DOMAIN
+========================================================= */
+
+function normalizeDomain(
+  value:
+    | string
+    | null
+    | undefined
+) {
+  if (
+    !value
+  ) {
+    return null;
+  }
+
+  const trimmed =
+    value
+      .trim()
+      .toLowerCase();
+
+  if (
+    !trimmed
+  ) {
+    return null;
+  }
+
+  try {
+    const url =
+      new URL(
+        trimmed.startsWith(
+          "http://"
+        ) ||
+          trimmed.startsWith(
+            "https://"
+          )
+          ? trimmed
+          : `https://${trimmed}`
+      );
+
+    return url.hostname
+      .toLowerCase()
+      .replace(
+        /^www\./,
+        ""
+      );
+  } catch {
+    return trimmed.replace(
+      /^www\./,
+      ""
+    );
+  }
+}
 
 /* =========================================================
    ADD CANDIDATE TO CRM
@@ -13,10 +74,13 @@ export async function saveCandidateAsLead(
   formData: FormData
 ) {
   const candidateId =
-    formData.get("candidateId");
+    formData.get(
+      "candidateId"
+    );
 
   if (
-    typeof candidateId !== "string" ||
+    typeof candidateId !==
+      "string" ||
     !candidateId
   ) {
     return;
@@ -26,40 +90,60 @@ export async function saveCandidateAsLead(
     await createClient();
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
+  if (
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
   }
 
-  /* ---------------------------------------------------------
+  /* =======================================================
      LOAD CANDIDATE
-  --------------------------------------------------------- */
+  ======================================================= */
 
   const {
-    data: candidate,
-    error: candidateError,
-  } = await supabase
-    .from("lead_candidates")
-    .select(`
-      id,
-      campaign_id,
-      lead_id,
-      external_id,
-      name,
-      website_url,
-      website_domain,
-      phone,
-      formatted_address,
-      website_score,
-      opportunity_score,
-      status
-    `)
-    .eq("id", candidateId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+    data:
+      candidate,
+
+    error:
+      candidateError,
+  } =
+    await supabase
+      .from(
+        "lead_candidates"
+      )
+      .select(`
+        id,
+        campaign_id,
+        lead_id,
+        external_id,
+        name,
+        website_url,
+        website_domain,
+        phone,
+        formatted_address,
+        latitude,
+        longitude,
+        website_score,
+        opportunity_score,
+        status
+      `)
+      .eq(
+        "id",
+        candidateId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
 
   if (
     candidateError ||
@@ -73,16 +157,17 @@ export async function saveCandidateAsLead(
     return;
   }
 
-  /* Already saved */
-
   if (
-    candidate.status === "SAVED" &&
+    candidate.status ===
+      "SAVED" &&
     candidate.lead_id
   ) {
     return;
   }
 
-  if (!candidate.campaign_id) {
+  if (
+    !candidate.campaign_id
+  ) {
     console.error(
       "Candidate has no campaign."
     );
@@ -90,84 +175,389 @@ export async function saveCandidateAsLead(
     return;
   }
 
-  /* ---------------------------------------------------------
-     FIND EXISTING COMPANY
-  --------------------------------------------------------- */
+  const candidateDomain =
+    normalizeDomain(
+      candidate.website_domain ??
+        candidate.website_url
+    );
+
+  /* =======================================================
+     FIND COMPANY BY GOOGLE PLACE ID
+  ======================================================= */
 
   let companyId:
     | string
-    | null = null;
-
-  const {
-    data: existingCompany,
-    error: existingCompanyError,
-  } = await supabase
-    .from("companies")
-    .select("id")
-    .eq(
-      "user_id",
-      user.id
-    )
-    .eq(
-      "google_place_id",
-      candidate.external_id
-    )
-    .limit(1)
-    .maybeSingle();
+    | null =
+    null;
 
   if (
-    existingCompanyError
+    candidate.external_id
   ) {
-    console.error(
-      "Could not check existing company:",
-      existingCompanyError
-    );
-
-    return;
-  }
-
-  if (existingCompany) {
-    companyId =
-      existingCompany.id;
-  }
-
-  /* ---------------------------------------------------------
-     CREATE COMPANY
-  --------------------------------------------------------- */
-
-  if (!companyId) {
     const {
-      data: company,
-      error: companyError,
-    } = await supabase
-      .from("companies")
-      .insert({
-        user_id:
-          user.id,
+      data:
+        existingCompany,
 
-        name:
-          candidate.name,
+      error:
+        existingCompanyError,
+    } =
+      await supabase
+        .from(
+          "companies"
+        )
+        .select(`
+          id,
+          latitude,
+          longitude
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .eq(
+          "google_place_id",
+          candidate.external_id
+        )
+        .limit(
+          1
+        )
+        .maybeSingle();
 
-        website_url:
-          candidate.website_url,
+    if (
+      existingCompanyError
+    ) {
+      console.error(
+        "Could not check existing company by Google Place ID:",
+        existingCompanyError
+      );
 
-        website_domain:
-          candidate.website_domain,
+      return;
+    }
 
-        phone:
-          candidate.phone,
+    if (
+      existingCompany
+    ) {
+      companyId =
+        existingCompany.id;
 
-        location:
-          candidate.formatted_address,
+      if (
+        (
+          existingCompany.latitude ===
+            null ||
+          existingCompany.longitude ===
+            null
+        ) &&
+        candidate.latitude !==
+          null &&
+        candidate.longitude !==
+          null
+      ) {
+        const {
+          error:
+            coordinateUpdateError,
+        } =
+          await supabase
+            .from(
+              "companies"
+            )
+            .update({
+              latitude:
+                candidate.latitude,
 
-        google_place_id:
-          candidate.external_id,
+              longitude:
+                candidate.longitude,
+            })
+            .eq(
+              "id",
+              existingCompany.id
+            )
+            .eq(
+              "user_id",
+              user.id
+            );
 
-        source:
-          "GOOGLE_PLACES",
-      })
-      .select("id")
-      .single();
+        if (
+          coordinateUpdateError
+        ) {
+          console.error(
+            "Could not add coordinates to existing company:",
+            coordinateUpdateError
+          );
+        }
+      }
+    }
+  }
+
+  /* =======================================================
+     FIND COMPANY BY DOMAIN
+  ======================================================= */
+
+  if (
+    !companyId &&
+    candidateDomain
+  ) {
+    const {
+      data:
+        existingCompanyByDomain,
+
+      error:
+        existingCompanyByDomainError,
+    } =
+      await supabase
+        .from(
+          "companies"
+        )
+        .select(`
+          id,
+          latitude,
+          longitude
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .eq(
+          "website_domain",
+          candidateDomain
+        )
+        .limit(
+          1
+        )
+        .maybeSingle();
+
+    if (
+      existingCompanyByDomainError
+    ) {
+      console.error(
+        "Could not check existing company by website domain:",
+        existingCompanyByDomainError
+      );
+
+      return;
+    }
+
+    if (
+      existingCompanyByDomain
+    ) {
+      companyId =
+        existingCompanyByDomain.id;
+
+      if (
+        (
+          existingCompanyByDomain.latitude ===
+            null ||
+          existingCompanyByDomain.longitude ===
+            null
+        ) &&
+        candidate.latitude !==
+          null &&
+        candidate.longitude !==
+          null
+      ) {
+        const {
+          error:
+            coordinateUpdateError,
+        } =
+          await supabase
+            .from(
+              "companies"
+            )
+            .update({
+              latitude:
+                candidate.latitude,
+
+              longitude:
+                candidate.longitude,
+            })
+            .eq(
+              "id",
+              existingCompanyByDomain.id
+            )
+            .eq(
+              "user_id",
+              user.id
+            );
+
+        if (
+          coordinateUpdateError
+        ) {
+          console.error(
+            "Could not add coordinates to existing company:",
+            coordinateUpdateError
+          );
+        }
+      }
+    }
+  }
+
+  /* =======================================================
+     OLDER COMPANIES FALLBACK
+  ======================================================= */
+
+  if (
+    !companyId &&
+    candidateDomain
+  ) {
+    const {
+      data:
+        companiesWithWebsite,
+
+      error:
+        companiesWithWebsiteError,
+    } =
+      await supabase
+        .from(
+          "companies"
+        )
+        .select(`
+          id,
+          website_url,
+          website_domain,
+          latitude,
+          longitude
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .not(
+          "website_url",
+          "is",
+          null
+        );
+
+    if (
+      companiesWithWebsiteError
+    ) {
+      console.error(
+        "Could not check older companies by website:",
+        companiesWithWebsiteError
+      );
+
+      return;
+    }
+
+    const domainMatch =
+      (
+        companiesWithWebsite ??
+        []
+      ).find(
+        (
+          company
+        ) =>
+          normalizeDomain(
+            company.website_domain ??
+              company.website_url
+          ) ===
+          candidateDomain
+      );
+
+    if (
+      domainMatch
+    ) {
+      companyId =
+        domainMatch.id;
+
+      if (
+        (
+          domainMatch.latitude ===
+            null ||
+          domainMatch.longitude ===
+            null
+        ) &&
+        candidate.latitude !==
+          null &&
+        candidate.longitude !==
+          null
+      ) {
+        const {
+          error:
+            coordinateUpdateError,
+        } =
+          await supabase
+            .from(
+              "companies"
+            )
+            .update({
+              latitude:
+                candidate.latitude,
+
+              longitude:
+                candidate.longitude,
+            })
+            .eq(
+              "id",
+              domainMatch.id
+            )
+            .eq(
+              "user_id",
+              user.id
+            );
+
+        if (
+          coordinateUpdateError
+        ) {
+          console.error(
+            "Could not add coordinates to older company:",
+            coordinateUpdateError
+          );
+        }
+      }
+    }
+  }
+
+  /* =======================================================
+     CREATE COMPANY
+  ======================================================= */
+
+  if (
+    !companyId
+  ) {
+    const {
+      data:
+        company,
+
+      error:
+        companyError,
+    } =
+      await supabase
+        .from(
+          "companies"
+        )
+        .insert({
+          user_id:
+            user.id,
+
+          name:
+            candidate.name,
+
+          website_url:
+            candidate.website_url,
+
+          website_domain:
+            candidateDomain,
+
+          phone:
+            candidate.phone,
+
+          location:
+            candidate.formatted_address,
+
+          latitude:
+            candidate.latitude,
+
+          longitude:
+            candidate.longitude,
+
+          google_place_id:
+            candidate.external_id,
+
+          source:
+            "GOOGLE_PLACES",
+        })
+        .select(
+          "id"
+        )
+        .single();
 
     if (
       companyError ||
@@ -185,32 +575,42 @@ export async function saveCandidateAsLead(
       company.id;
   }
 
-  /* ---------------------------------------------------------
-     CHECK WHETHER LEAD ALREADY EXISTS
-  --------------------------------------------------------- */
+  /* =======================================================
+     EXISTING LEAD
+
+     Global across campaigns.
+  ======================================================= */
 
   const {
-    data: existingLead,
-    error: existingLeadError,
-  } = await supabase
-    .from("leads")
-    .select("id")
-    .eq(
-      "user_id",
-      user.id
-    )
-    .eq(
-      "company_id",
-      companyId
-    )
-    .eq(
-      "campaign_id",
-      candidate.campaign_id
-    )
-    .limit(1)
-    .maybeSingle();
+    data:
+      existingLead,
 
-  if (existingLeadError) {
+    error:
+      existingLeadError,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .select(
+        "id"
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "company_id",
+        companyId
+      )
+      .limit(
+        1
+      )
+      .maybeSingle();
+
+  if (
+    existingLeadError
+  ) {
     console.error(
       "Could not check existing lead:",
       existingLeadError
@@ -222,42 +622,53 @@ export async function saveCandidateAsLead(
   let leadId:
     | string
     | null =
-    existingLead?.id ?? null;
+    existingLead?.id ??
+    null;
 
-  /* ---------------------------------------------------------
+  /* =======================================================
      CREATE LEAD
-  --------------------------------------------------------- */
+  ======================================================= */
 
-  if (!leadId) {
+  if (
+    !leadId
+  ) {
     const {
-      data: lead,
-      error: leadError,
-    } = await supabase
-      .from("leads")
-      .insert({
-        user_id:
-          user.id,
+      data:
+        lead,
 
-        company_id:
-          companyId,
+      error:
+        leadError,
+    } =
+      await supabase
+        .from(
+          "leads"
+        )
+        .insert({
+          user_id:
+            user.id,
 
-        campaign_id:
-          candidate.campaign_id,
+          company_id:
+            companyId,
 
-        status:
-          "NEW",
+          campaign_id:
+            candidate.campaign_id,
 
-        source:
-          "GOOGLE_PLACES",
+          status:
+            "NEW",
 
-        website_score:
-          candidate.website_score,
+          source:
+            "GOOGLE_PLACES",
 
-        opportunity_score:
-          candidate.opportunity_score,
-      })
-      .select("id")
-      .single();
+          website_score:
+            candidate.website_score,
+
+          opportunity_score:
+            candidate.opportunity_score,
+        })
+        .select(
+          "id"
+        )
+        .single();
 
     if (
       leadError ||
@@ -274,32 +685,34 @@ export async function saveCandidateAsLead(
     leadId =
       lead.id;
 
-    /* -------------------------------------------------------
-       ACTIVITY
-    ------------------------------------------------------- */
-
     const {
-      error: activityError,
-    } = await supabase
-      .from("activities")
-      .insert({
-        user_id:
-          user.id,
+      error:
+        activityError,
+    } =
+      await supabase
+        .from(
+          "activities"
+        )
+        .insert({
+          user_id:
+            user.id,
 
-        lead_id:
-          lead.id,
+          lead_id:
+            lead.id,
 
-        activity_type:
-          "LEAD_CREATED",
+          activity_type:
+            "LEAD_CREATED",
 
-        title:
-          "Lead created",
+          title:
+            "Lead created",
 
-        description:
-          "Lead was added from Google Places discovery.",
-      });
+          description:
+            "Lead was added from Google Places discovery.",
+        });
 
-    if (activityError) {
+    if (
+      activityError
+    ) {
       console.error(
         "Could not create activity:",
         activityError
@@ -307,29 +720,33 @@ export async function saveCandidateAsLead(
     }
   }
 
-  /* ---------------------------------------------------------
-     MARK CANDIDATE AS SAVED
-  --------------------------------------------------------- */
+  /* =======================================================
+     MARK SAVED
+  ======================================================= */
 
   const {
-    error: candidateUpdateError,
-  } = await supabase
-    .from("lead_candidates")
-    .update({
-      status:
-        "SAVED",
+    error:
+      candidateUpdateError,
+  } =
+    await supabase
+      .from(
+        "lead_candidates"
+      )
+      .update({
+        status:
+          "SAVED",
 
-      lead_id:
-        leadId,
-    })
-    .eq(
-      "id",
-      candidate.id
-    )
-    .eq(
-      "user_id",
-      user.id
-    );
+        lead_id:
+          leadId,
+      })
+      .eq(
+        "id",
+        candidate.id
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
 
   if (
     candidateUpdateError
@@ -342,9 +759,9 @@ export async function saveCandidateAsLead(
     return;
   }
 
-  /* ---------------------------------------------------------
+  /* =======================================================
      REVALIDATE
-  --------------------------------------------------------- */
+  ======================================================= */
 
   revalidatePath(
     "/find-leads"
@@ -359,10 +776,16 @@ export async function saveCandidateAsLead(
   );
 
   revalidatePath(
+    "/"
+  );
+
+  revalidatePath(
     `/campaigns/${candidate.campaign_id}`
   );
 
-  if (leadId) {
+  if (
+    leadId
+  ) {
     revalidatePath(
       `/leads/${leadId}`
     );
@@ -377,10 +800,13 @@ export async function rejectCandidate(
   formData: FormData
 ) {
   const candidateId =
-    formData.get("candidateId");
+    formData.get(
+      "candidateId"
+    );
 
   if (
-    typeof candidateId !== "string" ||
+    typeof candidateId !==
+      "string" ||
     !candidateId
   ) {
     return;
@@ -390,36 +816,47 @@ export async function rejectCandidate(
     await createClient();
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
+  if (
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
   }
 
   const {
     error,
-  } = await supabase
-    .from("lead_candidates")
-    .update({
-      status:
-        "REJECTED",
-    })
-    .eq(
-      "id",
-      candidateId
-    )
-    .eq(
-      "user_id",
-      user.id
-    )
-    .eq(
-      "status",
-      "DISCOVERED"
-    );
+  } =
+    await supabase
+      .from(
+        "lead_candidates"
+      )
+      .update({
+        status:
+          "REJECTED",
+      })
+      .eq(
+        "id",
+        candidateId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "status",
+        "DISCOVERED"
+      );
 
-  if (error) {
+  if (
+    error
+  ) {
     console.error(
       "Could not reject candidate:",
       error

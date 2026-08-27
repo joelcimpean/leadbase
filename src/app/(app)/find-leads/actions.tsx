@@ -1,9 +1,20 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import {
+  revalidatePath,
+} from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import {
+  redirect,
+} from "next/navigation";
+
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 type GooglePlace = {
   id?: string;
@@ -28,6 +39,11 @@ type GooglePlace = {
   primaryType?: string;
 
   types?: string[];
+
+  location?: {
+    latitude?: number;
+    longitude?: number;
+  };
 };
 
 type GoogleTextSearchResponse = {
@@ -42,24 +58,149 @@ type GoogleTextSearchResponse = {
   };
 };
 
+type ExistingCandidate = {
+  external_id:
+    | string
+    | null;
+
+  website_domain:
+    | string
+    | null;
+
+  website_url:
+    | string
+    | null;
+};
+
+type ExistingCompany = {
+  google_place_id:
+    | string
+    | null;
+
+  website_domain:
+    | string
+    | null;
+
+  website_url:
+    | string
+    | null;
+};
+
+/* =========================================================
+   WEBSITE DOMAIN
+========================================================= */
+
 function getWebsiteDomain(
-  websiteUrl: string | undefined
+  websiteUrl:
+    | string
+    | null
+    | undefined
 ) {
-  if (!websiteUrl) {
+  if (
+    !websiteUrl
+  ) {
     return null;
   }
 
   try {
     return new URL(
-      websiteUrl
-    ).hostname.replace(
-      /^www\./,
-      ""
-    );
+      websiteUrl.startsWith(
+        "http://"
+      ) ||
+        websiteUrl.startsWith(
+          "https://"
+        )
+        ? websiteUrl
+        : `https://${websiteUrl}`
+    )
+      .hostname
+      .toLowerCase()
+      .replace(
+        /^www\./,
+        ""
+      );
   } catch {
     return null;
   }
 }
+
+/* =========================================================
+   NORMALIZE DOMAIN
+========================================================= */
+
+function normalizeDomain(
+  value:
+    | string
+    | null
+    | undefined
+) {
+  if (
+    !value
+  ) {
+    return null;
+  }
+
+  const trimmed =
+    value
+      .trim()
+      .toLowerCase();
+
+  if (
+    !trimmed
+  ) {
+    return null;
+  }
+
+  if (
+    trimmed.includes(
+      "://"
+    ) ||
+    trimmed.includes(
+      "/"
+    )
+  ) {
+    return getWebsiteDomain(
+      trimmed
+    );
+  }
+
+  return trimmed.replace(
+    /^www\./,
+    ""
+  );
+}
+
+/* =========================================================
+   COORDINATES
+========================================================= */
+
+function getLatitude(
+  place:
+    GooglePlace
+) {
+  return typeof place
+    .location
+    ?.latitude ===
+    "number"
+    ? place.location.latitude
+    : null;
+}
+
+function getLongitude(
+  place:
+    GooglePlace
+) {
+  return typeof place
+    .location
+    ?.longitude ===
+    "number"
+    ? place.location.longitude
+    : null;
+}
+
+/* =========================================================
+   ERROR URL
+========================================================= */
 
 function buildErrorUrl(
   message: string
@@ -77,20 +218,28 @@ export async function runLeadSearch(
   formData: FormData
 ) {
   const campaignId =
-    formData.get("campaignId");
+    formData.get(
+      "campaignId"
+    );
 
   const industry =
-    formData.get("industry");
+    formData.get(
+      "industry"
+    );
 
   const location =
-    formData.get("location");
+    formData.get(
+      "location"
+    );
 
   const resultLimit =
-    formData.get("resultLimit");
+    formData.get(
+      "resultLimit"
+    );
 
-  /* =========================================================
+  /* =======================================================
      VALIDATE INPUT
-  ========================================================= */
+  ======================================================= */
 
   if (
     typeof campaignId !==
@@ -128,34 +277,40 @@ export async function runLeadSearch(
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      RESULT LIMIT
-  ========================================================= */
+  ======================================================= */
 
   const parsedLimit =
     typeof resultLimit ===
     "string"
-      ? Number(resultLimit)
+      ? Number(
+          resultLimit
+        )
       : 20;
 
   const cleanResultLimit =
     Number.isInteger(
       parsedLimit
     ) &&
-    parsedLimit >= 1 &&
-    parsedLimit <= 60
+    parsedLimit >=
+      1 &&
+    parsedLimit <=
+      60
       ? parsedLimit
       : 20;
 
-  /* =========================================================
+  /* =======================================================
      GOOGLE API KEY
-  ========================================================= */
+  ======================================================= */
 
   const apiKey =
     process.env
       .GOOGLE_PLACES_API_KEY;
 
-  if (!apiKey) {
+  if (
+    !apiKey
+  ) {
     redirect(
       buildErrorUrl(
         "Google Places API Key wurde nicht gefunden. Prüfe deine .env-Datei und starte den Dev-Server neu."
@@ -163,16 +318,20 @@ export async function runLeadSearch(
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      SUPABASE + USER
-  ========================================================= */
+  ======================================================= */
 
   const supabase =
     await createClient();
 
   const {
-    data: { user },
-    error: userError,
+    data: {
+      user,
+    },
+
+    error:
+      userError,
   } =
     await supabase.auth.getUser();
 
@@ -180,31 +339,39 @@ export async function runLeadSearch(
     userError ||
     !user
   ) {
-    redirect("/login");
+    redirect(
+      "/login"
+    );
   }
 
-  /* =========================================================
+  /* =======================================================
      VERIFY CAMPAIGN
-  ========================================================= */
+  ======================================================= */
 
   const {
-    data: campaign,
-    error: campaignError,
-  } = await supabase
-    .from("campaigns")
-    .select(`
-      id,
-      name
-    `)
-    .eq(
-      "id",
-      campaignId
-    )
-    .eq(
-      "user_id",
-      user.id
-    )
-    .maybeSingle();
+    data:
+      campaign,
+
+    error:
+      campaignError,
+  } =
+    await supabase
+      .from(
+        "campaigns"
+      )
+      .select(`
+        id,
+        name
+      `)
+      .eq(
+        "id",
+        campaignId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
 
   if (
     campaignError ||
@@ -217,9 +384,9 @@ export async function runLeadSearch(
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      SEARCH QUERY
-  ========================================================= */
+  ======================================================= */
 
   const cleanIndustry =
     industry.trim();
@@ -230,41 +397,49 @@ export async function runLeadSearch(
   const query =
     `${cleanIndustry} in ${cleanLocation}`;
 
-  /* =========================================================
+  /* =======================================================
      CREATE SEARCH RUN
-  ========================================================= */
+  ======================================================= */
 
   const {
-    data: search,
-    error: searchError,
-  } = await supabase
-    .from("lead_searches")
-    .insert({
-      user_id:
-        user.id,
+    data:
+      search,
 
-      campaign_id:
-        campaign.id,
+    error:
+      searchError,
+  } =
+    await supabase
+      .from(
+        "lead_searches"
+      )
+      .insert({
+        user_id:
+          user.id,
 
-      query,
+        campaign_id:
+          campaign.id,
 
-      industry:
-        cleanIndustry,
+        query,
 
-      location:
-        cleanLocation,
+        industry:
+          cleanIndustry,
 
-      result_limit:
-        cleanResultLimit,
+        location:
+          cleanLocation,
 
-      source:
-        "GOOGLE_PLACES",
+        result_limit:
+          cleanResultLimit,
 
-      status:
-        "RUNNING",
-    })
-    .select("id")
-    .single();
+        source:
+          "GOOGLE_PLACES",
+
+        status:
+          "RUNNING",
+      })
+      .select(
+        "id"
+      )
+      .single();
 
   if (
     searchError ||
@@ -282,39 +457,45 @@ export async function runLeadSearch(
     );
   }
 
-  /* =========================================================
-     SEARCH STATE
-
-     IMPORTANT:
-     redirect() happens AFTER try/catch.
-  ========================================================= */
-
   let searchSuccessful =
     false;
 
   let failureMessage:
     | string
-    | null = null;
+    | null =
+    null;
 
   try {
-    /* =======================================================
-       GOOGLE PLACES SEARCH
-    ======================================================= */
+    /* =====================================================
+       GOOGLE PLACES
+    ===================================================== */
 
     const allPlaces:
-      GooglePlace[] = [];
+      GooglePlace[] =
+      [];
 
     let nextPageToken:
       | string
       | undefined;
 
+    const rawSearchLimit =
+      Math.min(
+        60,
+        Math.max(
+          cleanResultLimit,
+          cleanResultLimit *
+            2
+        )
+      );
+
     do {
       const remaining =
-        cleanResultLimit -
+        rawSearchLimit -
         allPlaces.length;
 
       if (
-        remaining <= 0
+        remaining <=
+        0
       ) {
         break;
       }
@@ -327,7 +508,9 @@ export async function runLeadSearch(
 
       const requestBody: {
         textQuery: string;
+
         pageSize: number;
+
         pageToken?: string;
       } = {
         textQuery:
@@ -372,8 +555,11 @@ export async function runLeadSearch(
                   "places.userRatingCount",
                   "places.primaryType",
                   "places.types",
+                  "places.location",
                   "nextPageToken",
-                ].join(","),
+                ].join(
+                  ","
+                ),
             },
 
             body:
@@ -384,7 +570,8 @@ export async function runLeadSearch(
         );
 
       const data =
-        (await response.json()) as GoogleTextSearchResponse;
+        (await response.json()) as
+          GoogleTextSearchResponse;
 
       if (
         !response.ok
@@ -396,12 +583,11 @@ export async function runLeadSearch(
         );
       }
 
-      const places =
-        data.places ??
-        [];
-
       allPlaces.push(
-        ...places
+        ...(
+          data.places ??
+          []
+        )
       );
 
       nextPageToken =
@@ -409,14 +595,14 @@ export async function runLeadSearch(
     } while (
       nextPageToken &&
       allPlaces.length <
-        cleanResultLimit
+        rawSearchLimit
     );
 
-    /* =======================================================
-       REMOVE DUPLICATES
-    ======================================================= */
+    /* =====================================================
+       UNIQUE PLACE IDS
+    ===================================================== */
 
-    const uniquePlaces =
+    const uniqueByPlaceId =
       Array.from(
         new Map(
           allPlaces
@@ -431,28 +617,297 @@ export async function runLeadSearch(
                 )
             )
             .map(
-              (place) => [
+              (
+                place
+              ) => [
                 place.id,
                 place,
               ]
             )
         ).values()
-      ).slice(
-        0,
-        cleanResultLimit
       );
 
-    /* =======================================================
-       SAVE CANDIDATES
-    ======================================================= */
+    /* =====================================================
+       SAME-DOMAIN DUPLICATES
+    ===================================================== */
+
+    const currentSearchDomains =
+      new Set<string>();
+
+    const currentSearchPlaceIds =
+      new Set<string>();
+
+    const uniquePlaces:
+      Array<
+        GooglePlace & {
+          id: string;
+        }
+      > = [];
+
+    for (
+      const place of
+        uniqueByPlaceId
+    ) {
+      if (
+        currentSearchPlaceIds.has(
+          place.id
+        )
+      ) {
+        continue;
+      }
+
+      const domain =
+        getWebsiteDomain(
+          place.websiteUri
+        );
+
+      if (
+        domain &&
+        currentSearchDomains.has(
+          domain
+        )
+      ) {
+        continue;
+      }
+
+      currentSearchPlaceIds.add(
+        place.id
+      );
+
+      if (
+        domain
+      ) {
+        currentSearchDomains.add(
+          domain
+        );
+      }
+
+      uniquePlaces.push(
+        place
+      );
+    }
+
+    /* =====================================================
+       LOAD EXISTING
+    ===================================================== */
+
+    const [
+      existingCandidatesResult,
+      existingCompaniesResult,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "lead_candidates"
+          )
+          .select(`
+            external_id,
+            website_domain,
+            website_url
+          `)
+          .eq(
+            "user_id",
+            user.id
+          ),
+
+        supabase
+          .from(
+            "companies"
+          )
+          .select(`
+            google_place_id,
+            website_domain,
+            website_url
+          `)
+          .eq(
+            "user_id",
+            user.id
+          ),
+      ]);
 
     if (
-      uniquePlaces.length >
+      existingCandidatesResult.error
+    ) {
+      throw new Error(
+        `Could not check existing candidates: ${existingCandidatesResult.error.message}`
+      );
+    }
+
+    if (
+      existingCompaniesResult.error
+    ) {
+      throw new Error(
+        `Could not check existing companies: ${existingCompaniesResult.error.message}`
+      );
+    }
+
+    const existingCandidates =
+      (
+        existingCandidatesResult.data ??
+        []
+      ) as ExistingCandidate[];
+
+    const existingCompanies =
+      (
+        existingCompaniesResult.data ??
+        []
+      ) as ExistingCompany[];
+
+    /* =====================================================
+       KNOWN PLACE IDS
+    ===================================================== */
+
+    const knownPlaceIds =
+      new Set<string>();
+
+    for (
+      const candidate of
+        existingCandidates
+    ) {
+      if (
+        candidate.external_id
+      ) {
+        knownPlaceIds.add(
+          candidate.external_id
+        );
+      }
+    }
+
+    for (
+      const company of
+        existingCompanies
+    ) {
+      if (
+        company.google_place_id
+      ) {
+        knownPlaceIds.add(
+          company.google_place_id
+        );
+      }
+    }
+
+    /* =====================================================
+       KNOWN DOMAINS
+    ===================================================== */
+
+    const knownDomains =
+      new Set<string>();
+
+    for (
+      const candidate of
+        existingCandidates
+    ) {
+      const storedDomain =
+        normalizeDomain(
+          candidate.website_domain
+        );
+
+      const urlDomain =
+        getWebsiteDomain(
+          candidate.website_url
+        );
+
+      if (
+        storedDomain
+      ) {
+        knownDomains.add(
+          storedDomain
+        );
+      }
+
+      if (
+        urlDomain
+      ) {
+        knownDomains.add(
+          urlDomain
+        );
+      }
+    }
+
+    for (
+      const company of
+        existingCompanies
+    ) {
+      const storedDomain =
+        normalizeDomain(
+          company.website_domain
+        );
+
+      const urlDomain =
+        getWebsiteDomain(
+          company.website_url
+        );
+
+      if (
+        storedDomain
+      ) {
+        knownDomains.add(
+          storedDomain
+        );
+      }
+
+      if (
+        urlDomain
+      ) {
+        knownDomains.add(
+          urlDomain
+        );
+      }
+    }
+
+    /* =====================================================
+       GLOBAL DUPLICATE FILTER
+    ===================================================== */
+
+    const newPlaces =
+      uniquePlaces
+        .filter(
+          (
+            place
+          ) => {
+            if (
+              knownPlaceIds.has(
+                place.id
+              )
+            ) {
+              return false;
+            }
+
+            const domain =
+              getWebsiteDomain(
+                place.websiteUri
+              );
+
+            if (
+              domain &&
+              knownDomains.has(
+                domain
+              )
+            ) {
+              return false;
+            }
+
+            return true;
+          }
+        )
+        .slice(
+          0,
+          cleanResultLimit
+        );
+
+    /* =====================================================
+       SAVE CANDIDATES
+    ===================================================== */
+
+    if (
+      newPlaces.length >
       0
     ) {
       const candidates =
-        uniquePlaces.map(
-          (place) => ({
+        newPlaces.map(
+          (
+            place
+          ) => ({
             user_id:
               user.id,
 
@@ -495,6 +950,16 @@ export async function runLeadSearch(
 
             location:
               cleanLocation,
+
+            latitude:
+              getLatitude(
+                place
+              ),
+
+            longitude:
+              getLongitude(
+                place
+              ),
 
             maps_url:
               place
@@ -548,38 +1013,40 @@ export async function runLeadSearch(
       }
     }
 
-    /* =======================================================
+    /* =====================================================
        COMPLETE SEARCH
-    ======================================================= */
+    ===================================================== */
 
     const {
       error:
         completeError,
-    } = await supabase
-      .from(
-        "lead_searches"
-      )
-      .update({
-        status:
-          "COMPLETED",
+    } =
+      await supabase
+        .from(
+          "lead_searches"
+        )
+        .update({
+          status:
+            "COMPLETED",
 
-        result_count:
-          uniquePlaces.length,
+          result_count:
+            newPlaces.length,
 
-        completed_at:
-          new Date().toISOString(),
+          completed_at:
+            new Date()
+              .toISOString(),
 
-        error_message:
-          null,
-      })
-      .eq(
-        "id",
-        search.id
-      )
-      .eq(
-        "user_id",
-        user.id
-      );
+          error_message:
+            null,
+        })
+        .eq(
+          "id",
+          search.id
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
 
     if (
       completeError
@@ -591,13 +1058,12 @@ export async function runLeadSearch(
 
     searchSuccessful =
       true;
-  } catch (error) {
-    /* =======================================================
-       REAL ERROR HANDLING
-    ======================================================= */
-
+  } catch (
+    error
+  ) {
     failureMessage =
-      error instanceof Error
+      error instanceof
+        Error
         ? error.message
         : "Unknown Google Places error.";
 
@@ -609,28 +1075,30 @@ export async function runLeadSearch(
     const {
       error:
         failedUpdateError,
-    } = await supabase
-      .from(
-        "lead_searches"
-      )
-      .update({
-        status:
-          "FAILED",
+    } =
+      await supabase
+        .from(
+          "lead_searches"
+        )
+        .update({
+          status:
+            "FAILED",
 
-        error_message:
-          failureMessage,
+          error_message:
+            failureMessage,
 
-        completed_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        "id",
-        search.id
-      )
-      .eq(
-        "user_id",
-        user.id
-      );
+          completed_at:
+            new Date()
+              .toISOString(),
+        })
+        .eq(
+          "id",
+          search.id
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
 
     if (
       failedUpdateError
@@ -642,19 +1110,9 @@ export async function runLeadSearch(
     }
   }
 
-  /* =========================================================
-     REVALIDATE
-
-     redirect() MUST stay outside try/catch.
-  ========================================================= */
-
   revalidatePath(
     "/find-leads"
   );
-
-  /* =========================================================
-     SUCCESS REDIRECT
-  ========================================================= */
 
   if (
     searchSuccessful
@@ -663,10 +1121,6 @@ export async function runLeadSearch(
       `/find-leads?search=${search.id}`
     );
   }
-
-  /* =========================================================
-     ERROR REDIRECT
-  ========================================================= */
 
   redirect(
     `/find-leads?error=${encodeURIComponent(

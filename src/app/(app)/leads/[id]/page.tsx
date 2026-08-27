@@ -41,6 +41,10 @@ import {
 } from "./outreach-section";
 
 import {
+  RedesignPreviewActions,
+} from "./redesign-preview-actions";
+
+import {
   Badge,
 } from "@/components/ui/badge";
 
@@ -83,11 +87,8 @@ type LeadDetailPageProps = {
 
 type WebsiteFinding = {
   key: string;
-
   label: string;
-
   passed: boolean;
-
   detail?: string;
 };
 
@@ -154,7 +155,7 @@ type VisualAnalysis = {
 };
 
 /* =========================================================
-   STATUS CLASSES
+   STATUS
 ========================================================= */
 
 function statusClass(
@@ -203,10 +204,6 @@ function statusClass(
       return "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300";
   }
 }
-
-/* =========================================================
-   ANALYSIS STATUS
-========================================================= */
 
 function analysisStatusClass(
   status: string
@@ -374,7 +371,7 @@ function getSingleRelation<T>(
 }
 
 /* =========================================================
-   STRUCTURAL FINDINGS
+   FINDINGS
 ========================================================= */
 
 function parseWebsiteFindings(
@@ -393,7 +390,10 @@ function parseWebsiteFindings(
     .filter(
       (
         item
-      ): item is Record<string, unknown> =>
+      ): item is Record<
+        string,
+        unknown
+      > =>
         typeof item ===
           "object" &&
         item !==
@@ -430,7 +430,7 @@ function parseWebsiteFindings(
 }
 
 /* =========================================================
-   VISUAL ANALYSIS PARSER
+   VISUAL PARSER
 ========================================================= */
 
 function parseVisualAnalysis(
@@ -508,17 +508,25 @@ function parseVisualAnalysis(
   const numberValue = (
     key: string
   ) =>
-    typeof data[key] ===
+    typeof data[
+      key
+    ] ===
     "number"
-      ? (data[key] as number)
+      ? data[
+          key
+        ] as number
       : null;
 
   const stringValue = (
     key: string
   ) =>
-    typeof data[key] ===
+    typeof data[
+      key
+    ] ===
     "string"
-      ? (data[key] as string)
+      ? data[
+          key
+        ] as string
       : null;
 
   const stringArray = (
@@ -526,14 +534,18 @@ function parseVisualAnalysis(
   ) => {
     if (
       !Array.isArray(
-        data[key]
+        data[
+          key
+        ]
       )
     ) {
       return [];
     }
 
     return (
-      data[key] as unknown[]
+      data[
+        key
+      ] as unknown[]
     ).filter(
       (
         item
@@ -627,7 +639,7 @@ function parseVisualAnalysis(
 }
 
 /* =========================================================
-   VISUAL SOURCE LANGUAGE
+   SOURCE LANGUAGE
 ========================================================= */
 
 function parseVisualSourceLanguage(
@@ -664,11 +676,6 @@ function parseVisualSourceLanguage(
   ) {
     return "en";
   }
-
-  /*
-   * Existing Leadbase analyses were generated in English
-   * before sourceLanguage was stored explicitly.
-   */
 
   return "en";
 }
@@ -778,6 +785,50 @@ export default async function LeadDetailPage({
     notFound();
   }
 
+  /* =======================================================
+     LATEST REDESIGN
+  ======================================================= */
+
+  const {
+    data:
+      latestRedesignPreview,
+
+    error:
+      latestRedesignPreviewError,
+  } =
+    await supabase
+      .from(
+        "redesign_previews"
+      )
+      .select(`
+        public_token,
+        generation_index
+      `)
+      .eq(
+        "lead_id",
+        id
+      )
+      .order(
+        "generation_index",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        1
+      )
+      .maybeSingle();
+
+  if (
+    latestRedesignPreviewError
+  ) {
+    console.error(
+      "Could not load latest redesign preview:",
+      latestRedesignPreviewError
+    );
+  }
+
   const company =
     getSingleRelation(
       lead.company
@@ -814,10 +865,6 @@ export default async function LeadDetailPage({
 
   return (
     <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      {/* ===================================================
-          BACK
-      =================================================== */}
-
       <Link
         href="/leads"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -887,7 +934,7 @@ export default async function LeadDetailPage({
             ACTIONS
         ================================================= */}
 
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center lg:max-w-[720px] lg:justify-end">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center lg:max-w-[900px] lg:justify-end">
           <div className="[&>*]:w-full sm:[&>*]:w-auto">
             <AnalyzeWebsiteButton
               leadId={
@@ -898,6 +945,26 @@ export default async function LeadDetailPage({
               )}
             />
           </div>
+
+          {company?.website_url &&
+          structuralStatus ===
+            "COMPLETED" ? (
+            <RedesignPreviewActions
+              leadId={
+                lead.id
+              }
+              initialPreviewToken={
+                latestRedesignPreview
+                  ?.public_token ??
+                null
+              }
+              initialGenerationIndex={
+                latestRedesignPreview
+                  ?.generation_index ??
+                0
+              }
+            />
+          ) : null}
 
           <Link
             href={`/leads/${lead.id}/edit`}
@@ -1084,15 +1151,7 @@ export default async function LeadDetailPage({
       =================================================== */}
 
       <div className="mt-4 grid min-w-0 gap-4 sm:mt-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-        {/* =================================================
-            LEFT COLUMN
-        ================================================= */}
-
         <div className="min-w-0 space-y-4">
-          {/* =================================================
-              OVERVIEW
-          ================================================= */}
-
           <Card className="min-w-0 shadow-none">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
@@ -1182,10 +1241,6 @@ export default async function LeadDetailPage({
             </CardContent>
           </Card>
 
-          {/* =================================================
-              VISUAL ANALYSIS
-          ================================================= */}
-
           <VisualAnalysisCard
             leadId={
               lead.id
@@ -1231,10 +1286,6 @@ export default async function LeadDetailPage({
             }
           />
 
-          {/* =================================================
-              STRUCTURAL ANALYSIS
-          ================================================= */}
-
           <StructuralAnalysisCard
             language={
               language
@@ -1253,19 +1304,11 @@ export default async function LeadDetailPage({
             }
           />
 
-          {/* =================================================
-              OUTREACH
-          ================================================= */}
-
           <OutreachSection
             leadId={
               lead.id
             }
           />
-
-          {/* =================================================
-              DESCRIPTION
-          ================================================= */}
 
           <Card className="min-w-0 shadow-none">
             <CardContent className="p-4 sm:p-5">
@@ -1283,10 +1326,6 @@ export default async function LeadDetailPage({
               </p>
             </CardContent>
           </Card>
-
-          {/* =================================================
-              NOTES
-          ================================================= */}
 
           <Card className="min-w-0 shadow-none">
             <CardContent className="p-4 sm:p-5">
@@ -1306,15 +1345,7 @@ export default async function LeadDetailPage({
           </Card>
         </div>
 
-        {/* =================================================
-            RIGHT COLUMN
-        ================================================= */}
-
         <div className="min-w-0 space-y-4">
-          {/* =================================================
-              CONTACT
-          ================================================= */}
-
           <Card className="min-w-0 shadow-none">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
@@ -1385,10 +1416,6 @@ export default async function LeadDetailPage({
               </div>
             </CardContent>
           </Card>
-
-          {/* =================================================
-              COMPANY LINKS
-          ================================================= */}
 
           <Card className="min-w-0 shadow-none">
             <CardContent className="p-4 sm:p-5">
@@ -1490,8 +1517,7 @@ function VisualAnalysisCard({
   outputTokens,
   totalTokens,
 }: {
-  leadId:
-    string;
+  leadId: string;
 
   language:
     AppLanguage;
@@ -1499,8 +1525,7 @@ function VisualAnalysisCard({
   sourceLanguage:
     AppLanguage;
 
-  status:
-    string;
+  status: string;
 
   structuralScore:
     | number
@@ -1555,10 +1580,6 @@ function VisualAnalysisCard({
   return (
     <Card className="min-w-0 shadow-none">
       <CardContent className="p-4 sm:p-5">
-        {/* =================================================
-            HEADER
-        ================================================= */}
-
         <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
           <div className="flex min-w-0 gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
@@ -1593,10 +1614,6 @@ function VisualAnalysisCard({
           </Badge>
         </div>
 
-        {/* =================================================
-            FAILED
-        ================================================= */}
-
         {status ===
         "FAILED" ? (
           <div className="mt-5 flex min-w-0 gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-4 dark:border-red-900 dark:bg-red-950/40">
@@ -1617,10 +1634,6 @@ function VisualAnalysisCard({
           </div>
         ) : null}
 
-        {/* =================================================
-            NOT ANALYZED
-        ================================================= */}
-
         {status ===
         "NOT_ANALYZED" ? (
           <div className="mt-5 rounded-lg border border-dashed px-4 py-5">
@@ -1638,10 +1651,6 @@ function VisualAnalysisCard({
           </div>
         ) : null}
 
-        {/* =================================================
-            ANALYZING
-        ================================================= */}
-
         {status ===
         "ANALYZING" ? (
           <div className="mt-5 rounded-lg border px-4 py-5">
@@ -1653,17 +1662,9 @@ function VisualAnalysisCard({
           </div>
         ) : null}
 
-        {/* =================================================
-            COMPLETED
-        ================================================= */}
-
         {status ===
         "COMPLETED" ? (
           <>
-            {/* =============================================
-                SCORE OVERVIEW
-            ============================================= */}
-
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <MiniScore
                 label={
@@ -1692,10 +1693,6 @@ function VisualAnalysisCard({
                 }
               />
             </div>
-
-            {/* =============================================
-                VISUAL METRICS
-            ============================================= */}
 
             <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-2">
               <VisualMetric
@@ -1780,22 +1777,6 @@ function VisualAnalysisCard({
               />
             </div>
 
-            {/* =============================================
-                LOCALIZED AI NARRATIVE
-
-                Strengths
-                Weaknesses
-                Summary
-                Redesign reason
-                Outreach angle
-
-                Existing analyses default to English as the
-                original source language.
-
-                The component automatically loads/caches the
-                other language when required.
-            ============================================= */}
-
             <LocalizedVisualAnalysis
               leadId={
                 leadId
@@ -1820,10 +1801,6 @@ function VisualAnalysisCard({
                   analysis.outreachAngle,
               }}
             />
-
-            {/* =============================================
-                ANALYSIS META
-            ============================================= */}
 
             <div className="mt-5 flex flex-col gap-1.5 border-t pt-4 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
               <span>
@@ -2191,7 +2168,8 @@ function DetailItem({
 ========================================================= */
 
 function ContactRow({
-  icon: Icon,
+  icon:
+    Icon,
   label,
   value,
 }: {
@@ -2230,7 +2208,8 @@ function ContactRow({
 ========================================================= */
 
 function CompanyLink({
-  icon: Icon,
+  icon:
+    Icon,
   label,
   href,
   notFoundLabel,

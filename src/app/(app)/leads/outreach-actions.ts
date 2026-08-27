@@ -5,6 +5,10 @@ import {
 } from "next/cache";
 
 import {
+  headers,
+} from "next/headers";
+
+import {
   redirect,
 } from "next/navigation";
 
@@ -40,27 +44,52 @@ const GMAIL_SEND_SCOPE =
 const FOLLOW_UP_DELAY_DAYS =
   5;
 
+type ServerSupabaseClient =
+  Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >;
+
 /* =========================================================
    HELPERS
 ========================================================= */
 
 function getSingleRelation<T>(
-  value: T | T[] | null
+  value:
+    | T
+    | T[]
+    | null
 ): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      null
+    );
   }
 
   return value;
 }
 
 function getRecord(
-  value: unknown
-): Record<string, unknown> | null {
+  value:
+    unknown
+): Record<
+  string,
+  unknown
+> | null {
   if (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
+    typeof value ===
+      "object" &&
+    value !==
+      null &&
+    !Array.isArray(
+      value
+    )
   ) {
     return value as Record<
       string,
@@ -72,40 +101,61 @@ function getRecord(
 }
 
 function getString(
-  value: unknown
+  value:
+    unknown
 ) {
-  return typeof value === "string"
+  return typeof value ===
+      "string"
     ? value
     : null;
 }
 
 function getStringArray(
-  value: unknown
+  value:
+    unknown
 ) {
-  if (!Array.isArray(value)) {
+  if (
+    !Array.isArray(
+      value
+    )
+  ) {
     return [];
   }
 
   return value.filter(
-    (item): item is string =>
-      typeof item === "string"
+    (
+      item
+    ): item is string =>
+      typeof item ===
+      "string"
   );
 }
 
 function getLastName(
-  fullName: string
+  fullName:
+    string
 ) {
   const parts =
     fullName
       .trim()
-      .split(/\s+/)
-      .filter(Boolean);
+      .split(
+        /\s+/
+      )
+      .filter(
+        Boolean
+      );
 
-  if (parts.length === 0) {
+  if (
+    parts.length ===
+    0
+  ) {
     return "";
   }
 
-  if (parts.length === 1) {
+  if (
+    parts.length ===
+    1
+  ) {
     return parts[0];
   }
 
@@ -121,31 +171,43 @@ function getLastName(
     ]);
 
   let start =
-    parts.length - 1;
+    parts.length -
+    1;
 
   while (
-    start > 0 &&
+    start >
+      0 &&
     particles.has(
-      parts[start - 1].toLowerCase()
+      parts[
+        start -
+        1
+      ].toLowerCase()
     )
   ) {
-    start -= 1;
+    start -=
+      1;
   }
 
   return parts
-    .slice(start)
-    .join(" ");
+    .slice(
+      start
+    )
+    .join(
+      " "
+    );
 }
 
 function getGreeting(
-  fullName: string,
+  fullName:
+    string,
   salutation:
     | "HERR"
     | "FRAU"
     | null
 ) {
   if (
-    salutation === "HERR"
+    salutation ===
+    "HERR"
   ) {
     return `Sehr geehrter Herr ${getLastName(
       fullName
@@ -153,7 +215,8 @@ function getGreeting(
   }
 
   if (
-    salutation === "FRAU"
+    salutation ===
+    "FRAU"
   ) {
     return `Sehr geehrte Frau ${getLastName(
       fullName
@@ -164,7 +227,8 @@ function getGreeting(
 }
 
 function normalizeTextBlock(
-  value: string
+  value:
+    string
 ) {
   return value
     .replace(
@@ -179,7 +243,8 @@ function normalizeTextBlock(
 }
 
 function removeExistingSignature(
-  value: string
+  value:
+    string
 ) {
   const normalized =
     normalizeTextBlock(
@@ -192,7 +257,8 @@ function removeExistingSignature(
     );
 
   if (
-    signatureIndex === -1
+    signatureIndex ===
+      -1
   ) {
     return normalized;
   }
@@ -206,14 +272,17 @@ function removeExistingSignature(
 }
 
 function ensureSignature(
-  value: string
+  value:
+    string
 ) {
   const message =
     removeExistingSignature(
       value
     );
 
-  if (!message) {
+  if (
+    !message
+  ) {
     return OUTREACH_SIGNATURE;
   }
 
@@ -221,8 +290,10 @@ function ensureSignature(
 }
 
 function replaceOpeningGreeting(
-  value: string,
-  greeting: string
+  value:
+    string,
+  greeting:
+    string
 ) {
   const normalized =
     value.replace(
@@ -237,8 +308,11 @@ function replaceOpeningGreeting(
 
   const firstMeaningfulIndex =
     lines.findIndex(
-      (line) =>
-        line.trim().length >
+      (
+        line
+      ) =>
+        line.trim()
+          .length >
         0
     );
 
@@ -275,7 +349,8 @@ function replaceOpeningGreeting(
   ) {
     lines[
       firstMeaningfulIndex
-    ] = greeting;
+    ] =
+      greeting;
 
     return lines.join(
       "\n"
@@ -286,7 +361,8 @@ function replaceOpeningGreeting(
 }
 
 function isReasonableEmail(
-  value: string
+  value:
+    string
 ) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
     value.trim()
@@ -294,10 +370,12 @@ function isReasonableEmail(
 }
 
 function getErrorMessage(
-  error: unknown
+  error:
+    unknown
 ) {
   if (
-    error instanceof Error
+    error instanceof
+      Error
   ) {
     return error.message;
   }
@@ -306,7 +384,8 @@ function getErrorMessage(
 }
 
 function revalidateLead(
-  leadId: string
+  leadId:
+    string
 ) {
   revalidatePath(
     `/leads/${leadId}`
@@ -322,11 +401,345 @@ function revalidateLead(
 }
 
 /* =========================================================
+   PUBLIC BASE URL
+========================================================= */
+
+async function getPublicBaseUrl() {
+  const requestHeaders =
+    await headers();
+
+  const forwardedHost =
+    requestHeaders.get(
+      "x-forwarded-host"
+    );
+
+  const regularHost =
+    requestHeaders.get(
+      "host"
+    );
+
+  const host =
+    forwardedHost ||
+    regularHost;
+
+  const forwardedProto =
+    requestHeaders.get(
+      "x-forwarded-proto"
+    );
+
+  if (
+    host &&
+    (
+      host.startsWith(
+        "localhost:"
+      ) ||
+      host.startsWith(
+        "127.0.0.1:"
+      ) ||
+      host ===
+        "localhost"
+    )
+  ) {
+    return `http://${host}`;
+  }
+
+  const configured =
+    process.env
+      .PUBLIC_PREVIEW_BASE_URL
+      ?.trim();
+
+  if (
+    configured
+  ) {
+    return configured.replace(
+      /\/+$/,
+      ""
+    );
+  }
+
+  if (
+    host
+  ) {
+    const protocol =
+      forwardedProto ||
+      "https";
+
+    return `${protocol}://${host}`;
+  }
+
+  return null;
+}
+
+/* =========================================================
+   ACTIVE CUSTOMER PREVIEW
+========================================================= */
+
+async function getActiveCustomerPreviewUrl({
+  supabase,
+  userId,
+  leadId,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  leadId:
+    string;
+}) {
+  const {
+    data:
+      selected,
+    error:
+      selectedError,
+  } =
+    await supabase
+      .from(
+        "design_mockup_variants"
+      )
+      .select(
+        "id"
+      )
+      .eq(
+        "user_id",
+        userId
+      )
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .eq(
+        "selected",
+        true
+      )
+      .order(
+        "selected_at",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        1
+      )
+      .maybeSingle();
+
+  if (
+    selectedError
+  ) {
+    console.warn(
+      "Could not load selected redesign for outreach:",
+      selectedError
+    );
+
+    return null;
+  }
+
+  if (
+    !selected
+  ) {
+    return null;
+  }
+
+  const {
+    data:
+      preview,
+    error:
+      previewError,
+  } =
+    await supabase
+      .from(
+        "design_public_previews"
+      )
+      .select(`
+        public_slug,
+        expires_at,
+        revoked_at
+      `)
+      .eq(
+        "user_id",
+        userId
+      )
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .eq(
+        "design_mockup_variant_id",
+        selected.id
+      )
+      .is(
+        "revoked_at",
+        null
+      )
+      .maybeSingle();
+
+  if (
+    previewError
+  ) {
+    /*
+     * Draft generation should still work if the customer
+     * preview has not been configured yet.
+     */
+    console.warn(
+      "Could not load customer preview for outreach:",
+      previewError
+    );
+
+    return null;
+  }
+
+  if (
+    !preview
+  ) {
+    return null;
+  }
+
+  if (
+    preview.expires_at &&
+    new Date(
+      preview.expires_at
+    ).getTime() <=
+      Date.now()
+  ) {
+    return null;
+  }
+
+  const baseUrl =
+    await getPublicBaseUrl();
+
+  if (
+    !baseUrl
+  ) {
+    return null;
+  }
+
+  return `${baseUrl}/concept/${encodeURIComponent(
+    preview.public_slug
+  )}`;
+}
+
+/* =========================================================
+   INSERT CUSTOMER PREVIEW INTO EMAIL
+========================================================= */
+
+function addCustomerPreviewToBody(
+  value:
+    string,
+  previewUrl:
+    string
+    | null
+) {
+  const normalized =
+    normalizeTextBlock(
+      value
+    );
+
+  if (
+    !previewUrl
+  ) {
+    return normalized;
+  }
+
+  if (
+    normalized.includes(
+      previewUrl
+    )
+  ) {
+    return normalized;
+  }
+
+  const previewBlock =
+    [
+      "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem ein unverbindliches Designkonzept vorbereitet:",
+      previewUrl,
+    ].join(
+      "\n"
+    );
+
+  /*
+   * Prefer inserting the preview before a closing greeting
+   * if the AI generated one.
+   */
+  const closingMarkers =
+    [
+      "\nMit freundlichen Grüßen",
+      "\nViele Grüße",
+      "\nBeste Grüße",
+      "\nFreundliche Grüße",
+      "\nHerzliche Grüße",
+    ];
+
+  let insertionIndex =
+    -1;
+
+  for (
+    const marker of
+      closingMarkers
+  ) {
+    const index =
+      normalized.indexOf(
+        marker
+      );
+
+    if (
+      index !==
+        -1 &&
+      (
+        insertionIndex ===
+          -1 ||
+        index <
+          insertionIndex
+      )
+    ) {
+      insertionIndex =
+        index;
+    }
+  }
+
+  if (
+    insertionIndex !==
+    -1
+  ) {
+    const before =
+      normalized
+        .slice(
+          0,
+          insertionIndex
+        )
+        .trim();
+
+    const after =
+      normalized
+        .slice(
+          insertionIndex
+        )
+        .trim();
+
+    return [
+      before,
+      previewBlock,
+      after,
+    ]
+      .filter(
+        Boolean
+      )
+      .join(
+        "\n\n"
+      );
+  }
+
+  return `${normalized}\n\n${previewBlock}`;
+}
+
+/* =========================================================
    GENERATE OUTREACH
 ========================================================= */
 
 export async function generateLeadOutreachDraft(
-  formData: FormData
+  formData:
+    FormData
 ) {
   const leadId =
     formData.get(
@@ -448,7 +861,9 @@ export async function generateLeadOutreachDraft(
       lead.campaign
     );
 
-  if (!company) {
+  if (
+    !company
+  ) {
     console.error(
       "Lead has no company."
     );
@@ -480,6 +895,22 @@ export async function generateLeadOutreachDraft(
     getString(
       visual?.outreachAngle
     );
+
+  /*
+   * Load public preview in parallel with the AI generation.
+   *
+   * This does not add any extra AI cost.
+   */
+  const customerPreviewPromise =
+    getActiveCustomerPreviewUrl({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId:
+        lead.id,
+    });
 
   let generated;
 
@@ -547,7 +978,9 @@ export async function generateLeadOutreachDraft(
         suggestedOutreachAngle:
           visualOutreachAngle,
       });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "Outreach generation failed:",
       error
@@ -555,6 +988,28 @@ export async function generateLeadOutreachDraft(
 
     return;
   }
+
+  const customerPreviewUrl =
+    await customerPreviewPromise;
+
+  const bodyWithPreview =
+    addCustomerPreviewToBody(
+      generated.body,
+      customerPreviewUrl
+    );
+
+  const finalBody =
+    ensureSignature(
+      bodyWithPreview
+    );
+
+  const finalFollowUp =
+    generated.followUpBody
+      ?.trim()
+      ? ensureSignature(
+          generated.followUpBody
+        )
+      : null;
 
   const channel =
     contact?.email
@@ -593,10 +1048,10 @@ export async function generateLeadOutreachDraft(
           generated.subject,
 
         body:
-          generated.body,
+          finalBody,
 
         follow_up_body:
-          generated.followUpBody,
+          finalFollowUp,
 
         personalization_points:
           generated.personalizationPoints,
@@ -698,7 +1153,9 @@ export async function generateLeadOutreachDraft(
           "Outreach draft generated",
 
         description:
-          "A personalized German outreach draft was generated.",
+          customerPreviewUrl
+            ? "A personalized German outreach draft with customer preview was generated."
+            : "A personalized German outreach draft was generated.",
       });
 
   if (
@@ -724,7 +1181,8 @@ export async function generateLeadOutreachDraft(
 ========================================================= */
 
 export async function updateOutreachDraft(
-  formData: FormData
+  formData:
+    FormData
 ) {
   const draftId =
     formData.get(
@@ -803,7 +1261,9 @@ export async function updateOutreachDraft(
   } =
     await supabase.auth.getUser();
 
-  if (!user) {
+  if (
+    !user
+  ) {
     redirect(
       "/login"
     );
@@ -890,7 +1350,8 @@ export async function updateOutreachDraft(
 ========================================================= */
 
 export async function updateLeadContactSalutation(
-  formData: FormData
+  formData:
+    FormData
 ) {
   const leadId =
     formData.get(
@@ -939,7 +1400,9 @@ export async function updateLeadContactSalutation(
   } =
     await supabase.auth.getUser();
 
-  if (!user) {
+  if (
+    !user
+  ) {
     redirect(
       "/login"
     );
@@ -1060,7 +1523,9 @@ export async function updateLeadContactSalutation(
               false,
           }
         )
-        .limit(1)
+        .limit(
+          1
+        )
         .maybeSingle();
 
     if (
@@ -1144,7 +1609,8 @@ export async function updateLeadContactSalutation(
 ========================================================= */
 
 export async function approveOutreachDraft(
-  formData: FormData
+  formData:
+    FormData
 ) {
   const draftId =
     formData.get(
@@ -1177,7 +1643,9 @@ export async function approveOutreachDraft(
   } =
     await supabase.auth.getUser();
 
-  if (!user) {
+  if (
+    !user
+  ) {
     redirect(
       "/login"
     );
@@ -1247,7 +1715,8 @@ export async function approveOutreachDraft(
 ========================================================= */
 
 export async function sendApprovedOutreachDraft(
-  formData: FormData
+  formData:
+    FormData
 ) {
   const draftId =
     formData.get(
@@ -1379,8 +1848,10 @@ export async function sendApprovedOutreachDraft(
   }
 
   if (
-    !draft.subject?.trim() ||
-    !draft.body?.trim()
+    !draft.subject
+      ?.trim() ||
+    !draft.body
+      ?.trim()
   ) {
     console.error(
       "Draft subject or body is missing."
@@ -1449,7 +1920,8 @@ export async function sendApprovedOutreachDraft(
     );
 
   const recipientEmail =
-    contact?.email
+    contact
+      ?.email
       ?.trim()
       .toLowerCase();
 
@@ -1593,8 +2065,12 @@ export async function sendApprovedOutreachDraft(
   }
 
   let gmailResult: {
-    messageId: string;
-    threadId: string | null;
+    messageId:
+      string;
+
+    threadId:
+      string
+      | null;
   };
 
   try {
@@ -1615,7 +2091,9 @@ export async function sendApprovedOutreachDraft(
         encryptedRefreshToken:
           gmailConnection.encrypted_refresh_token,
       });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     const errorMessage =
       getErrorMessage(
         error
@@ -1833,7 +2311,8 @@ export async function sendApprovedOutreachDraft(
 ========================================================= */
 
 export async function sendFollowUpOutreachDraft(
-  formData: FormData
+  formData:
+    FormData
 ) {
   const draftId =
     formData.get(
@@ -1877,10 +2356,6 @@ export async function sendFollowUpOutreachDraft(
       "/login"
     );
   }
-
-  /* =========================================================
-     LOAD DRAFT
-  ========================================================= */
 
   const {
     data:
@@ -1927,9 +2402,6 @@ export async function sendFollowUpOutreachDraft(
     return;
   }
 
-  /*
-   * Initial email must already have been sent.
-   */
   if (
     draft.status !==
     "SENT"
@@ -1958,7 +2430,8 @@ export async function sendFollowUpOutreachDraft(
   }
 
   if (
-    !draft.follow_up_body?.trim()
+    !draft.follow_up_body
+      ?.trim()
   ) {
     console.error(
       "No follow-up message exists."
@@ -1966,10 +2439,6 @@ export async function sendFollowUpOutreachDraft(
 
     return;
   }
-
-  /* =========================================================
-     LOAD LEAD
-  ========================================================= */
 
   const {
     data:
@@ -2025,9 +2494,6 @@ export async function sendFollowUpOutreachDraft(
     return;
   }
 
-  /*
-   * Server-side due-date protection.
-   */
   if (
     lead.next_follow_up_at &&
     new Date(
@@ -2048,7 +2514,8 @@ export async function sendFollowUpOutreachDraft(
     );
 
   const recipientEmail =
-    contact?.email
+    contact
+      ?.email
       ?.trim()
       .toLowerCase();
 
@@ -2064,10 +2531,6 @@ export async function sendFollowUpOutreachDraft(
 
     return;
   }
-
-  /* =========================================================
-     GMAIL
-  ========================================================= */
 
   const {
     data:
@@ -2121,12 +2584,6 @@ export async function sendFollowUpOutreachDraft(
 
     return;
   }
-
-  /* =========================================================
-     CLAIM FOLLOW-UP
-
-     Prevent duplicate sends caused by double-clicking.
-  ========================================================= */
 
   const startedAt =
     new Date()
@@ -2198,13 +2655,13 @@ export async function sendFollowUpOutreachDraft(
     );
   }
 
-  /* =========================================================
-     SEND
-  ========================================================= */
-
   let gmailResult: {
-    messageId: string;
-    threadId: string | null;
+    messageId:
+      string;
+
+    threadId:
+      string
+      | null;
   };
 
   try {
@@ -2216,10 +2673,6 @@ export async function sendFollowUpOutreachDraft(
         toEmail:
           recipientEmail,
 
-        /*
-         * Keep the same professional subject instead of
-         * faking "Re:".
-         */
         subject:
           draft.subject,
 
@@ -2229,7 +2682,9 @@ export async function sendFollowUpOutreachDraft(
         encryptedRefreshToken:
           gmailConnection.encrypted_refresh_token,
       });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     const errorMessage =
       getErrorMessage(
         error
@@ -2281,10 +2736,6 @@ export async function sendFollowUpOutreachDraft(
       `/leads/${leadId}#outreach`
     );
   }
-
-  /* =========================================================
-     MARK FOLLOW-UP SENT
-  ========================================================= */
 
   const sentAt =
     new Date()
@@ -2347,10 +2798,6 @@ export async function sendFollowUpOutreachDraft(
     );
   }
 
-  /* =========================================================
-     UPDATE LEAD
-  ========================================================= */
-
   const {
     error:
       leadUpdateError,
@@ -2383,10 +2830,6 @@ export async function sendFollowUpOutreachDraft(
       leadUpdateError
     );
   }
-
-  /* =========================================================
-     ACTIVITY
-  ========================================================= */
 
   const {
     error:

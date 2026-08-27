@@ -7,8 +7,13 @@ import {
   type NextRequest,
 } from "next/server";
 
+/* =========================================================
+   PROXY
+========================================================= */
+
 export async function proxy(
-  request: NextRequest
+  request:
+    NextRequest
 ) {
   let supabaseResponse =
     NextResponse.next({
@@ -17,15 +22,21 @@ export async function proxy(
 
   const supabase =
     createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      process.env
+        .NEXT_PUBLIC_SUPABASE_URL!,
+
+      process.env
+        .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+
       {
         cookies: {
           getAll() {
             return request.cookies.getAll();
           },
 
-          setAll(cookiesToSet) {
+          setAll(
+            cookiesToSet
+          ) {
             cookiesToSet.forEach(
               ({
                 name,
@@ -64,12 +75,18 @@ export async function proxy(
   const pathname =
     request.nextUrl.pathname;
 
-  /* =========================================================
+  /* =======================================================
      PUBLIC ROUTES
 
-     Cron routes do NOT use a browser login session.
-     They authenticate themselves with CRON_SECRET.
-  ========================================================= */
+     /concept
+     Only explicitly published customer previews live here.
+
+     /preview
+     is intentionally NOT public anymore. It is the internal
+     redesign preview used from the authenticated Leadbase UI.
+
+     Cron routes authenticate themselves using CRON_SECRET.
+  ======================================================= */
 
   const isPublicRoute =
     pathname.startsWith(
@@ -77,6 +94,9 @@ export async function proxy(
     ) ||
     pathname.startsWith(
       "/auth"
+    ) ||
+    pathname.startsWith(
+      "/concept"
     ) ||
     pathname.startsWith(
       "/api/health"
@@ -91,9 +111,9 @@ export async function proxy(
     return supabaseResponse;
   }
 
-  /* =========================================================
+  /* =======================================================
      AUTHENTICATED APP ROUTES
-  ========================================================= */
+  ======================================================= */
 
   const {
     data,
@@ -122,6 +142,10 @@ export async function proxy(
 
   return supabaseResponse;
 }
+
+/* =========================================================
+   MATCHER
+========================================================= */
 
 export const config = {
   matcher: [

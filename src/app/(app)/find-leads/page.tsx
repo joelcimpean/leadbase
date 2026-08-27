@@ -11,6 +11,10 @@ import {
 } from "lucide-react";
 
 import {
+  AiLeadSearchChat,
+} from "./ai-lead-search-chat";
+
+import {
   CandidateActions,
 } from "./candidate-actions-buttons";
 
@@ -53,6 +57,7 @@ import {
 type FindLeadsPageProps = {
   searchParams: Promise<{
     search?: string;
+
     error?: string;
   }>;
 };
@@ -64,7 +69,9 @@ type FindLeadsPageProps = {
 function statusClass(
   status: string
 ) {
-  switch (status) {
+  switch (
+    status
+  ) {
     case "COMPLETED":
       return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
 
@@ -85,7 +92,8 @@ function statusClass(
 
 function formatDate(
   date: string,
-  language: AppLanguage
+  language:
+    AppLanguage
 ) {
   return new Intl.DateTimeFormat(
     language ===
@@ -139,9 +147,9 @@ export default async function FindLeadsPage({
   const supabase =
     await createClient();
 
-  /* =========================================================
+  /* =======================================================
      CAMPAIGNS
-  ========================================================= */
+  ======================================================= */
 
   const {
     data:
@@ -182,9 +190,9 @@ export default async function FindLeadsPage({
     );
   }
 
-  /* =========================================================
+  /* =======================================================
      RECENT SEARCHES
-  ========================================================= */
+  ======================================================= */
 
   const {
     data:
@@ -243,9 +251,9 @@ export default async function FindLeadsPage({
     searches ??
     [];
 
-  /* =========================================================
+  /* =======================================================
      ACTIVE SEARCH
-  ========================================================= */
+  ======================================================= */
 
   const activeSearchId =
     selectedSearchId ??
@@ -258,9 +266,9 @@ export default async function FindLeadsPage({
     )?.id ??
     null;
 
-  /* =========================================================
+  /* =======================================================
      CANDIDATES
-  ========================================================= */
+  ======================================================= */
 
   let candidates:
     {
@@ -296,7 +304,8 @@ export default async function FindLeadsPage({
         | string
         | null;
 
-      status: string;
+      status:
+        string;
     }[] = [];
 
   if (
@@ -362,15 +371,15 @@ export default async function FindLeadsPage({
     ) ??
     null;
 
-  /* =========================================================
+  /* =======================================================
      UI
-  ========================================================= */
+  ======================================================= */
 
   return (
     <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      {/* =====================================================
+      {/* ===================================================
           HEADER
-      ===================================================== */}
+      =================================================== */}
 
       <header>
         <p className="text-sm text-muted-foreground">
@@ -392,9 +401,9 @@ export default async function FindLeadsPage({
         </p>
       </header>
 
-      {/* =====================================================
+      {/* ===================================================
           ERROR
-      ===================================================== */}
+      =================================================== */}
 
       {pageError ? (
         <div className="mt-5 break-words rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:mt-6 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
@@ -404,64 +413,42 @@ export default async function FindLeadsPage({
         </div>
       ) : null}
 
-      {/* =====================================================
-          SEARCH
-      ===================================================== */}
+      {/* ===================================================
+          AI LEAD SEARCH
+      =================================================== */}
 
-      <Card className="mt-6 min-w-0 shadow-none md:mt-8">
-        <CardContent className="p-4 sm:p-5 md:p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
-              <Search className="size-4" />
-            </div>
+      {campaignRows.length ===
+      0 ? (
+        <Card className="mt-6 min-w-0 border-dashed shadow-none md:mt-8">
+          <CardContent className="px-4 py-10 text-center sm:px-6">
+            <Sparkles className="mx-auto size-5 text-muted-foreground" />
 
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold">
-                {
-                  text.leadSearch
-                }
-              </h2>
+            <p className="mt-3 text-sm font-medium">
+              {
+                text.createCampaignFirst
+              }
+            </p>
 
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {
-                  text.leadSearchDescription
-                }
-              </p>
-            </div>
-          </div>
+            <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+              {
+                text.createCampaignFirstDescription
+              }
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <AiLeadSearchChat
+          campaigns={
+            campaignRows
+          }
+        />
+      )}
 
-          {campaignRows.length ===
-          0 ? (
-            <div className="mt-6 rounded-xl border border-dashed px-4 py-8 text-center sm:px-6 sm:py-10">
-              <Sparkles className="mx-auto size-5 text-muted-foreground" />
-
-              <p className="mt-3 text-sm font-medium">
-                {
-                  text.createCampaignFirst
-                }
-              </p>
-
-              <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                {
-                  text.createCampaignFirstDescription
-                }
-              </p>
-            </div>
-          ) : (
-            <div className="mt-6 md:mt-7">
-              <FindLeadsSearchForm
-                campaigns={
-                  campaignRows
-                }
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* =====================================================
+      {/* ===================================================
           RESULTS
-      ===================================================== */}
+
+          Intentionally directly below the AI chat.
+      =================================================== */}
 
       {activeSearch ? (
         <section className="mt-7 md:mt-8">
@@ -542,9 +529,9 @@ export default async function FindLeadsPage({
                       className="min-w-0 shadow-none"
                     >
                       <CardContent className="p-4 sm:p-5">
-                        {/* =====================================
+                        {/* =================================
                             TOP
-                        ===================================== */}
+                        ================================= */}
 
                         <div className="flex min-w-0 items-start justify-between gap-3 sm:gap-4">
                           <div className="min-w-0 flex-1">
@@ -588,9 +575,9 @@ export default async function FindLeadsPage({
                           ) : null}
                         </div>
 
-                        {/* =====================================
+                        {/* =================================
                             ADDRESS
-                        ===================================== */}
+                        ================================= */}
 
                         {candidate.formatted_address ? (
                           <div className="mt-4 flex min-w-0 items-start gap-2 text-sm text-muted-foreground">
@@ -604,9 +591,9 @@ export default async function FindLeadsPage({
                           </div>
                         ) : null}
 
-                        {/* =====================================
+                        {/* =================================
                             PHONE
-                        ===================================== */}
+                        ================================= */}
 
                         {candidate.phone ? (
                           <div className="mt-3">
@@ -627,9 +614,9 @@ export default async function FindLeadsPage({
                           </div>
                         ) : null}
 
-                        {/* =====================================
+                        {/* =================================
                             LINKS
-                        ===================================== */}
+                        ================================= */}
 
                         <div className="mt-5 flex flex-wrap items-center gap-2">
                           {candidate.website_url ? (
@@ -679,9 +666,9 @@ export default async function FindLeadsPage({
                           ) : null}
                         </div>
 
-                        {/* =====================================
+                        {/* =================================
                             ACTIONS
-                        ===================================== */}
+                        ================================= */}
 
                         <CandidateActions
                           candidateId={
@@ -698,9 +685,64 @@ export default async function FindLeadsPage({
         </section>
       ) : null}
 
-      {/* =====================================================
+      {/* ===================================================
+          MANUAL SEARCH
+      =================================================== */}
+
+      <Card className="mt-8 min-w-0 shadow-none md:mt-10">
+        <CardContent className="p-4 sm:p-5 md:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
+              <Search className="size-4" />
+            </div>
+
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">
+                {
+                  text.leadSearch
+                }
+              </h2>
+
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {
+                  text.leadSearchDescription
+                }
+              </p>
+            </div>
+          </div>
+
+          {campaignRows.length ===
+          0 ? (
+            <div className="mt-6 rounded-xl border border-dashed px-4 py-8 text-center sm:px-6 sm:py-10">
+              <Sparkles className="mx-auto size-5 text-muted-foreground" />
+
+              <p className="mt-3 text-sm font-medium">
+                {
+                  text.createCampaignFirst
+                }
+              </p>
+
+              <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted-foreground">
+                {
+                  text.createCampaignFirstDescription
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="mt-6 md:mt-7">
+              <FindLeadsSearchForm
+                campaigns={
+                  campaignRows
+                }
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ===================================================
           RECENT SEARCHES
-      ===================================================== */}
+      =================================================== */}
 
       <section className="mt-8 md:mt-10">
         <div>
