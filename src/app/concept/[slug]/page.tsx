@@ -494,7 +494,7 @@ import type {
               </a>
   
               <p className="mt-0.5 text-[9px] text-neutral-400">
-                Reine Vorschau · keine Anmeldung · kein Download
+              Unverbindliche Designvorschau · mögliche Gestaltungsrichtung · kein finales Konzept
               </p>
             </div>
   
@@ -554,7 +554,7 @@ import type {
               </a>
   
               <span className="hidden shrink-0 text-[8px] text-neutral-400 min-[430px]:block">
-                Reine Vorschau · keine Anmeldung
+                Reine Designvorschau · keine finales Konzept
               </span>
             </div>
           </div>

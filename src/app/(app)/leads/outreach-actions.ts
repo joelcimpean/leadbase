@@ -651,12 +651,12 @@ function addCustomerPreviewToBody(
   }
 
   const previewBlock =
-    [
-      "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem ein unverbindliches Designkonzept vorbereitet:",
-      previewUrl,
-    ].join(
-      "\n"
-    );
+  [
+    "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
+    previewUrl,
+  ].join(
+    "\n"
+  );
 
   /*
    * Prefer inserting the preview before a closing greeting
