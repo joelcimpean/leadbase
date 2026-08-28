@@ -15,33 +15,44 @@ export async function launchServerBrowser(): Promise<Browser> {
   const isVercel =
     process.env.VERCEL === "1";
 
-  /*
-   * VERCEL
-   *
-   * Vercel does not contain Playwright's downloaded browser.
-   * @sparticuz/chromium provides a Chromium binary specifically
-   * for serverless Linux environments.
-   */
+  /* =======================================================
+     VERCEL
+  ======================================================= */
+
   if (isVercel) {
+    /*
+     * Leadbase only needs normal website rendering and
+     * screenshots.
+     *
+     * WebGL / SwiftShader is unnecessary here and consumes
+     * additional serverless resources.
+     */
+    chromium.setGraphicsMode =
+      false;
+
     const executablePath =
       await chromium.executablePath();
 
     return await playwrightChromium.launch({
-      args: chromium.args,
       executablePath,
-      headless: true,
+
+      args:
+        chromium.args,
+
+      headless:
+        true,
     });
   }
 
-  /*
-   * LOCAL DEVELOPMENT
-   *
-   * Use the locally installed Google Chrome.
-   * This prevents the Linux-only Sparticuz binary from being
-   * used on macOS.
-   */
+  /* =======================================================
+     LOCAL DEVELOPMENT
+  ======================================================= */
+
   return await playwrightChromium.launch({
-    channel: "chrome",
-    headless: true,
+    channel:
+      "chrome",
+
+    headless:
+      true,
   });
 }
