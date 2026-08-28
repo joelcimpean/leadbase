@@ -1,37 +1,61 @@
 import OpenAI from "openai";
-import { zodTextFormat } from "openai/helpers/zod";
-import { z } from "zod";
+
+import {
+  zodTextFormat,
+} from "openai/helpers/zod";
+
+import {
+  z,
+} from "zod";
 
 /* =========================================================
    CONFIG
 ========================================================= */
 
-const OUTREACH_MODEL = "gpt-5.6-luna";
+const OUTREACH_MODEL =
+  "gpt-5.6-luna";
 
 /* =========================================================
    SCHEMA
 ========================================================= */
 
-const OutreachDraftSchema = z.object({
-  subject: z.string(),
+const OutreachDraftSchema =
+  z.object({
+    subject:
+      z.string(),
 
-  body: z.string(),
+    body:
+      z.string(),
 
-  followUpBody: z.string(),
+    followUpBody:
+      z.string(),
 
-  personalizationPoints: z
-    .array(z.string())
-    .max(6),
-});
+    personalizationPoints:
+      z
+        .array(
+          z.string()
+        )
+        .max(
+          6
+        ),
+  });
 
 export type GeneratedOutreachDraft =
-  z.infer<typeof OutreachDraftSchema> & {
-    model: string;
+  z.infer<
+    typeof OutreachDraftSchema
+  > & {
+    model:
+      string;
 
     usage: {
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
+      inputTokens:
+        number;
+
+      outputTokens:
+        number;
+
+      totalTokens:
+        number;
     };
   };
 
@@ -40,33 +64,79 @@ export type GeneratedOutreachDraft =
 ========================================================= */
 
 export type GenerateOutreachDraftInput = {
-  companyName: string;
+  companyName:
+    string;
 
-  industry?: string | null;
-  location?: string | null;
+  industry?:
+    string
+    | null;
 
-  contactName?: string | null;
-  contactJobTitle?: string | null;
+  location?:
+    string
+    | null;
 
-  websiteUrl?: string | null;
+  contactName?:
+    string
+    | null;
 
-  campaignName?: string | null;
+  contactJobTitle?:
+    string
+    | null;
 
-  campaignOutreachAngle?: string | null;
-  campaignEmailTone?: string | null;
+  contactSalutation?:
+    "HERR"
+    | "FRAU"
+    | null;
 
-  researchSummary?: string | null;
+  websiteUrl?:
+    string
+    | null;
 
-  structuralScore?: number | null;
-  visualScore?: number | null;
-  opportunityScore?: number | null;
-  redesignPotential?: number | null;
+  campaignName?:
+    string
+    | null;
 
-  visualStrengths?: string[];
-  visualWeaknesses?: string[];
+  campaignOutreachAngle?:
+    string
+    | null;
 
-  redesignReason?: string | null;
-  suggestedOutreachAngle?: string | null;
+  campaignEmailTone?:
+    string
+    | null;
+
+  researchSummary?:
+    string
+    | null;
+
+  structuralScore?:
+    number
+    | null;
+
+  visualScore?:
+    number
+    | null;
+
+  opportunityScore?:
+    number
+    | null;
+
+  redesignPotential?:
+    number
+    | null;
+
+  visualStrengths?:
+    string[];
+
+  visualWeaknesses?:
+    string[];
+
+  redesignReason?:
+    string
+    | null;
+
+  suggestedOutreachAngle?:
+    string
+    | null;
 };
 
 /* =========================================================
@@ -75,9 +145,12 @@ export type GenerateOutreachDraftInput = {
 
 function createOpenAIClient() {
   const apiKey =
-    process.env.OPENAI_API_KEY;
+    process.env
+      .OPENAI_API_KEY;
 
-  if (!apiKey) {
+  if (
+    !apiKey
+  ) {
     throw new Error(
       "OPENAI_API_KEY is missing from the environment."
     );
@@ -93,7 +166,8 @@ function createOpenAIClient() {
 ========================================================= */
 
 function optionalLine(
-  label: string,
+  label:
+    string,
   value:
     | string
     | number
@@ -101,9 +175,12 @@ function optionalLine(
     | undefined
 ) {
   if (
-    value === null ||
-    value === undefined ||
-    value === ""
+    value ===
+      null ||
+    value ===
+      undefined ||
+    value ===
+      ""
   ) {
     return null;
   }
@@ -111,130 +188,174 @@ function optionalLine(
   return `${label}: ${value}`;
 }
 
+function getSalutationContext(
+  value:
+    "HERR"
+    | "FRAU"
+    | null
+    | undefined
+) {
+  if (
+    value ===
+    "HERR"
+  ) {
+    return "Herr";
+  }
+
+  if (
+    value ===
+    "FRAU"
+  ) {
+    return "Frau";
+  }
+
+  return null;
+}
+
 /* =========================================================
    GENERATE
 ========================================================= */
 
 export async function generateOutreachDraft(
-  input: GenerateOutreachDraftInput
+  input:
+    GenerateOutreachDraftInput
 ): Promise<GeneratedOutreachDraft> {
   const openai =
     createOpenAIClient();
 
-  const context = [
-    optionalLine(
-      "Unternehmen",
-      input.companyName
-    ),
+  const context =
+    [
+      optionalLine(
+        "Unternehmen",
+        input.companyName
+      ),
 
-    optionalLine(
-      "Branche",
-      input.industry
-    ),
+      optionalLine(
+        "Branche",
+        input.industry
+      ),
 
-    optionalLine(
-      "Standort",
-      input.location
-    ),
+      optionalLine(
+        "Standort",
+        input.location
+      ),
 
-    optionalLine(
-      "Ansprechpartner",
-      input.contactName
-    ),
+      optionalLine(
+        "Ansprechpartner",
+        input.contactName
+      ),
 
-    optionalLine(
-      "Position",
-      input.contactJobTitle
-    ),
+      optionalLine(
+        "Anrede",
+        getSalutationContext(
+          input.contactSalutation
+        )
+      ),
 
-    optionalLine(
-      "Website",
-      input.websiteUrl
-    ),
+      optionalLine(
+        "Position",
+        input.contactJobTitle
+      ),
 
-    optionalLine(
-      "Kampagne",
-      input.campaignName
-    ),
+      optionalLine(
+        "Website",
+        input.websiteUrl
+      ),
 
-    optionalLine(
-      "Kampagnen-Ansatz",
-      input.campaignOutreachAngle
-    ),
+      optionalLine(
+        "Kampagne",
+        input.campaignName
+      ),
 
-    optionalLine(
-      "Gewünschter Ton",
-      input.campaignEmailTone
-    ),
+      optionalLine(
+        "Kampagnen-Ansatz",
+        input.campaignOutreachAngle
+      ),
 
-    optionalLine(
-      "Research Summary",
-      input.researchSummary
-    ),
+      optionalLine(
+        "Gewünschter Ton",
+        input.campaignEmailTone
+      ),
 
-    optionalLine(
-      "Structural Score",
-      input.structuralScore
-    ),
+      optionalLine(
+        "Research Summary",
+        input.researchSummary
+      ),
 
-    optionalLine(
-      "Visual Score",
-      input.visualScore
-    ),
+      optionalLine(
+        "Structural Score",
+        input.structuralScore
+      ),
 
-    optionalLine(
-      "Opportunity Score",
-      input.opportunityScore
-    ),
+      optionalLine(
+        "Visual Score",
+        input.visualScore
+      ),
 
-    optionalLine(
-      "Redesign Potential",
-      input.redesignPotential
-    ),
+      optionalLine(
+        "Opportunity Score",
+        input.opportunityScore
+      ),
 
-    optionalLine(
-      "Redesign-Grund",
-      input.redesignReason
-    ),
+      optionalLine(
+        "Redesign Potential",
+        input.redesignPotential
+      ),
 
-    optionalLine(
-      "Vorgeschlagener Outreach-Ansatz",
-      input.suggestedOutreachAngle
-    ),
+      optionalLine(
+        "Redesign-Grund",
+        input.redesignReason
+      ),
 
-    input.visualStrengths?.length
-      ? `Visuelle Stärken: ${input.visualStrengths.join(
-          " | "
-        )}`
-      : null,
+      optionalLine(
+        "Vorgeschlagener Outreach-Ansatz",
+        input.suggestedOutreachAngle
+      ),
 
-    input.visualWeaknesses?.length
-      ? `Visuelle Schwächen: ${input.visualWeaknesses.join(
-          " | "
-        )}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+      input.visualStrengths
+        ?.length
+        ? `Visuelle Stärken: ${input.visualStrengths.join(
+            " | "
+          )}`
+        : null,
+
+      input.visualWeaknesses
+        ?.length
+        ? `Visuelle Schwächen: ${input.visualWeaknesses.join(
+            " | "
+          )}`
+        : null,
+    ]
+      .filter(
+        Boolean
+      )
+      .join(
+        "\n"
+      );
 
   const response =
     await openai.responses.parse({
-      model: OUTREACH_MODEL,
+      model:
+        OUTREACH_MODEL,
 
       reasoning: {
-        effort: "low",
+        effort:
+          "low",
       },
 
       input: [
         {
-          role: "system",
+          role:
+            "system",
 
           content: `
 Du bist ein erfahrener deutscher B2B-Outreach-Texter für einen selbstständigen Webdesigner.
 
 Deine Aufgabe ist es, kurze, persönliche und glaubwürdige Cold-E-Mails an deutsche Unternehmen zu schreiben.
 
-WICHTIG:
+=========================================================
+GRUNDREGELN
+=========================================================
 
 - Schreibe ausschließlich auf natürlichem, grammatikalisch korrektem Deutsch.
 - Verwende grundsätzlich die höfliche Sie-Ansprache.
@@ -254,13 +375,54 @@ WICHTIG:
 - Kein "Ich hoffe, diese E-Mail erreicht Sie wohlauf".
 - Kein unnötiges Vorstellen über mehrere Sätze.
 
-ZIEL:
+=========================================================
+WICHTIG: DESIGNVORSCHAU
+=========================================================
+
+Die Anwendung prüft NACH deiner Generierung automatisch, ob bereits eine echte Designvorschau für diesen Empfänger existiert.
+
+Falls eine Designvorschau existiert, fügt die Anwendung selbst:
+- den Hinweis auf die Designvorschau,
+- die Erklärung dazu,
+- und den echten Vorschau-Link
+
+in die E-Mail ein.
+
+Deshalb darfst du im BODY NIEMALS selbst behaupten oder erwähnen:
+
+- dass bereits eine Designvorschau vorbereitet wurde
+- dass ein Designkonzept vorbereitet wurde
+- dass ein Designentwurf erstellt wurde
+- dass bereits eine mögliche Designrichtung vorbereitet wurde
+- dass der Empfänger einen Entwurf ansehen kann
+- dass du ihm "zeigen kannst, was du dir vorstellst"
+- dass ein Link oder eine Vorschau existiert
+
+Verwende auch keine Formulierungen wie:
+
+"Ich habe Ihnen eine Designvorschau vorbereitet."
+
+"Ich habe dazu eine mögliche Designrichtung vorbereitet."
+
+"Ich kann Ihnen gerne zeigen, was ich mir vorstelle."
+
+"Ich habe bereits ein Konzept erstellt."
+
+Dieser Teil wird vollständig und kontrolliert von Leadbase ergänzt.
+
+Deine Aufgabe ist ausschließlich, den individuellen persönlichen Hauptteil der Nachricht zu verfassen.
+
+=========================================================
+ZIEL
+=========================================================
 
 Der Empfänger soll merken, dass sich der Absender tatsächlich mit seinem Unternehmen bzw. seiner Website beschäftigt hat.
 
 Die E-Mail soll sich anfühlen wie eine kurze persönliche Nachricht eines Webdesigners und nicht wie eine Massenmail.
 
-STRUKTUR:
+=========================================================
+STRUKTUR
+=========================================================
 
 1. Kurze natürliche Anrede.
 2. Konkreter persönlicher Einstieg.
@@ -268,11 +430,15 @@ STRUKTUR:
 4. Eine konkrete Chance / Idee.
 5. Niedrigschwellige Frage.
 
-LÄNGE:
+=========================================================
+LÄNGE
+=========================================================
 
 Der Body sollte normalerweise ungefähr 70–130 Wörter haben.
 
-BETREFF:
+=========================================================
+BETREFF
+=========================================================
 
 - kurz
 - neutral
@@ -280,20 +446,23 @@ BETREFF:
 - maximal etwa 6 Wörter
 - kein Clickbait
 
-ANREDE:
+=========================================================
+ANREDE
+=========================================================
 
-Wenn ein Ansprechpartner vorhanden ist:
-"Hallo [vollständiger Name]," ist erlaubt.
+Wenn eine eindeutige Anrede und ein Ansprechpartner vorhanden sind, verwende eine formelle persönliche Anrede.
 
-Wenn kein Ansprechpartner vorhanden ist:
-Verwende eine natürliche neutrale Anrede wie:
+Wenn keine eindeutige Anrede vorhanden ist, verwende:
+
 "Guten Tag,"
-oder
-"Hallo liebes [Unternehmensname]-Team,"
 
-Verwende niemals erfundene Namen oder Geschlechter.
+Erfinde niemals Geschlecht oder Anrede.
 
-CALL TO ACTION:
+Leadbase korrigiert die Anrede nach der Generierung zusätzlich automatisch.
+
+=========================================================
+CALL TO ACTION
+=========================================================
 
 Nicht direkt nach einem Termin oder Verkauf fragen.
 
@@ -301,22 +470,38 @@ Bevorzuge niedrigschwellige Formulierungen wie:
 
 "Wäre eine Überarbeitung grundsätzlich interessant für Sie?"
 
-"Falls das grundsätzlich interessant ist, kann ich Ihnen gerne kurz zeigen, was ich damit meine."
+"Wäre das grundsätzlich ein Thema für Sie?"
 
-"Falls Sie das Thema ohnehin einmal angehen möchten, können wir uns gerne kurz austauschen."
+"Falls Sie das Thema ohnehin einmal angehen möchten, freue ich mich über eine kurze Rückmeldung."
 
-FOLLOW-UP:
+WICHTIG:
+
+Der Call-to-Action darf NICHT versprechen, danach erst eine Designvorschau oder einen Entwurf zu zeigen.
+
+=========================================================
+FOLLOW-UP
+=========================================================
 
 Schreibe zusätzlich ein sehr kurzes Follow-up für einige Tage später.
 
 Das Follow-up:
+
 - 30–60 Wörter
 - kein Druck
 - keine Schuldgefühle
 - kein "Ich wollte nur nachhaken"
 - soll sich auf die erste Nachricht beziehen
+- darf KEINE Designvorschau erwähnen
+- darf KEIN Designkonzept erwähnen
+- darf KEINEN Entwurf erwähnen
+- darf KEINEN Link erwähnen
+- darf NICHT behaupten, dass anschließend etwas gezeigt wird
 
-PERSONALIZATION POINTS:
+Wenn tatsächlich eine Designvorschau existiert, ersetzt Leadbase dieses Follow-up später automatisch durch ein passendes Preview-Follow-up.
+
+=========================================================
+PERSONALIZATION POINTS
+=========================================================
 
 Gib 2–6 konkrete Fakten zurück, auf denen die Nachricht basiert.
 
@@ -325,7 +510,8 @@ Diese Punkte sind intern und erscheinen nicht zwingend wortwörtlich in der E-Ma
         },
 
         {
-          role: "user",
+          role:
+            "user",
 
           content: `
 Erstelle einen personalisierten deutschen Outreach-Entwurf für dieses Unternehmen.
@@ -335,27 +521,33 @@ KONTEXT:
 ${context}
 
 Wichtig:
+
 Priorisiere konkrete Beobachtungen über die Website und das Unternehmen.
 
 Nutze den vorgeschlagenen Outreach-Ansatz nur dann, wenn er tatsächlich durch den Kontext gestützt wird.
 
 Wenn Informationen fehlen, schreibe lieber etwas weniger spezifisch, statt etwas zu erfinden.
+
+Erwähne keine Designvorschau, keinen Designentwurf, kein vorbereitetes Konzept und keinen Vorschau-Link. Dieser Teil wird anschließend automatisch ergänzt, falls für diesen Lead eine echte Vorschau existiert.
           `.trim(),
         },
       ],
 
       text: {
-        format: zodTextFormat(
-          OutreachDraftSchema,
-          "outreach_draft"
-        ),
+        format:
+          zodTextFormat(
+            OutreachDraftSchema,
+            "outreach_draft"
+          ),
       },
     });
 
   const parsed =
     response.output_parsed;
 
-  if (!parsed) {
+  if (
+    !parsed
+  ) {
     throw new Error(
       "Outreach generation returned no structured result."
     );
@@ -364,20 +556,24 @@ Wenn Informationen fehlen, schreibe lieber etwas weniger spezifisch, statt etwas
   return {
     ...parsed,
 
-    model: OUTREACH_MODEL,
+    model:
+      OUTREACH_MODEL,
 
     usage: {
       inputTokens:
         response.usage
-          ?.input_tokens ?? 0,
+          ?.input_tokens ??
+        0,
 
       outputTokens:
         response.usage
-          ?.output_tokens ?? 0,
+          ?.output_tokens ??
+        0,
 
       totalTokens:
         response.usage
-          ?.total_tokens ?? 0,
+          ?.total_tokens ??
+        0,
     },
   };
 }

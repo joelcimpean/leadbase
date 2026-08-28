@@ -33,7 +33,9 @@ const OUTREACH_SIGNATURE = [
   "",
   "Joel Cimpean",
   "hello@joelcimpean.com / joelcimpean.com",
-].join("\n");
+].join(
+  "\n"
+);
 
 const SIGNATURE_MARKER =
   "Mit freundlichen Grüßen / Kind regards,";
@@ -180,7 +182,7 @@ function getLastName(
     particles.has(
       parts[
         start -
-        1
+          1
       ].toLowerCase()
     )
   ) {
@@ -578,10 +580,6 @@ async function getActiveCustomerPreviewUrl({
   if (
     previewError
   ) {
-    /*
-     * Draft generation should still work if the customer
-     * preview has not been configured yet.
-     */
     console.warn(
       "Could not load customer preview for outreach:",
       previewError
@@ -621,6 +619,53 @@ async function getActiveCustomerPreviewUrl({
 }
 
 /* =========================================================
+   PREVIEW COPY SAFETY
+========================================================= */
+
+function removeGeneratedPreviewMentions(
+  value:
+    string
+) {
+  const paragraphs =
+    normalizeTextBlock(
+      value
+    ).split(
+      /\n{2,}/
+    );
+
+  const cleaned =
+    paragraphs.filter(
+      (
+        paragraph
+      ) => {
+        const normalized =
+          paragraph.toLowerCase();
+
+        const previewMention =
+          /designvorschau|designkonzept|designentwurf|designrichtung|webdesign[- ]?entwurf|website[- ]?entwurf|vorschau-link|vorschau link|vorschau ansehen/.test(
+            normalized
+          );
+
+        const preparedMention =
+          /vorbereitet|erstellt|angefertigt|entworfen|zeigen|ansehen|anschauen|mögliche richtung|vorstellen würde|vorstellen wuerde/.test(
+            normalized
+          );
+
+        return !(
+          previewMention &&
+          preparedMention
+        );
+      }
+    );
+
+  return cleaned
+    .join(
+      "\n\n"
+    )
+    .trim();
+}
+
+/* =========================================================
    INSERT CUSTOMER PREVIEW INTO EMAIL
 ========================================================= */
 
@@ -650,18 +695,25 @@ function addCustomerPreviewToBody(
     return normalized;
   }
 
-  const previewBlock =
-  [
-    "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
-    previewUrl,
-  ].join(
-    "\n"
-  );
-
   /*
-   * Prefer inserting the preview before a closing greeting
-   * if the AI generated one.
+   * GPT is instructed not to mention the preview.
+   *
+   * This remains as a defensive fallback in case the model
+   * nevertheless generates an old-style preview sentence.
    */
+  const cleanedBody =
+    removeGeneratedPreviewMentions(
+      normalized
+    );
+
+  const previewBlock =
+    [
+      "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
+      previewUrl,
+    ].join(
+      "\n"
+    );
+
   const closingMarkers =
     [
       "\nMit freundlichen Grüßen",
@@ -679,7 +731,7 @@ function addCustomerPreviewToBody(
       closingMarkers
   ) {
     const index =
-      normalized.indexOf(
+      cleanedBody.indexOf(
         marker
       );
 
@@ -700,10 +752,10 @@ function addCustomerPreviewToBody(
 
   if (
     insertionIndex !==
-    -1
+      -1
   ) {
     const before =
-      normalized
+      cleanedBody
         .slice(
           0,
           insertionIndex
@@ -711,7 +763,7 @@ function addCustomerPreviewToBody(
         .trim();
 
     const after =
-      normalized
+      cleanedBody
         .slice(
           insertionIndex
         )
@@ -730,7 +782,46 @@ function addCustomerPreviewToBody(
       );
   }
 
-  return `${normalized}\n\n${previewBlock}`;
+  return [
+    cleanedBody,
+    previewBlock,
+  ]
+    .filter(
+      Boolean
+    )
+    .join(
+      "\n\n"
+    );
+}
+
+/* =========================================================
+   PREVIEW FOLLOW-UP
+========================================================= */
+
+function buildPreviewFollowUp({
+  greeting,
+  previewUrl,
+}: {
+  greeting:
+    string;
+
+  previewUrl:
+    string;
+}) {
+  return [
+    greeting,
+    "",
+    "ich wollte mich noch einmal kurz zu meiner letzten Nachricht melden. Hatten Sie schon Gelegenheit, sich die Designvorschau anzusehen?",
+    "",
+    "Mich würde interessieren, ob die Richtung grundsätzlich zu Ihrem Unternehmen passt. Falls das Thema für Sie interessant ist, können wir uns gern kurz und unverbindlich dazu austauschen.",
+    "",
+    "Hier ist die Vorschau noch einmal:",
+    previewUrl,
+    "",
+    "Eine kurze Rückmeldung genügt.",
+  ].join(
+    "\n"
+  );
 }
 
 /* =========================================================
@@ -896,11 +987,6 @@ export async function generateLeadOutreachDraft(
       visual?.outreachAngle
     );
 
-  /*
-   * Load public preview in parallel with the AI generation.
-   *
-   * This does not add any extra AI cost.
-   */
   const customerPreviewPromise =
     getActiveCustomerPreviewUrl({
       supabase,
@@ -992,9 +1078,40 @@ export async function generateLeadOutreachDraft(
   const customerPreviewUrl =
     await customerPreviewPromise;
 
+  const contactSalutation:
+    | "HERR"
+    | "FRAU"
+    | null =
+    contact?.salutation ===
+      "HERR" ||
+    contact?.salutation ===
+      "FRAU"
+      ? contact.salutation
+      : null;
+
+  const greeting =
+    contact?.full_name
+      ? getGreeting(
+          contact.full_name,
+          contactSalutation
+        )
+      : "Guten Tag,";
+
+  /*
+   * Leadbase owns the greeting as well.
+   *
+   * This prevents GPT from using "Hallo Max Mustermann"
+   * when a verified formal salutation is available.
+   */
+  const generatedBodyWithGreeting =
+    replaceOpeningGreeting(
+      generated.body,
+      greeting
+    );
+
   const bodyWithPreview =
     addCustomerPreviewToBody(
-      generated.body,
+      generatedBodyWithGreeting,
       customerPreviewUrl
     );
 
@@ -1003,11 +1120,36 @@ export async function generateLeadOutreachDraft(
       bodyWithPreview
     );
 
-  const finalFollowUp =
+  /*
+   * If a preview exists, Leadbase creates a dedicated
+   * follow-up that references the preview the recipient
+   * already received.
+   *
+   * If there is no preview, keep the generic AI follow-up.
+   */
+  const genericFollowUp =
     generated.followUpBody
       ?.trim()
+      ? replaceOpeningGreeting(
+          generated.followUpBody,
+          greeting
+        )
+      : null;
+
+  const followUpSource =
+    customerPreviewUrl
+      ? buildPreviewFollowUp({
+          greeting,
+
+          previewUrl:
+            customerPreviewUrl,
+        })
+      : genericFollowUp;
+
+  const finalFollowUp =
+    followUpSource
       ? ensureSignature(
-          generated.followUpBody
+          followUpSource
         )
       : null;
 
@@ -1827,7 +1969,7 @@ export async function sendApprovedOutreachDraft(
 
   if (
     draft.status !==
-    "APPROVED"
+      "APPROVED"
   ) {
     console.warn(
       "Only approved outreach drafts can be sent."
@@ -1838,7 +1980,7 @@ export async function sendApprovedOutreachDraft(
 
   if (
     draft.channel !==
-    "EMAIL"
+      "EMAIL"
   ) {
     console.warn(
       "This outreach draft is not an email draft."
@@ -1905,7 +2047,7 @@ export async function sendApprovedOutreachDraft(
 
   if (
     lead.status ===
-    "DO_NOT_CONTACT"
+      "DO_NOT_CONTACT"
   ) {
     console.warn(
       "Email sending blocked because the lead is marked Do Not Contact."
@@ -2404,7 +2546,7 @@ export async function sendFollowUpOutreachDraft(
 
   if (
     draft.status !==
-    "SENT"
+      "SENT"
   ) {
     console.warn(
       "Follow-up can only be sent after the original email."
@@ -2485,7 +2627,7 @@ export async function sendFollowUpOutreachDraft(
 
   if (
     lead.status ===
-    "DO_NOT_CONTACT"
+      "DO_NOT_CONTACT"
   ) {
     console.warn(
       "Follow-up blocked because lead is Do Not Contact."
