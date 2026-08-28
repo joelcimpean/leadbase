@@ -1,25 +1,43 @@
-import { chromium } from "playwright";
+import "server-only";
+
+import {
+  launchServerBrowser,
+} from "@/lib/server-browser";
 
 export type WebsiteScreenshots = {
   desktop: Buffer;
+
   mobile: Buffer;
+
   finalUrl: string;
 };
 
-function normalizeUrl(websiteUrl: string) {
-  const value = websiteUrl.trim();
+function normalizeUrl(
+  websiteUrl: string
+) {
+  const value =
+    websiteUrl.trim();
 
   const normalized =
-    value.startsWith("http://") ||
-    value.startsWith("https://")
+    value.startsWith(
+      "http://"
+    ) ||
+    value.startsWith(
+      "https://"
+    )
       ? value
       : `https://${value}`;
 
-  const url = new URL(normalized);
+  const url =
+    new URL(
+      normalized
+    );
 
   if (
-    url.protocol !== "http:" &&
-    url.protocol !== "https:"
+    url.protocol !==
+      "http:" &&
+    url.protocol !==
+      "https:"
   ) {
     throw new Error(
       "Unsupported website protocol."
@@ -32,14 +50,13 @@ function normalizeUrl(websiteUrl: string) {
 export async function captureWebsiteScreenshots(
   websiteUrl: string
 ): Promise<WebsiteScreenshots> {
-  const url = normalizeUrl(
-    websiteUrl
-  );
+  const url =
+    normalizeUrl(
+      websiteUrl
+    );
 
   const browser =
-    await chromium.launch({
-      headless: true,
-    });
+    await launchServerBrowser();
 
   try {
     /* =========================================================
@@ -50,12 +67,15 @@ export async function captureWebsiteScreenshots(
       await browser.newContext({
         viewport: {
           width: 1440,
+
           height: 1000,
         },
 
-        deviceScaleFactor: 1,
+        deviceScaleFactor:
+          1,
 
-        locale: "de-DE",
+        locale:
+          "de-DE",
       });
 
     const desktopPage =
@@ -67,7 +87,8 @@ export async function captureWebsiteScreenshots(
         waitUntil:
           "domcontentloaded",
 
-        timeout: 20_000,
+        timeout:
+          20_000,
       }
     );
 
@@ -80,11 +101,14 @@ export async function captureWebsiteScreenshots(
 
     const desktop =
       await desktopPage.screenshot({
-        type: "jpeg",
+        type:
+          "jpeg",
 
-        quality: 80,
+        quality:
+          80,
 
-        fullPage: false,
+        fullPage:
+          false,
       });
 
     await desktopContext.close();
@@ -97,16 +121,21 @@ export async function captureWebsiteScreenshots(
       await browser.newContext({
         viewport: {
           width: 390,
+
           height: 844,
         },
 
-        deviceScaleFactor: 1,
+        deviceScaleFactor:
+          1,
 
-        isMobile: true,
+        isMobile:
+          true,
 
-        hasTouch: true,
+        hasTouch:
+          true,
 
-        locale: "de-DE",
+        locale:
+          "de-DE",
       });
 
     const mobilePage =
@@ -118,7 +147,8 @@ export async function captureWebsiteScreenshots(
         waitUntil:
           "domcontentloaded",
 
-        timeout: 20_000,
+        timeout:
+          20_000,
       }
     );
 
@@ -128,18 +158,23 @@ export async function captureWebsiteScreenshots(
 
     const mobile =
       await mobilePage.screenshot({
-        type: "jpeg",
+        type:
+          "jpeg",
 
-        quality: 80,
+        quality:
+          80,
 
-        fullPage: false,
+        fullPage:
+          false,
       });
 
     await mobileContext.close();
 
     return {
       desktop,
+
       mobile,
+
       finalUrl,
     };
   } finally {

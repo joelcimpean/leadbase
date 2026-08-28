@@ -1,9 +1,12 @@
 import "server-only";
 
 import {
-  chromium,
   type Page,
-} from "playwright";
+} from "playwright-core";
+
+import {
+  launchServerBrowser,
+} from "@/lib/server-browser";
 
 /* =========================================================
    CONFIG
@@ -1938,10 +1941,7 @@ export async function inspectRedesignSite(
   }
 
   const browser =
-    await chromium.launch({
-      headless:
-        true,
-    });
+  await launchServerBrowser();
 
   try {
     const context =
