@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
 import {
-  type MouseEvent,
   useEffect,
   useMemo,
   useRef,
@@ -14,22 +15,36 @@ import {
 } from "next/navigation";
 
 import {
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Eye,
+  Folder,
+  FolderOpen,
+  LayoutList,
   Loader2,
+  Mail,
   MapPin,
   MoreHorizontal,
   Pencil,
   Search,
   SlidersHorizontal,
   Sparkles,
+  Table2,
   Trash2,
+  WandSparkles,
   X,
+  MailPlus,
 } from "lucide-react";
+
 
 import {
   analyzeLeadWebsite,
 } from "./analysis-actions";
+
+import {
+  generateLeadOutreachDraftForBulk,
+} from "./outreach-actions";
 
 import {
   bulkDeleteLeads,
@@ -80,10 +95,6 @@ import {
 } from "@/components/ui/table";
 
 import {
-  type AppLanguage,
-} from "@/lib/i18n";
-
-import {
   getLeadPriorityLabel,
   getLeadStatusLabel,
   leadsCopy,
@@ -94,9 +105,11 @@ import {
 ========================================================= */
 
 export type LeadTableRow = {
-  id: string;
+  id:
+    string;
 
-  companyName: string;
+  companyName:
+    string;
 
   industry:
     | string
@@ -126,21 +139,51 @@ export type LeadTableRow = {
     | number
     | null;
 
-  status: string;
+  status:
+    string;
 
   priority:
+    | string
+    | null;
+
+  analysisStatus:
     | string
     | null;
 
   lastContactedAt:
     | string
     | null;
+
+  campaignId:
+    | string
+    | null;
+
+  campaignName:
+    | string
+    | null;
 };
 
-type AnalyzeProgress = {
-  current: number;
+type Progress = {
+  current:
+    number;
 
-  total: number;
+  total:
+    number;
+};
+
+type ViewMode =
+  | "compact"
+  | "table";
+
+type DesignResponse = {
+  ok?:
+    boolean;
+
+  generated?:
+    boolean;
+
+  error?:
+    string;
 };
 
 /* =========================================================
@@ -148,7 +191,8 @@ type AnalyzeProgress = {
 ========================================================= */
 
 function statusClass(
-  status: string
+  status:
+    string
 ) {
   switch (
     status
@@ -161,9 +205,6 @@ function statusClass(
 
     case "QUALIFIED":
       return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
-
-    case "NOT_A_FIT":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
 
     case "DRAFT_READY":
       return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400";
@@ -182,9 +223,6 @@ function statusClass(
 
     case "WON":
       return "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400";
-
-    case "LOST":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
 
     case "DO_NOT_CONTACT":
       return "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
@@ -212,83 +250,24 @@ function priorityClass(
     case "MEDIUM":
       return "text-amber-600 dark:text-amber-400";
 
-    case "LOW":
-      return "text-muted-foreground";
-
     default:
       return "text-muted-foreground";
   }
 }
 
 /* =========================================================
-   NEXT ACTION
-========================================================= */
-
-function getNextAction(
-  status: string,
-  language:
-    AppLanguage
-) {
-  const text =
-    leadsCopy[
-      language
-    ].table;
-
-  switch (
-    status
-  ) {
-    case "NEW":
-      return text.nextStartResearch;
-
-    case "RESEARCHING":
-      return text.nextFinishResearch;
-
-    case "QUALIFIED":
-      return text.nextPrepareOutreach;
-
-    case "DRAFT_READY":
-      return text.nextReviewDraft;
-
-    case "CONTACTED":
-      return text.nextWaitForReply;
-
-    case "REPLIED":
-      return text.nextReviewReply;
-
-    case "CALL_BOOKED":
-      return text.nextPrepareCall;
-
-    case "PROPOSAL":
-      return text.nextFollowProposal;
-
-    case "WON":
-      return text.nextClientWon;
-
-    case "LOST":
-    case "NOT_A_FIT":
-      return text.nextNoAction;
-
-    case "DO_NOT_CONTACT":
-      return text.nextBlocked;
-
-    default:
-      return text.nextReviewLead;
-  }
-}
-
-/* =========================================================
-   FORMAT DATE
+   DATE
 ========================================================= */
 
 function formatDate(
-  date:
+  value:
     | string
     | null,
   language:
-    AppLanguage
+    string
 ) {
   if (
-    !date
+    !value
   ) {
     return "—";
   }
@@ -304,13 +283,10 @@ function formatDate(
 
       month:
         "short",
-
-      year:
-        "numeric",
     }
   ).format(
     new Date(
-      date
+      value
     )
   );
 }
@@ -320,13 +296,14 @@ function formatDate(
 ========================================================= */
 
 function normalizeUrl(
-  url: string
+  value:
+    string
 ) {
-  return url.startsWith(
+  return value.startsWith(
     "http"
   )
-    ? url
-    : `https://${url}`;
+    ? value
+    : `https://${value}`;
 }
 
 /* =========================================================
@@ -335,22 +312,29 @@ function normalizeUrl(
 
 function SelectionCheckbox({
   checked,
-  indeterminate = false,
-  disabled = false,
+  indeterminate =
+    false,
+  disabled =
+    false,
   label,
   onChange,
 }: {
-  checked: boolean;
+  checked:
+    boolean;
 
-  indeterminate?: boolean;
+  indeterminate?:
+    boolean;
 
-  disabled?: boolean;
+  disabled?:
+    boolean;
 
-  label: string;
+  label:
+    string;
 
-  onChange: () => void;
+  onChange:
+    () => void;
 }) {
-  const checkboxRef =
+  const ref =
     useRef<HTMLInputElement>(
       null
     );
@@ -358,13 +342,11 @@ function SelectionCheckbox({
   useEffect(
     () => {
       if (
-        !checkboxRef.current
+        ref.current
       ) {
-        return;
+        ref.current.indeterminate =
+          indeterminate;
       }
-
-      checkboxRef.current.indeterminate =
-        indeterminate;
     },
     [
       indeterminate,
@@ -374,7 +356,7 @@ function SelectionCheckbox({
   return (
     <input
       ref={
-        checkboxRef
+        ref
       }
       type="checkbox"
       checked={
@@ -395,7 +377,7 @@ function SelectionCheckbox({
 }
 
 /* =========================================================
-   TABLE
+   COMPONENT
 ========================================================= */
 
 export function LeadsTable({
@@ -417,8 +399,169 @@ export function LeadsTable({
       language
     ];
 
+  const ui =
+    language ===
+    "de"
+      ? {
+          compact:
+            "Kompakt",
+
+          table:
+            "Tabelle",
+
+          uncategorized:
+            "Ohne Kampagne",
+
+          generateDesigns:
+            "Designs erstellen",
+
+          generating:
+            "Designs werden erstellt",
+
+          noDesignEligible:
+            "Keiner der ausgewählten Leads kann aktuell designt werden. Die Website muss zuerst vollständig analysiert sein.",
+
+          designsFinished:
+            "Design-Erstellung abgeschlossen",
+
+          created:
+            "neu erstellt",
+
+          existing:
+            "bereits vorhanden",
+
+          skipped:
+            "übersprungen",
+
+          failed:
+            "fehlgeschlagen",
+
+          analyzed:
+            "Analysiert",
+
+          notAnalyzed:
+            "Nicht analysiert",
+
+          campaign:
+            "Kampagne",
+
+          scores:
+            "Scores",
+
+          contact:
+            "Kontakt",
+
+          open:
+            "Öffnen",
+
+          leads:
+            "Leads",
+        }
+      : {
+          compact:
+            "Compact",
+
+          table:
+            "Table",
+
+          uncategorized:
+            "No campaign",
+
+          generateDesigns:
+            "Generate designs",
+
+          generating:
+            "Generating designs",
+
+          noDesignEligible:
+            "None of the selected leads can currently be designed. The website must be fully analyzed first.",
+
+          designsFinished:
+            "Design generation complete",
+
+          created:
+            "created",
+
+          existing:
+            "already existed",
+
+          skipped:
+            "skipped",
+
+          failed:
+            "failed",
+
+          analyzed:
+            "Analyzed",
+
+          notAnalyzed:
+            "Not analyzed",
+
+          campaign:
+            "Campaign",
+
+          scores:
+            "Scores",
+
+          contact:
+            "Contact",
+
+          open:
+            "Open",
+
+          leads:
+            "Leads",
+        };
+
   /* =======================================================
-     FILTER STATE
+     VIEW
+  ======================================================= */
+
+  const [
+    viewMode,
+    setViewMode,
+  ] =
+    useState<ViewMode>(
+      "compact"
+    );
+
+  useEffect(
+    () => {
+      const stored =
+        window.localStorage.getItem(
+          "leadbase-leads-view"
+        );
+
+      if (
+        stored ===
+          "compact" ||
+        stored ===
+          "table"
+      ) {
+        setViewMode(
+          stored
+        );
+      }
+    },
+    []
+  );
+
+  function changeView(
+    value:
+      ViewMode
+  ) {
+    setViewMode(
+      value
+    );
+
+    window.localStorage.setItem(
+      "leadbase-leads-view",
+      value
+    );
+  }
+
+  /* =======================================================
+     FILTER
   ======================================================= */
 
   const [
@@ -453,69 +596,6 @@ export function LeadsTable({
       false
     );
 
-  /* =======================================================
-     SELECTION STATE
-  ======================================================= */
-
-  const [
-    selectedIds,
-    setSelectedIds,
-  ] =
-    useState<
-      Set<string>
-    >(
-      () =>
-        new Set()
-    );
-
-  /* =======================================================
-     BULK ACTION STATE
-  ======================================================= */
-
-  const [
-    analyzing,
-    setAnalyzing,
-  ] =
-    useState(
-      false
-    );
-
-  const [
-    analyzeProgress,
-    setAnalyzeProgress,
-  ] =
-    useState<AnalyzeProgress | null>(
-      null
-    );
-
-  const [
-    bulkMessage,
-    setBulkMessage,
-  ] =
-    useState<
-      string | null
-    >(
-      null
-    );
-
-  const [
-    deleteDialogOpen,
-    setDeleteDialogOpen,
-  ] =
-    useState(
-      false
-    );
-
-  const [
-    isDeleting,
-    startDeleteTransition,
-  ] =
-    useTransition();
-
-  /* =======================================================
-     FILTER LEADS
-  ======================================================= */
-
   const filteredLeads =
     useMemo(
       () => {
@@ -545,6 +625,11 @@ export function LeadsTable({
                 .includes(
                   searchTerm
                 ) ||
+              lead.campaignName
+                ?.toLowerCase()
+                .includes(
+                  searchTerm
+                ) ||
               lead.contactEmail
                 ?.toLowerCase()
                 .includes(
@@ -562,7 +647,7 @@ export function LeadsTable({
                 "ALL" ||
               (
                 priority ===
-                "NONE"
+                  "NONE"
                   ? lead.priority ===
                     null
                   : lead.priority ===
@@ -584,10 +669,6 @@ export function LeadsTable({
         priority,
       ]
     );
-
-  /* =======================================================
-     FILTER INFORMATION
-  ======================================================= */
 
   const hasActiveFilters =
     search.trim() !==
@@ -612,50 +693,138 @@ export function LeadsTable({
   }
 
   /* =======================================================
-     SELECTION INFORMATION
+     CAMPAIGN GROUPS
   ======================================================= */
 
-  const filteredLeadIds =
+  const groups =
     useMemo(
-      () =>
-        filteredLeads.map(
-          (
-            lead
-          ) =>
-            lead.id
-        ),
+      () => {
+        const map =
+          new Map<
+            string,
+            {
+              key:
+                string;
+
+              name:
+                string;
+
+              leads:
+                LeadTableRow[];
+            }
+          >();
+
+        for (
+          const lead of
+            filteredLeads
+        ) {
+          const key =
+            lead.campaignId ??
+            "__none__";
+
+          const existing =
+            map.get(
+              key
+            );
+
+          if (
+            existing
+          ) {
+            existing.leads.push(
+              lead
+            );
+
+            continue;
+          }
+
+          map.set(
+            key,
+            {
+              key,
+
+              name:
+                lead.campaignName ??
+                ui.uncategorized,
+
+              leads:
+                [
+                  lead,
+                ],
+            }
+          );
+        }
+
+        return Array.from(
+          map.values()
+        );
+      },
       [
         filteredLeads,
+        ui.uncategorized,
       ]
     );
 
-  const visibleSelectedCount =
-    filteredLeadIds.filter(
+  const [
+    collapsedGroups,
+    setCollapsedGroups,
+  ] =
+    useState<
+      Set<string>
+    >(
+      () =>
+        new Set()
+    );
+
+  function toggleGroupOpen(
+    key:
+      string
+  ) {
+    setCollapsedGroups(
       (
-        leadId
-      ) =>
-        selectedIds.has(
-          leadId
-        )
-    ).length;
+        current
+      ) => {
+        const next =
+          new Set(
+            current
+          );
 
-  const allVisibleSelected =
-    filteredLeadIds.length >
-      0 &&
-    visibleSelectedCount ===
-      filteredLeadIds.length;
+        if (
+          next.has(
+            key
+          )
+        ) {
+          next.delete(
+            key
+          );
+        } else {
+          next.add(
+            key
+          );
+        }
 
-  const someVisibleSelected =
-    visibleSelectedCount >
-      0 &&
-    !allVisibleSelected;
+        return next;
+      }
+    );
+  }
 
   /* =======================================================
-     TOGGLE SINGLE
+     SELECTION
   ======================================================= */
 
+  const [
+    selectedIds,
+    setSelectedIds,
+  ] =
+    useState<
+      Set<string>
+    >(
+      () =>
+        new Set()
+    );
+
   function toggleLead(
-    leadId: string
+    leadId:
+      string
   ) {
     setBulkMessage(
       null
@@ -689,14 +858,88 @@ export function LeadsTable({
     );
   }
 
-  /* =======================================================
-     TOGGLE ALL
-  ======================================================= */
+  const filteredIds =
+    filteredLeads.map(
+      (
+        lead
+      ) =>
+        lead.id
+    );
+
+  const visibleSelected =
+    filteredIds.filter(
+      (
+        id
+      ) =>
+        selectedIds.has(
+          id
+        )
+    ).length;
+
+  const allVisibleSelected =
+    filteredIds.length >
+      0 &&
+    visibleSelected ===
+      filteredIds.length;
+
+  const someVisibleSelected =
+    visibleSelected >
+      0 &&
+    !allVisibleSelected;
 
   function toggleAllVisible() {
-    setBulkMessage(
-      null
+    setSelectedIds(
+      (
+        current
+      ) => {
+        const next =
+          new Set(
+            current
+          );
+
+        for (
+          const id of
+            filteredIds
+        ) {
+          if (
+            allVisibleSelected
+          ) {
+            next.delete(
+              id
+            );
+          } else {
+            next.add(
+              id
+            );
+          }
+        }
+
+        return next;
+      }
     );
+  }
+
+  function toggleCampaignSelection(
+    campaignLeads:
+      LeadTableRow[]
+  ) {
+    const ids =
+      campaignLeads.map(
+        (
+          lead
+        ) =>
+          lead.id
+      );
+
+    const allSelected =
+      ids.every(
+        (
+          id
+        ) =>
+          selectedIds.has(
+            id
+          )
+      );
 
     setSelectedIds(
       (
@@ -707,24 +950,19 @@ export function LeadsTable({
             current
           );
 
-        if (
-          allVisibleSelected
+        for (
+          const id of
+            ids
         ) {
-          for (
-            const leadId of
-            filteredLeadIds
+          if (
+            allSelected
           ) {
             next.delete(
-              leadId
+              id
             );
-          }
-        } else {
-          for (
-            const leadId of
-            filteredLeadIds
-          ) {
+          } else {
             next.add(
-              leadId
+              id
             );
           }
         }
@@ -733,10 +971,6 @@ export function LeadsTable({
       }
     );
   }
-
-  /* =======================================================
-     CLEAR
-  ======================================================= */
 
   function clearSelection() {
     setSelectedIds(
@@ -749,31 +983,88 @@ export function LeadsTable({
   }
 
   /* =======================================================
-     MOBILE CARD
+     BULK STATE
   ======================================================= */
 
-  function handleMobileCardClick(
-    event:
-      MouseEvent<HTMLDivElement>,
-    leadId: string
-  ) {
-    const target =
-      event.target;
-
-    if (
-      target instanceof
-        Element &&
-      target.closest(
-        "button, a, input, select, textarea"
-      )
-    ) {
-      return;
-    }
-
-    router.push(
-      `/leads/${leadId}`
+  const [
+    analyzing,
+    setAnalyzing,
+  ] =
+    useState(
+      false
     );
-  }
+
+  const [
+    analyzeProgress,
+    setAnalyzeProgress,
+  ] =
+    useState<Progress | null>(
+      null
+    );
+
+
+  const [
+    designing,
+    setDesigning,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    designProgress,
+    setDesignProgress,
+  ] =
+    useState<Progress | null>(
+      null
+    );
+
+  const [
+    drafting,
+    setDrafting,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    draftProgress,
+    setDraftProgress,
+  ] =
+    useState<Progress | null>(
+      null
+    );
+
+  const [
+    bulkMessage,
+    setBulkMessage,
+  ] =
+    useState<
+      string
+      | null
+    >(
+      null
+    );
+
+  const [
+    deleteDialogOpen,
+    setDeleteDialogOpen,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    isDeleting,
+    startDeleteTransition,
+  ] =
+    useTransition();
+
+  const busy =
+    analyzing ||
+    designing ||
+    drafting ||
+    isDeleting;
 
   /* =======================================================
      BULK ANALYZE
@@ -781,15 +1072,14 @@ export function LeadsTable({
 
   async function handleBulkAnalyze() {
     if (
-      analyzing ||
-      isDeleting ||
+      busy ||
       selectedIds.size ===
         0
     ) {
       return;
     }
 
-    const leadIds =
+    const ids =
       Array.from(
         selectedIds
       );
@@ -807,7 +1097,7 @@ export function LeadsTable({
         0,
 
       total:
-        leadIds.length,
+        ids.length,
     });
 
     try {
@@ -815,21 +1105,18 @@ export function LeadsTable({
         let index =
           0;
         index <
-        leadIds.length;
+          ids.length;
         index +=
           1
       ) {
-        const leadId =
-          leadIds[
-            index
-          ];
-
         const formData =
           new FormData();
 
         formData.set(
           "leadId",
-          leadId
+          ids[
+            index
+          ]
         );
 
         await analyzeLeadWebsite(
@@ -842,19 +1129,19 @@ export function LeadsTable({
             1,
 
           total:
-            leadIds.length,
+            ids.length,
         });
       }
 
       setBulkMessage(
-        leadIds.length ===
-        1
+        ids.length ===
+          1
           ? text.table
               .analysisOneFinished
           : text.table.analysisManyFinished.replace(
               "{count}",
               String(
-                leadIds.length
+                ids.length
               )
             )
       );
@@ -888,34 +1175,374 @@ export function LeadsTable({
   }
 
   /* =======================================================
+     BULK DESIGN
+  ======================================================= */
+
+  async function handleBulkDesign() {
+    if (
+      busy ||
+      selectedIds.size ===
+        0
+    ) {
+      return;
+    }
+
+    const selectedLeads =
+      leads.filter(
+        (
+          lead
+        ) =>
+          selectedIds.has(
+            lead.id
+          )
+      );
+
+    const eligible =
+      selectedLeads.filter(
+        (
+          lead
+        ) =>
+          lead.analysisStatus ===
+            "COMPLETED" &&
+          Boolean(
+            lead.websiteUrl
+          )
+      );
+
+    const skippedCount =
+      selectedLeads.length -
+      eligible.length;
+
+    if (
+      eligible.length ===
+        0
+    ) {
+      setBulkMessage(
+        ui.noDesignEligible
+      );
+
+      return;
+    }
+
+    setDesigning(
+      true
+    );
+
+    setBulkMessage(
+      null
+    );
+
+    setDesignProgress({
+      current:
+        0,
+
+      total:
+        eligible.length,
+    });
+
+    let createdCount =
+      0;
+
+    let existingCount =
+      0;
+
+    let failedCount =
+      0;
+
+    try {
+      for (
+        let index =
+          0;
+        index <
+          eligible.length;
+        index +=
+          1
+      ) {
+        const lead =
+          eligible[
+            index
+          ];
+
+        try {
+          const response =
+            await fetch(
+              `/api/leads/${encodeURIComponent(
+                lead.id
+              )}/redesign-v2`,
+              {
+                method:
+                  "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body:
+                  JSON.stringify({
+                    regenerate:
+                      false,
+                  }),
+              }
+            );
+
+          const result =
+            (
+              await response.json()
+            ) as
+              DesignResponse;
+
+          if (
+            !response.ok ||
+            result.ok ===
+              false
+          ) {
+            failedCount +=
+              1;
+
+            console.error(
+              `Design generation failed for ${lead.companyName}:`,
+              result.error
+            );
+          } else if (
+            result.generated ===
+              false
+          ) {
+            existingCount +=
+              1;
+          } else {
+            createdCount +=
+              1;
+          }
+        } catch (
+          error
+        ) {
+          failedCount +=
+            1;
+
+          console.error(
+            `Design generation failed for ${lead.companyName}:`,
+            error
+          );
+        }
+
+        setDesignProgress({
+          current:
+            index +
+            1,
+
+          total:
+            eligible.length,
+        });
+      }
+
+      const parts =
+        [
+          `${createdCount} ${ui.created}`,
+
+          existingCount >
+            0
+            ? `${existingCount} ${ui.existing}`
+            : null,
+
+          skippedCount >
+            0
+            ? `${skippedCount} ${ui.skipped}`
+            : null,
+
+          failedCount >
+            0
+            ? `${failedCount} ${ui.failed}`
+            : null,
+        ].filter(
+          Boolean
+        );
+
+      setBulkMessage(
+        `${ui.designsFinished}: ${parts.join(
+          " · "
+        )}`
+      );
+
+      setSelectedIds(
+        new Set()
+      );
+
+      router.refresh();
+    } finally {
+      setDesigning(
+        false
+      );
+
+      setDesignProgress(
+        null
+      );
+    }
+  }
+
+  /* =======================================================
+     BULK OUTREACH DRAFTS
+  ======================================================= */
+
+  async function handleBulkDrafts() {
+    if (
+      busy ||
+      selectedIds.size ===
+        0
+    ) {
+      return;
+    }
+
+    const ids =
+      Array.from(
+        selectedIds
+      );
+
+    setDrafting(
+      true
+    );
+
+    setBulkMessage(
+      null
+    );
+
+    setDraftProgress({
+      current:
+        0,
+
+      total:
+        ids.length,
+    });
+
+    let createdCount =
+      0;
+
+    let skippedCount =
+      0;
+
+    let failedCount =
+      0;
+
+    try {
+      for (
+        let index =
+          0;
+        index <
+          ids.length;
+        index +=
+          1
+      ) {
+        const leadId =
+          ids[
+            index
+          ];
+
+        try {
+          const result =
+            await generateLeadOutreachDraftForBulk(
+              leadId
+            );
+
+          if (
+            !result.success
+          ) {
+            failedCount +=
+              1;
+          } else if (
+            result.status ===
+              "created"
+          ) {
+            createdCount +=
+              1;
+          } else {
+            skippedCount +=
+              1;
+          }
+        } catch (
+          error
+        ) {
+          console.error(
+            `Bulk draft generation failed for ${leadId}:`,
+            error
+          );
+
+          failedCount +=
+            1;
+        }
+
+        setDraftProgress({
+          current:
+            index +
+            1,
+
+          total:
+            ids.length,
+        });
+      }
+
+      const parts =
+        [
+          `${createdCount} Drafts erstellt`,
+
+          skippedCount >
+            0
+            ? `${skippedCount} übersprungen`
+            : null,
+
+          failedCount >
+            0
+            ? `${failedCount} fehlgeschlagen`
+            : null,
+        ].filter(
+          Boolean
+        );
+
+      setBulkMessage(
+        parts.join(
+          " · "
+        )
+      );
+
+      setSelectedIds(
+        new Set()
+      );
+
+      router.refresh();
+    } finally {
+      setDrafting(
+        false
+      );
+
+      setDraftProgress(
+        null
+      );
+    }
+  }
+
+  /* =======================================================
      BULK DELETE
   ======================================================= */
 
   function handleBulkDelete() {
     if (
+      busy ||
       selectedIds.size ===
-        0 ||
-      isDeleting ||
-      analyzing
+        0
     ) {
       return;
     }
 
-    const leadIds =
+    const ids =
       Array.from(
         selectedIds
       );
-
-    setBulkMessage(
-      null
-    );
 
     startDeleteTransition(
       async () => {
         try {
           const result =
             await bulkDeleteLeads(
-              leadIds
+              ids
             );
 
           if (
@@ -938,7 +1565,7 @@ export function LeadsTable({
 
           setBulkMessage(
             result.deletedCount ===
-            1
+              1
               ? text.table
                   .deletedOne
               : text.table.deletedMany.replace(
@@ -968,14 +1595,101 @@ export function LeadsTable({
   }
 
   /* =======================================================
+     LEAD ACTION MENU
+  ======================================================= */
+
+  function LeadActions({
+    lead,
+  }: {
+    lead:
+      LeadTableRow;
+  }) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Actions for ${lead.companyName}`}
+              className="size-8"
+            />
+          }
+        >
+          <MoreHorizontal className="size-4" />
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() =>
+              router.push(
+                `/leads/${lead.id}`
+              )
+            }
+          >
+            <Eye className="size-4" />
+
+            {
+              text.common
+                .openLead
+            }
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() =>
+              router.push(
+                `/leads/${lead.id}/edit`
+              )
+            }
+          >
+            <Pencil className="size-4" />
+
+            {
+              text.common
+                .editLead
+            }
+          </DropdownMenuItem>
+
+          {lead.websiteUrl ? (
+            <>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() =>
+                  window.open(
+                    normalizeUrl(
+                      lead.websiteUrl!
+                    ),
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }
+              >
+                <ExternalLink className="size-4" />
+
+                {
+                  text.common
+                    .visitWebsite
+                }
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  /* =======================================================
      RENDER
   ======================================================= */
 
   return (
     <>
-      {/* SEARCH + FILTERS */}
+      {/* ===================================================
+          CONTROLS
+      =================================================== */}
 
-      <div className="mt-6 flex flex-col gap-3 md:mt-8 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mt-6 flex flex-col gap-3 md:mt-8 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 
@@ -999,7 +1713,53 @@ export function LeadsTable({
           />
         </div>
 
-        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* VIEW MODE */}
+
+          <div className="inline-flex rounded-lg border bg-background p-1">
+            <button
+              type="button"
+              onClick={() =>
+                changeView(
+                  "compact"
+                )
+              }
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                viewMode ===
+                "compact"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutList className="size-3.5" />
+
+              {
+                ui.compact
+              }
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeView(
+                  "table"
+                )
+              }
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                viewMode ===
+                "table"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Table2 className="size-3.5" />
+
+              {
+                ui.table
+              }
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() =>
@@ -1010,11 +1770,7 @@ export function LeadsTable({
                   !current
               )
             }
-            className={`inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors sm:flex-none ${
-              filtersOpen
-                ? "bg-muted text-foreground"
-                : "bg-background hover:bg-muted/50"
-            }`}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted/50"
           >
             <SlidersHorizontal className="size-4" />
 
@@ -1031,7 +1787,6 @@ export function LeadsTable({
               onClick={
                 resetFilters
               }
-              className="flex-1 sm:flex-none"
             >
               {
                 text.table
@@ -1042,10 +1797,12 @@ export function LeadsTable({
         </div>
       </div>
 
-      {/* FILTER PANEL */}
+      {/* ===================================================
+          FILTER PANEL
+      =================================================== */}
 
       {filtersOpen ? (
-        <div className="mt-3 grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-2 xl:flex xl:flex-wrap xl:items-end">
+        <div className="mt-3 grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">
               {
@@ -1066,7 +1823,7 @@ export function LeadsTable({
                     .value
                 )
               }
-              className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/50 focus:ring-2 focus:ring-ring sm:h-9 xl:min-w-44"
+              className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
             >
               <option value="ALL">
                 {
@@ -1130,7 +1887,7 @@ export function LeadsTable({
                     .value
                 )
               }
-              className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/50 focus:ring-2 focus:ring-ring sm:h-9 xl:min-w-44"
+              className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
             >
               <option value="ALL">
                 {
@@ -1171,19 +1928,21 @@ export function LeadsTable({
         </div>
       ) : null}
 
-      {/* BULK ACTION BAR */}
+      {/* ===================================================
+          BULK BAR
+      =================================================== */}
 
       {selectedIds.size >
       0 ? (
-        <div className="mt-4 flex flex-col gap-3 rounded-xl border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-xs font-semibold">
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border bg-muted/30 p-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-lg border bg-background text-xs font-semibold">
               {
                 selectedIds.size
               }
             </div>
 
-            <div className="min-w-0">
+            <div>
               <p className="text-sm font-medium">
                 {selectedIds.size ===
                 1
@@ -1197,34 +1956,21 @@ export function LeadsTable({
                     )}
               </p>
 
-              {selectedIds.size !==
-              visibleSelectedCount ? (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {text.table.visibleWithFilters.replace(
-                    "{count}",
-                    String(
-                      visibleSelectedCount
-                    )
-                  )}
-                </p>
-              ) : (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {
-                    text.table
-                      .chooseAction
-                  }
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {
+                  text.table
+                    .chooseAction
+                }
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="ghost"
               disabled={
-                analyzing ||
-                isDeleting
+                busy
               }
               onClick={
                 clearSelection
@@ -1243,8 +1989,7 @@ export function LeadsTable({
               type="button"
               variant="outline"
               disabled={
-                analyzing ||
-                isDeleting
+                busy
               }
               onClick={
                 handleBulkAnalyze
@@ -1264,19 +2009,68 @@ export function LeadsTable({
                 <>
                   <Sparkles className="size-4" />
 
-                  <span className="sm:hidden">
-                    {
-                      text.table
-                        .analyze
-                    }
-                  </span>
+                  {
+                    text.table
+                      .analyzeSelected
+                  }
+                </>
+              )}
+            </Button>
 
-                  <span className="hidden sm:inline">
-                    {
-                      text.table
-                        .analyzeSelected
-                    }
-                  </span>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                busy
+              }
+              onClick={
+                handleBulkDesign
+              }
+              className="gap-2"
+            >
+              {designing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+
+                  {designProgress
+                    ? `${designProgress.current}/${designProgress.total}`
+                    : ui.generating}
+                </>
+              ) : (
+                <>
+                  <WandSparkles className="size-4" />
+
+                  {
+                    ui.generateDesigns
+                  }
+                </>
+              )}
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                busy
+              }
+              onClick={
+                handleBulkDrafts
+              }
+              className="gap-2"
+            >
+              {drafting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+
+                  {draftProgress
+                    ? `${draftProgress.current}/${draftProgress.total}`
+                    : "Drafts werden erstellt"}
+                </>
+              ) : (
+                <>
+                  <MailPlus className="size-4" />
+
+                  Drafts erstellen
                 </>
               )}
             </Button>
@@ -1285,15 +2079,14 @@ export function LeadsTable({
               type="button"
               variant="destructive"
               disabled={
-                analyzing ||
-                isDeleting
+                busy
               }
               onClick={() =>
                 setDeleteDialogOpen(
                   true
                 )
               }
-              className="col-span-2 gap-2 sm:col-span-1"
+              className="gap-2"
             >
               {isDeleting ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -1301,19 +2094,10 @@ export function LeadsTable({
                 <Trash2 className="size-4" />
               )}
 
-              <span className="sm:hidden">
-                {
-                  text.table
-                    .delete
-                }
-              </span>
-
-              <span className="hidden sm:inline">
-                {
-                  text.table
-                    .deleteSelected
-                }
-              </span>
+              {
+                text.table
+                  .deleteSelected
+              }
             </Button>
           </div>
         </div>
@@ -1327,469 +2111,408 @@ export function LeadsTable({
         </div>
       ) : null}
 
-      {/* MOBILE SELECT ALL */}
+
+
+
+      {/* ===================================================
+          SELECT ALL
+      =================================================== */}
 
       {filteredLeads.length >
       0 ? (
-        <div className="mt-4 flex items-center justify-between rounded-xl border bg-background px-4 py-3 md:hidden">
-          <div className="flex items-center gap-3">
-            <SelectionCheckbox
-              checked={
-                allVisibleSelected
-              }
-              indeterminate={
-                someVisibleSelected
-              }
-              disabled={
-                analyzing ||
-                isDeleting
-              }
-              label={
-                text.table
-                  .selectAllVisible
-              }
-              onChange={
-                toggleAllVisible
-              }
-            />
+        <div className="mt-4 flex items-center gap-3 px-1 text-xs text-muted-foreground">
+          <SelectionCheckbox
+            checked={
+              allVisibleSelected
+            }
+            indeterminate={
+              someVisibleSelected
+            }
+            disabled={
+              busy
+            }
+            label={
+              text.table
+                .selectAllVisible
+            }
+            onChange={
+              toggleAllVisible
+            }
+          />
 
-            <div>
-              <p className="text-sm font-medium">
-                {
-                  text.table
-                    .selectVisible
-                }
-              </p>
-
-              <p className="text-xs text-muted-foreground">
-                {
-                  filteredLeads.length
-                }{" "}
-                {filteredLeads.length ===
-                1
-                  ? text.table
-                      .leadSingular
-                  : text.table
-                      .leadPlural}
-              </p>
-            </div>
-          </div>
-
-          {visibleSelectedCount >
-          0 ? (
-            <span className="text-xs font-medium text-muted-foreground">
-              {
-                visibleSelectedCount
-              }{" "}
-              {
-                text.table
-                  .selected
-              }
-            </span>
-          ) : null}
+          <span>
+            {
+              filteredLeads.length
+            }{" "}
+            {
+              ui.leads
+            }
+          </span>
         </div>
       ) : null}
 
-      {/* MOBILE LEAD CARDS */}
+      {/* ===================================================
+          COMPACT VIEW
+      =================================================== */}
 
-      <div className="mt-3 space-y-3 md:hidden">
-        {filteredLeads.length ===
-        0 ? (
-          <div className="rounded-xl border bg-background px-5 py-12 text-center">
-            <p className="text-sm font-medium">
-              {
-                text.table
-                  .noMatching
-              }
-            </p>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              {
-                text.table
-                  .noMatchingDescription
-              }
-            </p>
-
-            {hasActiveFilters ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-4"
-                onClick={
-                  resetFilters
-                }
-              >
-                {
-                  text.table
-                    .clearFilters
-                }
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          filteredLeads.map(
+      {viewMode ===
+      "compact" ? (
+        <div className="mt-3 space-y-3">
+          {groups.map(
             (
-              lead
+              group
             ) => {
-              const selected =
-                selectedIds.has(
-                  lead.id
+              const collapsed =
+                collapsedGroups.has(
+                  group.key
                 );
+
+              const groupSelectedCount =
+                group.leads.filter(
+                  (
+                    lead
+                  ) =>
+                    selectedIds.has(
+                      lead.id
+                    )
+                ).length;
+
+              const allGroupSelected =
+                group.leads.length >
+                  0 &&
+                groupSelectedCount ===
+                  group.leads.length;
+
+              const someGroupSelected =
+                groupSelectedCount >
+                  0 &&
+                !allGroupSelected;
 
               return (
                 <div
                   key={
-                    lead.id
+                    group.key
                   }
-                  onClick={(
-                    event
-                  ) =>
-                    handleMobileCardClick(
-                      event,
-                      lead.id
-                    )
-                  }
-                  className={`cursor-pointer overflow-hidden rounded-xl border bg-background transition-colors active:bg-muted/60 ${
-                    selected
-                      ? "border-foreground/25 bg-muted/30"
-                      : ""
-                  }`}
+                  className="overflow-hidden rounded-xl border bg-background"
                 >
-                  <div className="flex items-start gap-3 px-4 py-4">
-                    <div
-                      className="pt-0.5"
-                      onClick={(
-                        event
-                      ) =>
-                        event.stopPropagation()
+                  {/* CAMPAIGN HEADER */}
+
+                  <div className="flex items-center gap-3 border-b bg-muted/20 px-3 py-2.5 sm:px-4">
+                    <SelectionCheckbox
+                      checked={
+                        allGroupSelected
                       }
-                    >
-                      <SelectionCheckbox
-                        checked={
-                          selected
-                        }
-                        disabled={
-                          analyzing ||
-                          isDeleting
-                        }
-                        label={text.table.selectCompany.replace(
-                          "{company}",
-                          lead.companyName
-                        )}
-                        onChange={() =>
-                          toggleLead(
-                            lead.id
-                          )
-                        }
-                      />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-base font-semibold">
-                            {
-                              lead.companyName
-                            }
-                          </p>
-
-                          <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                            <MapPin className="size-3.5 shrink-0" />
-
-                            <span className="truncate">
-                              {lead.location ??
-                                text.common
-                                  .noLocation}
-                            </span>
-                          </div>
-                        </div>
-
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={text.table.actionsFor.replace(
-                                  "{company}",
-                                  lead.companyName
-                                )}
-                                className="-mr-2 -mt-2 shrink-0"
-                              />
-                            }
-                          >
-                            <MoreHorizontal className="size-4" />
-                          </DropdownMenuTrigger>
-
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(
-                                  `/leads/${lead.id}`
-                                )
-                              }
-                            >
-                              <Eye className="size-4" />
-
-                              {
-                                text.common
-                                  .openLead
-                              }
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(
-                                  `/leads/${lead.id}/edit`
-                                )
-                              }
-                            >
-                              <Pencil className="size-4" />
-
-                              {
-                                text.common
-                                  .editLead
-                              }
-                            </DropdownMenuItem>
-
-                            {lead.websiteUrl ? (
-                              <>
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    window.open(
-                                      normalizeUrl(
-                                        lead.websiteUrl!
-                                      ),
-                                      "_blank",
-                                      "noopener,noreferrer"
-                                    )
-                                  }
-                                >
-                                  <ExternalLink className="size-4" />
-
-                                  {
-                                    text.common
-                                      .visitWebsite
-                                  }
-                                </DropdownMenuItem>
-                              </>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={`font-medium ${statusClass(
-                            lead.status
-                          )}`}
-                        >
-                          {getLeadStatusLabel(
-                            lead.status,
-                            language
-                          )}
-                        </Badge>
-
-                        {lead.industry ? (
-                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                            {
-                              lead.industry
-                            }
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 border-y">
-                    <div className="border-r px-4 py-3">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {
-                          text.common
-                            .website
-                        }
-                      </p>
-
-                      <div className="mt-1 flex items-baseline gap-1">
-                        <span className="text-lg font-semibold">
-                          {lead.websiteScore !==
-                          null
-                            ? lead.websiteScore
-                            : "—"}
-                        </span>
-
-                        {lead.websiteScore !==
-                        null ? (
-                          <span className="text-xs text-muted-foreground">
-                            /100
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="px-4 py-3">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {
-                          text.common
-                            .opportunity
-                        }
-                      </p>
-
-                      <div className="mt-1 flex items-baseline gap-1">
-                        <span className="text-lg font-semibold">
-                          {lead.opportunityScore !==
-                          null
-                            ? lead.opportunityScore
-                            : "—"}
-                        </span>
-
-                        {lead.opportunityScore !==
-                        null ? (
-                          <span className="text-xs text-muted-foreground">
-                            /100
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 px-4 py-4">
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-xs text-muted-foreground">
-                        {
-                          text.common
-                            .priority
-                        }
-                      </span>
-
-                      <span
-                        className={`truncate text-right text-xs font-medium ${priorityClass(
-                          lead.priority
-                        )}`}
-                      >
-                        {getLeadPriorityLabel(
-                          lead.priority,
-                          language
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-xs text-muted-foreground">
-                        {
-                          text.common
-                            .contact
-                        }
-                      </span>
-
-                      <span className="truncate text-right text-xs">
-                        {lead.contactEmail
-                          ? lead.contactEmail
-                          : lead.contactFormUrl
-                            ? text.common
-                                .contactForm
-                            : text.common
-                                .noEmailFound}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-xs text-muted-foreground">
-                        {
-                          text.table
-                            .lastContact
-                        }
-                      </span>
-
-                      <span className="text-right text-xs">
-                        {formatDate(
-                          lead.lastContactedAt,
-                          language
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-xs text-muted-foreground">
-                        {
-                          text.table
-                            .next
-                        }
-                      </span>
-
-                      <span className="truncate text-right text-xs font-medium">
-                        {getNextAction(
-                          lead.status,
-                          language
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 border-t bg-muted/10 px-4 py-3">
-                    {lead.websiteUrl ? (
-                      <a
-                        href={
-                          normalizeUrl(
-                            lead.websiteUrl
-                          )
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        <ExternalLink className="size-3.5 shrink-0" />
-
-                        <span className="truncate">
-                          {
-                            text.common
-                              .website
-                          }
-                        </span>
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        {
-                          text.common
-                            .noWebsite
-                        }
-                      </span>
-                    )}
+                      indeterminate={
+                        someGroupSelected
+                      }
+                      disabled={
+                        busy
+                      }
+                      label={`Select ${group.name}`}
+                      onChange={() =>
+                        toggleCampaignSelection(
+                          group.leads
+                        )
+                      }
+                    />
 
                     <button
                       type="button"
                       onClick={() =>
-                        router.push(
-                          `/leads/${lead.id}`
+                        toggleGroupOpen(
+                          group.key
                         )
                       }
-                      className="text-xs font-medium text-foreground"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
-                      {
-                        text.common
-                          .openLead
-                      }{" "}
-                      →
+                      {collapsed ? (
+                        <Folder className="size-4 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+
+                      <span className="truncate text-sm font-semibold">
+                        {
+                          group.name
+                        }
+                      </span>
+
+                      <span className="shrink-0 rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {
+                          group.leads.length
+                        }
+                      </span>
+
+                      <span className="ml-auto">
+                        {collapsed ? (
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-4 text-muted-foreground" />
+                        )}
+                      </span>
                     </button>
                   </div>
+
+                  {!collapsed ? (
+                    <div className="divide-y">
+                      {group.leads.map(
+                        (
+                          lead
+                        ) => {
+                          const selected =
+                            selectedIds.has(
+                              lead.id
+                            );
+
+                          const analyzed =
+                            lead.analysisStatus ===
+                            "COMPLETED";
+
+                          return (
+                            <div
+                              key={
+                                lead.id
+                              }
+                              className={`flex flex-col gap-3 px-3 py-3 transition-colors hover:bg-muted/20 sm:px-4 lg:flex-row lg:items-center ${
+                                selected
+                                  ? "bg-muted/30"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex min-w-0 items-start gap-3 lg:flex-[1.4]">
+                                <div className="pt-1">
+                                  <SelectionCheckbox
+                                    checked={
+                                      selected
+                                    }
+                                    disabled={
+                                      busy
+                                    }
+                                    label={`Select ${lead.companyName}`}
+                                    onChange={() =>
+                                      toggleLead(
+                                        lead.id
+                                      )
+                                    }
+                                  />
+                                </div>
+
+                                <Link
+  href={`/leads/${lead.id}`}
+  className="min-w-0 text-left"
+>
+  <p className="truncate text-sm font-semibold hover:underline">
+    {
+      lead.companyName
+    }
+  </p>
+
+  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+    {lead.location ? (
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <MapPin className="size-3 shrink-0" />
+
+        <span className="truncate">
+          {
+            lead.location
+          }
+        </span>
+      </span>
+    ) : null}
+
+    {lead.industry ? (
+      <span className="truncate">
+        {
+          lead.industry
+        }
+      </span>
+    ) : null}
+  </div>
+</Link>
+                              </div>
+
+                              {/* SCORES */}
+
+                              <div className="flex shrink-0 items-center gap-4 lg:w-[150px]">
+                                <div>
+                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                                    Web
+                                  </p>
+
+                                  <p className="text-sm font-semibold">
+                                    {lead.websiteScore ??
+                                      "—"}
+                                  </p>
+                                </div>
+
+                                <div>
+                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                                    Opp.
+                                  </p>
+
+                                  <p className="text-sm font-semibold">
+                                    {lead.opportunityScore ??
+                                      "—"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* ANALYSIS */}
+
+                              <div className="shrink-0 lg:w-[115px]">
+                                <div
+                                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
+                                    analyzed
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : "text-muted-foreground"
+                                  }`}
+                                >
+                                  <span
+                                    className={`size-1.5 rounded-full ${
+                                      analyzed
+                                        ? "bg-emerald-500"
+                                        : "bg-muted-foreground/40"
+                                    }`}
+                                  />
+
+                                  {analyzed
+                                    ? ui.analyzed
+                                    : ui.notAnalyzed}
+                                </div>
+                              </div>
+
+                              {/* STATUS */}
+
+                              <div className="shrink-0 lg:w-[125px]">
+                                <Badge
+                                  variant="outline"
+                                  className={`whitespace-nowrap text-[10px] ${statusClass(
+                                    lead.status
+                                  )}`}
+                                >
+                                  {getLeadStatusLabel(
+                                    lead.status,
+                                    language
+                                  )}
+                                </Badge>
+                              </div>
+
+                              {/* PRIORITY */}
+
+                              <div className="shrink-0 lg:w-[80px]">
+                                <span
+                                  className={`text-[11px] font-medium ${priorityClass(
+                                    lead.priority
+                                  )}`}
+                                >
+                                  {getLeadPriorityLabel(
+                                    lead.priority,
+                                    language
+                                  )}
+                                </span>
+                              </div>
+
+                              {/* CONTACT */}
+
+                              <div className="min-w-0 lg:w-[180px]">
+                                {lead.contactEmail ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <Mail className="size-3 shrink-0 text-muted-foreground" />
+
+                                    <span className="truncate text-[11px] text-muted-foreground">
+                                      {
+                                        lead.contactEmail
+                                      }
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {lead.contactFormUrl
+                                      ? text.common
+                                          .contactForm
+                                      : text.common
+                                          .noEmailFound}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* DATE */}
+
+                              <div className="shrink-0 lg:w-[70px]">
+                                <span className="text-[11px] text-muted-foreground">
+                                  {formatDate(
+                                    lead.lastContactedAt,
+                                    language
+                                  )}
+                                </span>
+                              </div>
+
+                              <div className="ml-auto shrink-0">
+                                <LeadActions
+                                  lead={
+                                    lead
+                                  }
+                                />
+                              </div>
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               );
             }
-          )
-        )}
-      </div>
+          )}
 
-      {/* DESKTOP TABLE */}
+          {filteredLeads.length ===
+          0 ? (
+            <div className="rounded-xl border bg-background px-5 py-12 text-center">
+              <p className="text-sm font-medium">
+                {
+                  text.table
+                    .noMatching
+                }
+              </p>
 
-      <div className="mt-4 hidden overflow-x-auto rounded-xl border bg-background md:block">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-12">
-                <div className="flex items-center justify-center">
+              <p className="mt-1 text-sm text-muted-foreground">
+                {
+                  text.table
+                    .noMatchingDescription
+                }
+              </p>
+
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4"
+                  onClick={
+                    resetFilters
+                  }
+                >
+                  {
+                    text.table
+                      .clearFilters
+                  }
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* ===================================================
+          TABLE VIEW
+      =================================================== */}
+
+      {viewMode ===
+      "table" ? (
+        <div className="mt-3 overflow-x-auto rounded-xl border bg-background">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-12">
                   <SelectionCheckbox
                     checked={
                       allVisibleSelected
@@ -1798,10 +2521,7 @@ export function LeadsTable({
                       someVisibleSelected
                     }
                     disabled={
-                      filteredLeads.length ===
-                        0 ||
-                      analyzing ||
-                      isDeleting
+                      busy
                     }
                     label={
                       text.table
@@ -1811,409 +2531,210 @@ export function LeadsTable({
                       toggleAllVisible
                     }
                   />
-                </div>
-              </TableHead>
+                </TableHead>
 
-              <TableHead className="min-w-52">
-                {
-                  text.common
-                    .company
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .industry
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .location
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .website
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .opportunity
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .contact
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .status
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.common
-                    .priority
-                }
-              </TableHead>
-
-              <TableHead>
-                {
-                  text.table
-                    .lastContact
-                }
-              </TableHead>
-
-              <TableHead className="min-w-36">
-                {
-                  text.table
-                    .nextAction
-                }
-              </TableHead>
-
-              <TableHead className="w-12" />
-            </TableRow>
-          </TableHeader>
-
-          <TableBody>
-            {filteredLeads.length ===
-            0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={
-                    12
+                <TableHead>
+                  {
+                    text.common
+                      .company
                   }
-                  className="h-44 text-center"
-                >
-                  <div>
-                    <p className="text-sm font-medium">
-                      {
-                        text.table
-                          .noMatching
-                      }
-                    </p>
+                </TableHead>
 
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {
-                        text.table
-                          .noMatchingDescription
-                      }
-                    </p>
+                <TableHead>
+                  {
+                    ui.campaign
+                  }
+                </TableHead>
 
-                    {hasActiveFilters ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-4"
-                        onClick={
-                          resetFilters
-                        }
-                      >
-                        {
-                          text.table
-                            .clearFilters
-                        }
-                      </Button>
-                    ) : null}
-                  </div>
-                </TableCell>
+                <TableHead>
+                  {
+                    ui.scores
+                  }
+                </TableHead>
+
+                <TableHead>
+                  {
+                    text.common
+                      .status
+                  }
+                </TableHead>
+
+                <TableHead>
+                  {
+                    text.common
+                      .priority
+                  }
+                </TableHead>
+
+                <TableHead>
+                  {
+                    ui.contact
+                  }
+                </TableHead>
+
+                <TableHead className="w-12" />
               </TableRow>
-            ) : (
-              filteredLeads.map(
+            </TableHeader>
+
+            <TableBody>
+              {filteredLeads.map(
                 (
                   lead
-                ) => {
-                  const selected =
-                    selectedIds.has(
+                ) => (
+                  <TableRow
+                    key={
                       lead.id
-                    );
-
-                  return (
-                    <TableRow
-                      key={
+                    }
+                    className={
+                      selectedIds.has(
                         lead.id
-                      }
-                      className={
-                        selected
-                          ? "bg-muted/35"
-                          : undefined
-                      }
-                    >
-                      <TableCell className="w-12">
-                        <div className="flex items-center justify-center">
-                          <SelectionCheckbox
-                            checked={
-                              selected
-                            }
-                            disabled={
-                              analyzing ||
-                              isDeleting
-                            }
-                            label={text.table.selectCompany.replace(
-                              "{company}",
-                              lead.companyName
-                            )}
-                            onChange={() =>
-                              toggleLead(
-                                lead.id
-                              )
-                            }
-                          />
-                        </div>
-                      </TableCell>
+                      )
+                        ? "bg-muted/30"
+                        : undefined
+                    }
+                  >
+                    <TableCell>
+                      <SelectionCheckbox
+                        checked={
+                          selectedIds.has(
+                            lead.id
+                          )
+                        }
+                        disabled={
+                          busy
+                        }
+                        label={`Select ${lead.companyName}`}
+                        onChange={() =>
+                          toggleLead(
+                            lead.id
+                          )
+                        }
+                      />
+                    </TableCell>
 
-                      <TableCell>
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              router.push(
-                                `/leads/${lead.id}`
-                              )
-                            }
-                            className="cursor-pointer text-left font-medium transition-colors hover:text-muted-foreground hover:underline"
-                          >
-                            {
-                              lead.companyName
-                            }
-                          </button>
+                    <TableCell>
+                    <Link
+  href={`/leads/${lead.id}`}
+  className="text-left font-medium hover:underline"
+>
+  {
+    lead.companyName
+  }
+</Link>
 
-                          {lead.websiteUrl ? (
-                            <a
-                              href={
-                                normalizeUrl(
-                                  lead.websiteUrl
-                                )
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-1 flex w-fit items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                            >
-                              {
-                                text.common
-                                  .website
-                              }
-
-                              <ExternalLink className="size-3" />
-                            </a>
-                          ) : (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {
-                                text.common
-                                  .noWebsite
-                              }
-                            </p>
-                          )}
-                        </div>
-                      </TableCell>
-
-                      <TableCell className="text-muted-foreground">
-                        {lead.industry ??
-                          "—"}
-                      </TableCell>
-
-                      <TableCell className="text-muted-foreground">
+                      <p className="mt-0.5 max-w-[260px] truncate text-xs text-muted-foreground">
                         {lead.location ??
                           "—"}
-                      </TableCell>
+                      </p>
+                    </TableCell>
 
-                      <TableCell>
-                        {lead.websiteScore !==
-                        null ? (
-                          <>
-                            {
-                              lead.websiteScore
-                            }
+                    <TableCell className="text-xs text-muted-foreground">
+                      {lead.campaignName ??
+                        ui.uncategorized}
+                    </TableCell>
 
-                            <span className="text-muted-foreground">
-                              /100
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">
-                            —
-                          </span>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      <span className="font-semibold">
+                        {lead.websiteScore ??
+                          "—"}
+                      </span>
+
+                      <span className="mx-1.5 text-muted-foreground">
+                        /
+                      </span>
+
+                      <span className="font-semibold">
+                        {lead.opportunityScore ??
+                          "—"}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={`whitespace-nowrap text-[10px] ${statusClass(
+                          lead.status
+                        )}`}
+                      >
+                        {getLeadStatusLabel(
+                          lead.status,
+                          language
                         )}
-                      </TableCell>
+                      </Badge>
+                    </TableCell>
 
-                      <TableCell>
-                        {lead.opportunityScore !==
-                        null ? (
-                          <>
-                            {
-                              lead.opportunityScore
-                            }
-
-                            <span className="text-muted-foreground">
-                              /100
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">
-                            —
-                          </span>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="text-muted-foreground">
-                        {lead.contactEmail
-                          ? lead.contactEmail
-                          : lead.contactFormUrl
-                            ? text.common
-                                .contactForm
-                            : text.common
-                                .noEmailFound}
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={`whitespace-nowrap font-medium ${statusClass(
-                            lead.status
-                          )}`}
-                        >
-                          {getLeadStatusLabel(
-                            lead.status,
-                            language
-                          )}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="text-muted-foreground">
+                    <TableCell>
+                      <span
+                        className={`text-xs font-medium ${priorityClass(
+                          lead.priority
+                        )}`}
+                      >
                         {getLeadPriorityLabel(
                           lead.priority,
                           language
                         )}
-                      </TableCell>
+                      </span>
+                    </TableCell>
 
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatDate(
-                          lead.lastContactedAt,
-                          language
+                    <TableCell className="max-w-[220px] truncate text-xs text-muted-foreground">
+                      {lead.contactEmail ??
+                        (
+                          lead.contactFormUrl
+                            ? text.common
+                                .contactForm
+                            : text.common
+                                .noEmailFound
                         )}
-                      </TableCell>
+                    </TableCell>
 
-                      <TableCell>
-                        {getNextAction(
-                          lead.status,
-                          language
-                        )}
-                      </TableCell>
+                    <TableCell>
+                      <LeadActions
+                        lead={
+                          lead
+                        }
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              )}
 
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={text.table.actionsFor.replace(
-                                  "{company}",
-                                  lead.companyName
-                                )}
-                              />
-                            }
-                          >
-                            <MoreHorizontal className="size-4" />
-                          </DropdownMenuTrigger>
+              {filteredLeads.length ===
+              0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={
+                      8
+                    }
+                    className="h-40 text-center text-sm text-muted-foreground"
+                  >
+                    {
+                      text.table
+                        .noMatching
+                    }
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
 
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(
-                                  `/leads/${lead.id}`
-                                )
-                              }
-                            >
-                              <Eye className="size-4" />
-
-                              {
-                                text.common
-                                  .openLead
-                              }
-                            </DropdownMenuItem>
-
-                            <DropdownMenuItem
-                              onClick={() =>
-                                router.push(
-                                  `/leads/${lead.id}/edit`
-                                )
-                              }
-                            >
-                              <Pencil className="size-4" />
-
-                              {
-                                text.common
-                                  .editLead
-                              }
-                            </DropdownMenuItem>
-
-                            {lead.websiteUrl ? (
-                              <>
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    window.open(
-                                      normalizeUrl(
-                                        lead.websiteUrl!
-                                      ),
-                                      "_blank",
-                                      "noopener,noreferrer"
-                                    )
-                                  }
-                                >
-                                  <ExternalLink className="size-4" />
-
-                                  {
-                                    text.common
-                                      .visitWebsite
-                                  }
-                                </DropdownMenuItem>
-                              </>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                }
-              )
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* FOOTER */}
+      {/* ===================================================
+          FOOTER
+      =================================================== */}
 
       <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
         <span>
           {
             filteredLeads.length
           }{" "}
-          {filteredLeads.length ===
-          1
-            ? text.table
-                .leadSingular
-            : text.table
-                .leadPlural}
+          {
+            ui.leads
+          }
 
           {filteredLeads.length !==
           leads.length
-            ? ` ${text.table.of} ${leads.length}`
+            ? ` / ${leads.length}`
             : ""}
         </span>
 
@@ -2222,7 +2743,9 @@ export function LeadsTable({
         </span>
       </div>
 
-      {/* DELETE CONFIRMATION */}
+      {/* ===================================================
+          DELETE DIALOG
+      =================================================== */}
 
       <AlertDialog
         open={

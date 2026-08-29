@@ -23,7 +23,7 @@ export default async function LoginPage({
       <div className="w-full max-w-[420px]">
         <div className="mb-8 text-center">
           <div className="mx-auto flex size-11 items-center justify-center rounded-xl bg-foreground text-sm font-semibold text-background">
-            J
+          ⚡︎
           </div>
 
           <h1 className="mt-5 text-2xl font-semibold tracking-tight">

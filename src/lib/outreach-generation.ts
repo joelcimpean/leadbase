@@ -137,6 +137,9 @@ export type GenerateOutreachDraftInput = {
   suggestedOutreachAngle?:
     | string
     | null;
+
+  hasCustomerPreview?:
+    boolean;
 };
 
 /* =========================================================
@@ -383,6 +386,13 @@ export async function generateOutreachDraft(
       input.suggestedOutreachAngle
     ),
 
+    optionalLine(
+      "Designvorschau bereits erstellt",
+      input.hasCustomerPreview
+        ? "Ja"
+        : "Nein"
+    ),
+
     input.visualStrengths
       ?.length
       ? `Visuelle Stärken: ${input.visualStrengths.join(
@@ -562,31 +572,70 @@ Stattdessen:
 AUFBAU
 =========================================================
 
-Die Hauptmail soll idealerweise aus 3 kurzen Absätzen bestehen.
+Die Hauptmail soll sich stilistisch an einer kurzen, echten persönlichen Geschäftsmail orientieren.
+
+Bevorzugte Struktur:
 
 ABSATZ 1:
 
-Anrede + kurze Vorstellung + echter Bezug zum Unternehmen.
+Anrede + kurze Vorstellung + ein konkreter positiver Bezug zum Unternehmen oder Webauftritt.
 
 ABSATZ 2:
 
-Eine positive Beobachtung und eine konkrete Verbesserungsidee.
+Eine sehr kurze, unverbindliche Frage, ob eine Überarbeitung des Webauftritts grundsätzlich interessant wäre.
 
-ABSATZ 3:
+WICHTIG:
 
-Eine einfache, unverbindliche Frage.
+- normalerweise nur 2 kurze Absätze vor der automatisch angehängten Designvorschau
+- keine lange Analyse
+- keine zusätzliche Rechtfertigung
+- keine unnötigen Sätze wie "wenn das Thema aktuell nicht relevant ist, ist das natürlich ebenfalls völlig in Ordnung"
+- die Mail soll leicht lesbar und schnell beantwortbar sein
+
+=========================================================
+DESIGNVORSCHAU
+=========================================================
+
+${
+  input.hasCustomerPreview
+    ? `Für diesen Lead existiert bereits eine Designvorschau.
+
+Die Hauptmail selbst soll die Designvorschau NICHT erwähnen.
+
+Der vollständige, freundlich formulierte Vorschau-Absatz inklusive Link wird nach der KI-Generierung automatisch an die Hauptmail angehängt.
+
+Deshalb:
+
+- schreibe in der Hauptmail NICHT "ich habe eine Designvorschau vorbereitet"
+- füge KEINE URL ein
+- biete NICHT an, die Vorschau erst noch zu erstellen
+- halte den eigentlichen Mailtext kurz`
+    : `Für diesen Lead liegt keine Kundenvorschau vor.
+
+Versprich keine bereits vorhandene Vorschau.`
+}
 
 =========================================================
 CALL TO ACTION
 =========================================================
 
-Der Abschluss soll niedrigschwellig sein.
+Der Abschluss soll sehr niedrigschwellig und ähnlich zu einer natürlichen persönlichen Nachricht sein.
 
 Bevorzugte Richtung:
 
-"Wäre eine Überarbeitung Ihrer Website für Sie grundsätzlich interessant? Falls ja, kann ich Ihnen gern unverbindlich zeigen, was ich mir vorstellen würde."
+"Wäre eine Überarbeitung Ihres Webauftritts für Sie grundsätzlich interessant?"
 
-Oder ähnlich natürlich.
+Oder:
+
+"Wäre eine Überarbeitung Ihrer Website für Sie grundsätzlich interessant?"
+
+Wenn eine Vorschau bereits vorhanden ist, NICHT schreiben:
+
+- "Falls ja, kann ich Ihnen zeigen, was ich meine."
+- "Ich kann Ihnen eine Vorschau erstellen."
+- "Ich kann Ihnen gerne etwas vorbereiten."
+
+Denn die Vorschau wird danach automatisch angehängt.
 
 NICHT:
 
@@ -602,7 +651,7 @@ LÄNGE
 
 Hauptmail:
 
-ungefähr 85 bis 120 Wörter
+ungefähr 55 bis 90 Wörter, bevor der automatische Vorschau-Absatz ergänzt wird
 
 NICHT länger als nötig.
 
@@ -661,10 +710,32 @@ Das Follow-up soll:
 - nicht erneut die komplette Website analysieren
 - freundlich und kurz sein
 - keinen Druck ausüben
+- nicht wie eine automatisierte Erinnerungsmail klingen
 
-Es darf sinngemäß sagen:
+${
+  input.hasCustomerPreview
+    ? `Die Designvorschau wurde bereits mit der ersten Mail geschickt.
 
-"Falls das Thema aktuell nicht relevant ist, ist das natürlich völlig in Ordnung. Falls eine Überarbeitung grundsätzlich interessant ist, zeige ich Ihnen gern unverbindlich eine mögliche Richtung."
+Schreibe das Follow-up wieder sehr ähnlich zu diesem natürlichen Stil:
+
+"Hatten Sie schon Gelegenheit, sich die Designvorschau anzusehen?
+
+Mich würde interessieren, ob die Richtung grundsätzlich zu Ihrem Unternehmen passt. Falls das Thema für Sie interessant ist, können wir uns gern kurz und unverbindlich dazu austauschen.
+
+Eine kurze Rückmeldung genügt."
+
+Du darfst die Formulierung passend zum Unternehmen leicht variieren.
+
+WICHTIG:
+
+- die Designvorschau natürlich erwähnen
+- KEINE URL selbst einfügen; der Link wird automatisch darunter ergänzt
+- nicht erneut die Website analysieren
+- nicht anbieten, die Vorschau erst noch zu erstellen
+- keinen Termin verlangen
+- nicht unnötig entschuldigend oder defensiv formulieren`
+    : `Wenn keine Vorschau vorhanden ist, darf das Follow-up allgemein auf die erste Nachricht Bezug nehmen und fragen, ob das Thema grundsätzlich interessant ist.`
+}
 
 Vermeide:
 
@@ -722,6 +793,11 @@ ${context}
 Wähle aus allen Informationen nur die wenigen Punkte aus, die sich für eine persönliche und professionelle erste Nachricht wirklich eignen.
 
 Die Mail soll nicht zeigen, wie viel analysiert wurde. Sie soll einfach persönlich und glaubwürdig wirken.
+
+Designvorschau bereits vorhanden:
+${input.hasCustomerPreview ? "JA" : "NEIN"}
+
+Halte dich bei Hauptmail und Follow-up strikt an diesen Status.
           `.trim(),
         },
       ],

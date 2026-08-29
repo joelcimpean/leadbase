@@ -4,7 +4,6 @@ import type {
   
   import {
     ArrowUpRight,
-    Mail,
   } from "lucide-react";
   
   import {
@@ -16,6 +15,7 @@ import type {
   } from "@supabase/supabase-js";
   
   import {
+    CustomerContactChoice,
     CustomerDesignFrame,
   } from "./customer-design-frame";
   
@@ -412,18 +412,24 @@ import type {
         ?.trim() ||
       "hello@joelcimpean.com";
   
+    const calendarUrl =
+      process.env
+        .DESIGNER_CALENDAR_URL
+        ?.trim() ||
+      "https://cal.com/joel-cimpean-ag9kpu/30min";
+  
     /* =======================================================
        MAIL CTA
     ======================================================= */
   
     const mailSubject =
-      `Designkonzept für ${companyName}`;
+      `Designvorschau für ${companyName}`;
   
     const mailBody =
       [
         "Hallo Joel,",
         "",
-        `ich habe mir das Designkonzept für ${companyName} angesehen und würde gerne darüber sprechen.`,
+        `ich habe mir die Designvorschau für ${companyName} angesehen und würde mich gerne kurz dazu austauschen.`,
         "",
         "Viele Grüße",
       ].join(
@@ -447,8 +453,6 @@ import type {
       <main className="min-h-screen bg-white text-neutral-950">
         {/* ===================================================
             CUSTOMER BAR
-  
-            Sticky on desktop + mobile.
         =================================================== */}
   
         <div className="sticky top-0 z-[100] border-b border-neutral-200 bg-white/95 text-neutral-950 shadow-[0_1px_0_rgba(0,0,0,.04)] backdrop-blur-xl">
@@ -494,7 +498,7 @@ import type {
               </a>
   
               <p className="mt-0.5 text-[9px] text-neutral-400">
-              Unverbindliche Designvorschau · mögliche Gestaltungsrichtung · kein finales Konzept
+                Unverbindliche Designvorschau · mögliche Gestaltungsrichtung · kein finales Konzept
               </p>
             </div>
   
@@ -502,33 +506,21 @@ import type {
                 CONTACT CTA
             =============================================== */}
   
-            {mailUrl ? (
-              <a
-                href={
-                  mailUrl
-                }
-                className="group inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-neutral-950 px-3 text-[11px] font-semibold text-white shadow-sm transition-all duration-300 ease-out hover:-translate-y-px hover:bg-neutral-800 min-[390px]:gap-2 min-[390px]:px-3.5 min-[390px]:text-xs sm:h-11 sm:px-5 sm:text-sm"
-              >
-                <Mail className="size-3.5 shrink-0 sm:size-4" />
-  
-                <span className="min-[390px]:hidden">
-                  Kontakt
-                </span>
-  
-                <span className="hidden min-[390px]:inline">
-                  Projekt besprechen
-                </span>
-  
-                <ArrowUpRight className="hidden size-3.5 shrink-0 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 sm:block" />
-              </a>
-            ) : null}
+            <CustomerContactChoice
+              companyName={
+                companyName
+              }
+              mailUrl={
+                mailUrl
+              }
+              calendarUrl={
+                calendarUrl
+              }
+            />
           </div>
   
           {/* ===============================================
               SMALL MOBILE TRUST STRIP
-  
-              Keeps Joel visible without making the main bar
-              huge.
           =============================================== */}
   
           <div className="border-t border-neutral-100 px-3 py-1.5 md:hidden">
@@ -554,7 +546,7 @@ import type {
               </a>
   
               <span className="hidden shrink-0 text-[8px] text-neutral-400 min-[430px]:block">
-                Reine Designvorschau · keine finales Konzept
+                Unverbindliche Designvorschau · kein finales Konzept
               </span>
             </div>
           </div>
@@ -562,11 +554,6 @@ import type {
   
         {/* ===================================================
             GENERATED DESIGN
-  
-            The client component measures the REAL document
-            height. Therefore the browser page itself scrolls,
-            rather than relying on nested mobile iframe
-            scrolling.
         =================================================== */}
   
         <CustomerDesignFrame

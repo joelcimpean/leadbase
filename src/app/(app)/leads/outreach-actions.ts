@@ -1,12 +1,12 @@
 "use server";
 
 import {
-  revalidatePath,
-} from "next/cache";
+  randomBytes,
+} from "node:crypto";
 
 import {
-  headers,
-} from "next/headers";
+  revalidatePath,
+} from "next/cache";
 
 import {
   redirect,
@@ -33,9 +33,7 @@ const OUTREACH_SIGNATURE = [
   "",
   "Joel Cimpean",
   "hello@joelcimpean.com / joelcimpean.com",
-].join(
-  "\n"
-);
+].join("\n");
 
 const SIGNATURE_MARKER =
   "Mit freundlichen Grüßen / Kind regards,";
@@ -182,7 +180,7 @@ function getLastName(
     particles.has(
       parts[
         start -
-          1
+        1
       ].toLowerCase()
     )
   ) {
@@ -407,44 +405,6 @@ function revalidateLead(
 ========================================================= */
 
 async function getPublicBaseUrl() {
-  const requestHeaders =
-    await headers();
-
-  const forwardedHost =
-    requestHeaders.get(
-      "x-forwarded-host"
-    );
-
-  const regularHost =
-    requestHeaders.get(
-      "host"
-    );
-
-  const host =
-    forwardedHost ||
-    regularHost;
-
-  const forwardedProto =
-    requestHeaders.get(
-      "x-forwarded-proto"
-    );
-
-  if (
-    host &&
-    (
-      host.startsWith(
-        "localhost:"
-      ) ||
-      host.startsWith(
-        "127.0.0.1:"
-      ) ||
-      host ===
-        "localhost"
-    )
-  ) {
-    return `http://${host}`;
-  }
-
   const configured =
     process.env
       .PUBLIC_PREVIEW_BASE_URL
@@ -459,24 +419,100 @@ async function getPublicBaseUrl() {
     );
   }
 
-  if (
-    host
-  ) {
-    const protocol =
-      forwardedProto ||
-      "https";
-
-    return `${protocol}://${host}`;
-  }
-
-  return null;
+  /*
+   * Outreach drafts are customer-facing. Never save a
+   * localhost URL into an email draft, even when the draft
+   * is generated during local development.
+   */
+  return "https://leadbase.joelcimpean.com";
 }
 
 /* =========================================================
-   ACTIVE CUSTOMER PREVIEW
+   CUSTOMER PREVIEW
 ========================================================= */
 
-async function getActiveCustomerPreviewUrl({
+function slugifyPreview(
+  value:
+    string
+) {
+  const result =
+    value
+      .normalize(
+        "NFKD"
+      )
+      .replace(
+        /[\u0300-\u036f]/g,
+        ""
+      )
+      .replace(
+        /ß/g,
+        "ss"
+      )
+      .toLowerCase()
+      .replace(
+        /[^a-z0-9]+/g,
+        "-"
+      )
+      .replace(
+        /^-+|-+$/g,
+        ""
+      )
+      .slice(
+        0,
+        48
+      );
+
+  return (
+    result ||
+    "designkonzept"
+  );
+}
+
+function createPreviewSlug(
+  companyName:
+    string
+) {
+  const suffix =
+    randomBytes(
+      4
+    ).toString(
+      "hex"
+    );
+
+  return `${slugifyPreview(
+    companyName
+  )}-${suffix}`;
+}
+
+function isPublishableDesignSnapshot(
+  value:
+    unknown
+) {
+  const record =
+    getRecord(
+      value
+    );
+
+  if (
+    !record
+  ) {
+    return false;
+  }
+
+  return (
+    record.version ===
+      3 &&
+    record.renderMode ===
+      "html" &&
+    typeof record.html ===
+      "string" &&
+    record.html.trim()
+      .length >=
+      500
+  );
+}
+
+async function getSelectedDesignForPreview({
   supabase,
   userId,
   leadId,
@@ -500,9 +536,14 @@ async function getActiveCustomerPreviewUrl({
       .from(
         "design_mockup_variants"
       )
-      .select(
-        "id"
-      )
+      .select(`
+        id,
+        source_snapshot,
+        generation_index,
+        selected,
+        selected_at,
+        created_at
+      `)
       .eq(
         "user_id",
         userId
@@ -530,34 +571,38 @@ async function getActiveCustomerPreviewUrl({
   if (
     selectedError
   ) {
-    console.warn(
-      "Could not load selected redesign for outreach:",
-      selectedError
+    throw new Error(
+      selectedError.message
     );
-
-    return null;
   }
 
   if (
-    !selected
+    selected
   ) {
-    return null;
+    return selected;
   }
 
+  /*
+   * Defensive fallback for older rows without a selected
+   * variant. This mirrors the public-share route.
+   */
   const {
     data:
-      preview,
+      latest,
     error:
-      previewError,
+      latestError,
   } =
     await supabase
       .from(
-        "design_public_previews"
+        "design_mockup_variants"
       )
       .select(`
-        public_slug,
-        expires_at,
-        revoked_at
+        id,
+        source_snapshot,
+        generation_index,
+        selected,
+        selected_at,
+        created_at
       `)
       .eq(
         "user_id",
@@ -567,39 +612,115 @@ async function getActiveCustomerPreviewUrl({
         "lead_id",
         leadId
       )
-      .eq(
-        "design_mockup_variant_id",
-        selected.id
+      .order(
+        "generation_index",
+        {
+          ascending:
+            false,
+        }
       )
-      .is(
-        "revoked_at",
-        null
+      .limit(
+        1
       )
       .maybeSingle();
 
   if (
-    previewError
+    latestError
   ) {
-    console.warn(
-      "Could not load customer preview for outreach:",
-      previewError
+    throw new Error(
+      latestError.message
     );
-
-    return null;
   }
 
+  return latest;
+}
+
+async function getExistingPreviewForVariant({
+  supabase,
+  userId,
+  variantId,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  variantId:
+    string;
+}) {
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        "design_public_previews"
+      )
+      .select(`
+        id,
+        public_slug,
+        view_count,
+        last_viewed_at,
+        expires_at,
+        revoked_at
+      `)
+      .eq(
+        "user_id",
+        userId
+      )
+      .eq(
+        "design_mockup_variant_id",
+        variantId
+      )
+      .maybeSingle();
+
   if (
-    !preview
+    error
   ) {
-    return null;
+    throw new Error(
+      error.message
+    );
   }
 
+  return data;
+}
+
+async function ensureActiveCustomerPreviewUrl({
+  supabase,
+  userId,
+  leadId,
+  companyName,
+  websiteUrl,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  leadId:
+    string;
+
+  companyName:
+    string;
+
+  websiteUrl:
+    string
+    | null;
+}) {
+  const selected =
+    await getSelectedDesignForPreview({
+      supabase,
+      userId,
+      leadId,
+    });
+
   if (
-    preview.expires_at &&
-    new Date(
-      preview.expires_at
-    ).getTime() <=
-      Date.now()
+    !selected ||
+    !isPublishableDesignSnapshot(
+      selected.source_snapshot
+    )
   ) {
     return null;
   }
@@ -613,56 +734,205 @@ async function getActiveCustomerPreviewUrl({
     return null;
   }
 
-  return `${baseUrl}/concept/${encodeURIComponent(
-    preview.public_slug
-  )}`;
-}
+  /*
+   * Only one customer-facing design should be active for a
+   * lead. Publishing a different selected variant revokes
+   * older links.
+   */
+  const {
+    error:
+      revokeOtherError,
+  } =
+    await supabase
+      .from(
+        "design_public_previews"
+      )
+      .update({
+        revoked_at:
+          new Date()
+            .toISOString(),
+      })
+      .eq(
+        "user_id",
+        userId
+      )
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .neq(
+        "design_mockup_variant_id",
+        selected.id
+      )
+      .is(
+        "revoked_at",
+        null
+      );
 
-/* =========================================================
-   PREVIEW COPY SAFETY
-========================================================= */
-
-function removeGeneratedPreviewMentions(
-  value:
-    string
-) {
-  const paragraphs =
-    normalizeTextBlock(
-      value
-    ).split(
-      /\n{2,}/
+  if (
+    revokeOtherError
+  ) {
+    throw new Error(
+      revokeOtherError.message
     );
+  }
 
-  const cleaned =
-    paragraphs.filter(
-      (
-        paragraph
-      ) => {
-        const normalized =
-          paragraph.toLowerCase();
+  const existing =
+    await getExistingPreviewForVariant({
+      supabase,
+      userId,
+      variantId:
+        selected.id,
+    });
 
-        const previewMention =
-          /designvorschau|designkonzept|designentwurf|designrichtung|webdesign[- ]?entwurf|website[- ]?entwurf|vorschau-link|vorschau link|vorschau ansehen/.test(
-            normalized
-          );
+  if (
+    existing
+  ) {
+    const {
+      error:
+        updateError,
+    } =
+      await supabase
+        .from(
+          "design_public_previews"
+        )
+        .update({
+          revoked_at:
+            null,
 
-        const preparedMention =
-          /vorbereitet|erstellt|angefertigt|entworfen|zeigen|ansehen|anschauen|mögliche richtung|vorstellen würde|vorstellen wuerde/.test(
-            normalized
-          );
+          expires_at:
+            null,
 
-        return !(
-          previewMention &&
-          preparedMention
+          source_snapshot:
+            selected.source_snapshot,
+
+          source_brand_name:
+            companyName,
+
+          source_website_url:
+            websiteUrl,
+        })
+        .eq(
+          "id",
+          existing.id
+        )
+        .eq(
+          "user_id",
+          userId
         );
-      }
-    );
 
-  return cleaned
-    .join(
-      "\n\n"
-    )
-    .trim();
+    if (
+      updateError
+    ) {
+      throw new Error(
+        updateError.message
+      );
+    }
+
+    return `${baseUrl}/concept/${encodeURIComponent(
+      existing.public_slug
+    )}`;
+  }
+
+  let lastInsertError:
+    string
+    | null =
+    null;
+
+  for (
+    let attempt =
+      0;
+    attempt <
+      4;
+    attempt +=
+      1
+  ) {
+    const publicSlug =
+      createPreviewSlug(
+        companyName
+      );
+
+    const {
+      data:
+        created,
+      error:
+        createError,
+    } =
+      await supabase
+        .from(
+          "design_public_previews"
+        )
+        .insert({
+          user_id:
+            userId,
+
+          lead_id:
+            leadId,
+
+          design_mockup_variant_id:
+            selected.id,
+
+          public_slug:
+            publicSlug,
+
+          source_snapshot:
+            selected.source_snapshot,
+
+          source_brand_name:
+            companyName,
+
+          source_website_url:
+            websiteUrl,
+
+          expires_at:
+            null,
+
+          revoked_at:
+            null,
+        })
+        .select(
+          "public_slug"
+        )
+        .single();
+
+    if (
+      !createError &&
+      created
+    ) {
+      return `${baseUrl}/concept/${encodeURIComponent(
+        created.public_slug
+      )}`;
+    }
+
+    lastInsertError =
+      createError?.message ??
+      "Unknown preview insert error.";
+
+    /*
+     * Handles two requests creating the same variant share
+     * at nearly the same time.
+     */
+    const concurrent =
+      await getExistingPreviewForVariant({
+        supabase,
+        userId,
+        variantId:
+          selected.id,
+      });
+
+    if (
+      concurrent
+    ) {
+      return `${baseUrl}/concept/${encodeURIComponent(
+        concurrent.public_slug
+      )}`;
+    }
+  }
+
+  throw new Error(
+    lastInsertError ??
+    "Could not create customer preview."
+  );
 }
 
 /* =========================================================
@@ -676,201 +946,167 @@ function addCustomerPreviewToBody(
     string
     | null
 ) {
-  const normalized =
-    normalizeTextBlock(
+  const message =
+    removeExistingSignature(
       value
     );
 
   if (
     !previewUrl
   ) {
-    return normalized;
+    return message;
   }
 
   if (
-    normalized.includes(
+    message.includes(
       previewUrl
     )
   ) {
-    return normalized;
+    return message;
   }
 
-  /*
-   * GPT is instructed not to mention the preview.
-   *
-   * This remains as a defensive fallback in case the model
-   * nevertheless generates an old-style preview sentence.
-   */
-  const cleanedBody =
-    removeGeneratedPreviewMentions(
-      normalized
-    );
-
-  const previewBlock =
-    [
-      "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
-      previewUrl,
-    ].join(
-      "\n"
-    );
-
-  const closingMarkers =
-    [
-      "\nMit freundlichen Grüßen",
-      "\nViele Grüße",
-      "\nBeste Grüße",
-      "\nFreundliche Grüße",
-      "\nHerzliche Grüße",
-    ];
-
-  let insertionIndex =
-    -1;
-
-  for (
-    const marker of
-      closingMarkers
-  ) {
-    const index =
-      cleanedBody.indexOf(
-        marker
-      );
-
-    if (
-      index !==
-        -1 &&
-      (
-        insertionIndex ===
-          -1 ||
-        index <
-          insertionIndex
-      )
-    ) {
-      insertionIndex =
-        index;
-    }
-  }
-
-  if (
-    insertionIndex !==
-      -1
-  ) {
-    const before =
-      cleanedBody
-        .slice(
-          0,
-          insertionIndex
-        )
-        .trim();
-
-    const after =
-      cleanedBody
-        .slice(
-          insertionIndex
-        )
-        .trim();
-
-    return [
-      before,
-      previewBlock,
-      after,
-    ]
-      .filter(
-        Boolean
-      )
-      .join(
-        "\n\n"
-      );
-  }
-
-  return [
-    cleanedBody,
-    previewBlock,
-  ]
-    .filter(
-      Boolean
-    )
-    .join(
-      "\n\n"
-    );
-}
-
-/* =========================================================
-   PREVIEW FOLLOW-UP
-========================================================= */
-
-function buildPreviewFollowUp({
-  greeting,
-  previewUrl,
-}: {
-  greeting:
-    string;
-
-  previewUrl:
-    string;
-}) {
-  return [
-    greeting,
-    "",
-    "ich wollte mich noch einmal kurz zu meiner letzten Nachricht melden. Hatten Sie schon Gelegenheit, sich die Designvorschau anzusehen?",
-    "",
-    "Mich würde interessieren, ob die Richtung grundsätzlich zu Ihrem Unternehmen passt. Falls das Thema für Sie interessant ist, können wir uns gern kurz und unverbindlich dazu austauschen.",
-    "",
-    "Hier ist die Vorschau noch einmal:",
+  const previewBlock = [
+    "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
     previewUrl,
-    "",
-    "Eine kurze Rückmeldung genügt.",
   ].join(
     "\n"
   );
+
+  return `${message}\n\n${previewBlock}`;
+}
+
+function addCustomerPreviewToFollowUp(
+  value:
+    string,
+  previewUrl:
+    string
+    | null
+) {
+  const message =
+    removeExistingSignature(
+      value
+    );
+
+  if (
+    !previewUrl
+  ) {
+    return message;
+  }
+
+  if (
+    message.includes(
+      previewUrl
+    )
+  ) {
+    return message;
+  }
+
+  return `${message}\n\nHier ist die Vorschau noch einmal:\n${previewUrl}`;
 }
 
 /* =========================================================
-   GENERATE OUTREACH
+   OUTREACH CREATION CORE
 ========================================================= */
 
-export async function generateLeadOutreachDraft(
-  formData:
-    FormData
-) {
-  const leadId =
-    formData.get(
-      "leadId"
-    );
+type CreateOutreachResult =
+  | {
+      status:
+        "created";
 
+      previewUrl:
+        string
+        | null;
+    }
+  | {
+      status:
+        "skipped";
+
+      reason:
+        string;
+    };
+
+async function createLeadOutreachDraft({
+  supabase,
+  userId,
+  leadId,
+  requirePreview,
+  skipExistingDraft,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  leadId:
+    string;
+
+  requirePreview:
+    boolean;
+
+  skipExistingDraft:
+    boolean;
+}): Promise<CreateOutreachResult> {
   if (
-    typeof leadId !==
-      "string" ||
-    !leadId
+    skipExistingDraft
   ) {
-    return;
-  }
+    const {
+      data:
+        existingDraft,
+      error:
+        existingDraftError,
+    } =
+      await supabase
+        .from(
+          "outreach_drafts"
+        )
+        .select(
+          "id, status"
+        )
+        .eq(
+          "user_id",
+          userId
+        )
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          1
+        )
+        .maybeSingle();
 
-  const supabase =
-    await createClient();
+    if (
+      existingDraftError
+    ) {
+      throw new Error(
+        existingDraftError.message
+      );
+    }
 
-  const {
-    data: {
-      user,
-    },
+    if (
+      existingDraft
+    ) {
+      return {
+        status:
+          "skipped",
 
-    error:
-      userError,
-  } =
-    await supabase.auth.getUser();
-
-  if (
-    userError ||
-    !user
-  ) {
-    redirect(
-      "/login"
-    );
+        reason:
+          "A draft already exists for this lead.",
+      };
+    }
   }
 
   const {
     data:
       lead,
-
     error:
       leadError,
   } =
@@ -921,20 +1157,28 @@ export async function generateLeadOutreachDraft(
       )
       .eq(
         "user_id",
-        user.id
+        userId
       )
       .maybeSingle();
 
   if (
-    leadError ||
+    leadError
+  ) {
+    throw new Error(
+      leadError.message
+    );
+  }
+
+  if (
     !lead
   ) {
-    console.error(
-      "Could not load lead for outreach:",
-      leadError
-    );
+    return {
+      status:
+        "skipped",
 
-    return;
+      reason:
+        "Lead not found.",
+    };
   }
 
   const company =
@@ -955,11 +1199,64 @@ export async function generateLeadOutreachDraft(
   if (
     !company
   ) {
+    return {
+      status:
+        "skipped",
+
+      reason:
+        "Lead has no company.",
+    };
+  }
+
+  let customerPreviewUrl:
+    string
+    | null =
+    null;
+
+  try {
+    customerPreviewUrl =
+      await ensureActiveCustomerPreviewUrl({
+        supabase,
+        userId,
+        leadId:
+          lead.id,
+        companyName:
+          company.name,
+        websiteUrl:
+          company.website_url,
+      });
+  } catch (
+    error
+  ) {
     console.error(
-      "Lead has no company."
+      `Could not create customer preview for lead ${lead.id}:`,
+      error
     );
 
-    return;
+    if (
+      requirePreview
+    ) {
+      return {
+        status:
+          "skipped",
+
+        reason:
+          "Customer preview could not be created.",
+      };
+    }
+  }
+
+  if (
+    requirePreview &&
+    !customerPreviewUrl
+  ) {
+    return {
+      status:
+        "skipped",
+
+      reason:
+        "No publishable redesign exists for this lead.",
+    };
   }
 
   const visual =
@@ -987,169 +1284,91 @@ export async function generateLeadOutreachDraft(
       visual?.outreachAngle
     );
 
-  const customerPreviewPromise =
-    getActiveCustomerPreviewUrl({
-      supabase,
+  const generated =
+    await generateOutreachDraft({
+      companyName:
+        company.name,
 
-      userId:
-        user.id,
+      industry:
+        company.industry,
 
-      leadId:
-        lead.id,
+      location:
+        company.location,
+
+      contactName:
+        contact?.full_name,
+
+      contactJobTitle:
+        contact?.job_title,
+
+      contactSalutation:
+        contact?.salutation ===
+          "HERR" ||
+        contact?.salutation ===
+          "FRAU"
+          ? contact.salutation
+          : null,
+
+      websiteUrl:
+        company.website_url,
+
+      campaignName:
+        campaign?.name,
+
+      campaignOutreachAngle:
+        campaign?.outreach_angle,
+
+      campaignEmailTone:
+        campaign?.email_tone,
+
+      researchSummary:
+        lead.research_summary,
+
+      structuralScore:
+        lead.structural_score,
+
+      visualScore:
+        lead.visual_score,
+
+      opportunityScore:
+        lead.opportunity_score,
+
+      redesignPotential:
+        lead.redesign_potential,
+
+      visualStrengths:
+        strengths,
+
+      visualWeaknesses:
+        weaknesses,
+
+      redesignReason,
+
+      suggestedOutreachAngle:
+        visualOutreachAngle,
+
+      hasCustomerPreview:
+        Boolean(
+          customerPreviewUrl
+        ),
     });
-
-  let generated;
-
-  try {
-    generated =
-      await generateOutreachDraft({
-        companyName:
-          company.name,
-
-        industry:
-          company.industry,
-
-        location:
-          company.location,
-
-        contactName:
-          contact?.full_name,
-
-        contactJobTitle:
-          contact?.job_title,
-
-        contactSalutation:
-          contact?.salutation ===
-            "HERR" ||
-          contact?.salutation ===
-            "FRAU"
-            ? contact.salutation
-            : null,
-
-        websiteUrl:
-          company.website_url,
-
-        campaignName:
-          campaign?.name,
-
-        campaignOutreachAngle:
-          campaign?.outreach_angle,
-
-        campaignEmailTone:
-          campaign?.email_tone,
-
-        researchSummary:
-          lead.research_summary,
-
-        structuralScore:
-          lead.structural_score,
-
-        visualScore:
-          lead.visual_score,
-
-        opportunityScore:
-          lead.opportunity_score,
-
-        redesignPotential:
-          lead.redesign_potential,
-
-        visualStrengths:
-          strengths,
-
-        visualWeaknesses:
-          weaknesses,
-
-        redesignReason,
-
-        suggestedOutreachAngle:
-          visualOutreachAngle,
-      });
-  } catch (
-    error
-  ) {
-    console.error(
-      "Outreach generation failed:",
-      error
-    );
-
-    return;
-  }
-
-  const customerPreviewUrl =
-    await customerPreviewPromise;
-
-  const contactSalutation:
-    | "HERR"
-    | "FRAU"
-    | null =
-    contact?.salutation ===
-      "HERR" ||
-    contact?.salutation ===
-      "FRAU"
-      ? contact.salutation
-      : null;
-
-  const greeting =
-    contact?.full_name
-      ? getGreeting(
-          contact.full_name,
-          contactSalutation
-        )
-      : "Guten Tag,";
-
-  /*
-   * Leadbase owns the greeting as well.
-   *
-   * This prevents GPT from using "Hallo Max Mustermann"
-   * when a verified formal salutation is available.
-   */
-  const generatedBodyWithGreeting =
-    replaceOpeningGreeting(
-      generated.body,
-      greeting
-    );
-
-  const bodyWithPreview =
-    addCustomerPreviewToBody(
-      generatedBodyWithGreeting,
-      customerPreviewUrl
-    );
 
   const finalBody =
     ensureSignature(
-      bodyWithPreview
+      addCustomerPreviewToBody(
+        generated.body,
+        customerPreviewUrl
+      )
     );
 
-  /*
-   * If a preview exists, Leadbase creates a dedicated
-   * follow-up that references the preview the recipient
-   * already received.
-   *
-   * If there is no preview, keep the generic AI follow-up.
-   */
-  const genericFollowUp =
+  const finalFollowUp =
     generated.followUpBody
       ?.trim()
-      ? replaceOpeningGreeting(
-          generated.followUpBody,
-          greeting
-        )
-      : null;
-
-  const followUpSource =
-    customerPreviewUrl
-      ? buildPreviewFollowUp({
-          greeting,
-
-          previewUrl:
-            customerPreviewUrl,
-        })
-      : genericFollowUp;
-
-  const finalFollowUp =
-    followUpSource
       ? ensureSignature(
-          followUpSource
+          addCustomerPreviewToFollowUp(
+            generated.followUpBody,
+            customerPreviewUrl
+          )
         )
       : null;
 
@@ -1163,7 +1382,6 @@ export async function generateLeadOutreachDraft(
   const {
     data:
       draft,
-
     error:
       draftError,
   } =
@@ -1173,7 +1391,7 @@ export async function generateLeadOutreachDraft(
       )
       .insert({
         user_id:
-          user.id,
+          userId,
 
         lead_id:
           lead.id,
@@ -1222,12 +1440,10 @@ export async function generateLeadOutreachDraft(
     draftError ||
     !draft
   ) {
-    console.error(
-      "Could not save outreach draft:",
-      draftError
+    throw new Error(
+      draftError?.message ??
+      "Could not save outreach draft."
     );
-
-    return;
   }
 
   const earlyStatuses =
@@ -1260,7 +1476,7 @@ export async function generateLeadOutreachDraft(
         )
         .eq(
           "user_id",
-          user.id
+          userId
         );
 
     if (
@@ -1283,7 +1499,7 @@ export async function generateLeadOutreachDraft(
       )
       .insert({
         user_id:
-          user.id,
+          userId,
 
         lead_id:
           lead.id,
@@ -1296,7 +1512,7 @@ export async function generateLeadOutreachDraft(
 
         description:
           customerPreviewUrl
-            ? "A personalized German outreach draft with customer preview was generated."
+            ? "A personalized German outreach draft with an automatically created customer preview was generated."
             : "A personalized German outreach draft was generated.",
       });
 
@@ -1313,9 +1529,218 @@ export async function generateLeadOutreachDraft(
     lead.id
   );
 
+  return {
+    status:
+      "created",
+
+    previewUrl:
+      customerPreviewUrl,
+  };
+}
+
+/* =========================================================
+   GENERATE OUTREACH — SINGLE LEAD
+========================================================= */
+
+export async function generateLeadOutreachDraft(
+  formData:
+    FormData
+) {
+  const leadId =
+    formData.get(
+      "leadId"
+    );
+
+  if (
+    typeof leadId !==
+      "string" ||
+    !leadId
+  ) {
+    return;
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
+  }
+
+  try {
+    await createLeadOutreachDraft({
+      supabase,
+      userId:
+        user.id,
+      leadId,
+      requirePreview:
+        false,
+      skipExistingDraft:
+        false,
+    });
+  } catch (
+    error
+  ) {
+    console.error(
+      "Outreach generation failed:",
+      error
+    );
+
+    return;
+  }
+
   redirect(
-    `/leads/${lead.id}#outreach`
+    `/leads/${leadId}#outreach`
   );
+}
+
+/* =========================================================
+   GENERATE OUTREACH — BULK ITEM
+========================================================= */
+
+export type BulkOutreachDraftResult =
+  | {
+      success:
+        true;
+
+      status:
+        "created"
+        | "skipped";
+
+      reason?:
+        string;
+    }
+  | {
+      success:
+        false;
+
+      status:
+        "failed";
+
+      error:
+        string;
+    };
+
+export async function generateLeadOutreachDraftForBulk(
+  leadId:
+    string
+): Promise<BulkOutreachDraftResult> {
+  if (
+    typeof leadId !==
+      "string" ||
+    !leadId.trim()
+  ) {
+    return {
+      success:
+        false,
+
+      status:
+        "failed",
+
+      error:
+        "Invalid lead ID.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    return {
+      success:
+        false,
+
+      status:
+        "failed",
+
+      error:
+        "Unauthorized.",
+    };
+  }
+
+  try {
+    const result =
+      await createLeadOutreachDraft({
+        supabase,
+        userId:
+          user.id,
+        leadId:
+          leadId.trim(),
+        requirePreview:
+          true,
+        skipExistingDraft:
+          true,
+      });
+
+    if (
+      result.status ===
+        "skipped"
+    ) {
+      return {
+        success:
+          true,
+
+        status:
+          "skipped",
+
+        reason:
+          result.reason,
+      };
+    }
+
+    return {
+      success:
+        true,
+
+      status:
+        "created",
+    };
+  } catch (
+    error
+  ) {
+    console.error(
+      `Bulk outreach generation failed for lead ${leadId}:`,
+      error
+    );
+
+    return {
+      success:
+        false,
+
+      status:
+        "failed",
+
+      error:
+        getErrorMessage(
+          error
+        ),
+    };
+  }
 }
 
 /* =========================================================
@@ -1969,7 +2394,7 @@ export async function sendApprovedOutreachDraft(
 
   if (
     draft.status !==
-      "APPROVED"
+    "APPROVED"
   ) {
     console.warn(
       "Only approved outreach drafts can be sent."
@@ -1980,7 +2405,7 @@ export async function sendApprovedOutreachDraft(
 
   if (
     draft.channel !==
-      "EMAIL"
+    "EMAIL"
   ) {
     console.warn(
       "This outreach draft is not an email draft."
@@ -2047,7 +2472,7 @@ export async function sendApprovedOutreachDraft(
 
   if (
     lead.status ===
-      "DO_NOT_CONTACT"
+    "DO_NOT_CONTACT"
   ) {
     console.warn(
       "Email sending blocked because the lead is marked Do Not Contact."
@@ -2546,7 +2971,7 @@ export async function sendFollowUpOutreachDraft(
 
   if (
     draft.status !==
-      "SENT"
+    "SENT"
   ) {
     console.warn(
       "Follow-up can only be sent after the original email."
@@ -2627,7 +3052,7 @@ export async function sendFollowUpOutreachDraft(
 
   if (
     lead.status ===
-      "DO_NOT_CONTACT"
+    "DO_NOT_CONTACT"
   ) {
     console.warn(
       "Follow-up blocked because lead is Do Not Contact."

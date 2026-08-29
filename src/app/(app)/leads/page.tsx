@@ -82,6 +82,7 @@ export default async function LeadsPage() {
         id,
         status,
         priority,
+        analysis_status,
         website_score,
         opportunity_score,
         last_contacted_at,
@@ -100,6 +101,11 @@ export default async function LeadsPage() {
           id,
           full_name,
           email
+        ),
+
+        campaign:campaigns (
+          id,
+          name
         )
       `)
       .order(
@@ -140,6 +146,11 @@ export default async function LeadsPage() {
         const contact =
           getSingleRelation(
             lead.primary_contact
+          );
+
+        const campaign =
+          getSingleRelation(
+            lead.campaign
           );
 
         return {
@@ -183,8 +194,19 @@ export default async function LeadsPage() {
           priority:
             lead.priority,
 
+          analysisStatus:
+            lead.analysis_status,
+
           lastContactedAt:
             lead.last_contacted_at,
+
+          campaignId:
+            campaign?.id ??
+            null,
+
+          campaignName:
+            campaign?.name ??
+            null,
         };
       }
     );

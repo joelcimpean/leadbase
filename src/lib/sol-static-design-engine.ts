@@ -19,6 +19,10 @@ import {
   type RedesignSource,
 } from "@/lib/redesign-source";
 
+import {
+  getStockImageSets,
+} from "@/lib/stock-images";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -139,6 +143,9 @@ type ImageUsageResult = {
   usedRealImages:
     number;
 
+  usedStockImages:
+    number;
+
   warnings:
     string[];
 };
@@ -194,6 +201,12 @@ type GenerationResponseResult = {
 
 const MAX_VISUAL_IMAGES =
   12;
+
+const MAX_STOCK_IMAGES =
+  6;
+
+const MIN_LARGE_REAL_IMAGES =
+  3;
 
 /*
  * Four visually attached images are enough for Sol to
@@ -434,6 +447,57 @@ function looksObviouslyBad(
   );
 }
 
+function getImageResolutionNote(
+  width:
+    number,
+  height:
+    number
+) {
+  if (
+    !Number.isFinite(
+      width
+    ) ||
+    !Number.isFinite(
+      height
+    ) ||
+    width <=
+      0 ||
+    height <=
+      0
+  ) {
+    return "SOURCE DIMENSIONS: unknown. Do not assume this image is suitable for a large hero or full-width crop.";
+  }
+
+  if (
+    width >=
+      1400 &&
+    height >=
+      700
+  ) {
+    return `SOURCE DIMENSIONS: ${width}x${height}. QUALITY: LARGE — suitable for a large section or hero when the subject is relevant.`;
+  }
+
+  if (
+    width >=
+      1000 &&
+    height >=
+      560
+  ) {
+    return `SOURCE DIMENSIONS: ${width}x${height}. QUALITY: MEDIUM — suitable for a substantial section, but avoid aggressive full-screen upscaling.`;
+  }
+
+  if (
+    width >=
+      700 &&
+    height >=
+      400
+  ) {
+    return `SOURCE DIMENSIONS: ${width}x${height}. QUALITY: SUPPORTING — use in smaller media blocks or cards, not as a large full-width image.`;
+  }
+
+  return `SOURCE DIMENSIONS: ${width}x${height}. QUALITY: LOW-RES — do not upscale. Keep this image compact and use approved stock for large decorative imagery if available.`;
+}
+
 function collectVisualCandidates({
   source,
   site,
@@ -570,7 +634,10 @@ function collectVisualCandidates({
         image.alt,
 
       context:
-        `${image.pageTitle} ${image.context}`,
+        `${image.pageTitle} ${image.context} ${getImageResolutionNote(
+          image.width,
+          image.height
+        )}`,
     });
   }
 
@@ -596,7 +663,10 @@ function collectVisualCandidates({
         image.alt,
 
       context:
-        `${image.pageTitle} ${image.context}`,
+        `${image.pageTitle} ${image.context} ${getImageResolutionNote(
+          image.width,
+          image.height
+        )}`,
     });
   }
 
@@ -632,7 +702,10 @@ function collectVisualCandidates({
         image.alt,
 
       context:
-        `${image.pageTitle} ${image.context}`,
+        `${image.pageTitle} ${image.context} ${getImageResolutionNote(
+          image.width,
+          image.height
+        )}`,
     });
   }
 
@@ -662,7 +735,7 @@ function collectVisualCandidates({
         asset.alt,
 
       context:
-        asset.context,
+        `${asset.context} SOURCE DIMENSIONS: unknown. Use as supporting imagery unless the visual attachment clearly proves enough quality for a larger treatment.`,
     });
   }
 
@@ -670,6 +743,340 @@ function collectVisualCandidates({
     0,
     MAX_VISUAL_IMAGES
   );
+}
+
+/* =========================================================
+   IMAGE QUALITY / STOCK SUPPORT
+========================================================= */
+
+function countLargeRealImages(
+  site:
+    RedesignSiteIntelligence
+) {
+  const candidates = [
+    ...site.projectImages,
+    ...site.contentImages,
+  ];
+
+  const seen =
+    new Set<string>();
+
+  let count =
+    0;
+
+  for (
+    const image of
+      candidates
+  ) {
+    const key =
+      normalizeComparableUrl(
+        image.url
+      );
+
+    if (
+      seen.has(
+        key
+      )
+    ) {
+      continue;
+    }
+
+    seen.add(
+      key
+    );
+
+    if (
+      looksObviouslyBad(
+        imageText(
+          image
+        )
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      image.width >=
+        1400 &&
+      image.height >=
+        700
+    ) {
+      count +=
+        1;
+    }
+  }
+
+  return count;
+}
+
+function buildStockQueries({
+  analysis,
+  site,
+}: {
+  analysis:
+    RedesignAnalysisContext;
+
+  site:
+    RedesignSiteIntelligence;
+}) {
+  const industry =
+    cleanText(
+      analysis.company
+        .industry ??
+        ""
+    );
+
+  const services =
+    site.services
+      .slice(
+        0,
+        5
+      )
+      .map(
+        (
+          service
+        ) =>
+          cleanText(
+            service.name
+          )
+      )
+      .filter(
+        Boolean
+      );
+
+  const base =
+    industry ||
+    services
+      .slice(
+        0,
+        2
+      )
+      .join(
+        " "
+      ) ||
+    "professional local business";
+
+  const raw = [
+    `${base} professional work`,
+
+    services[0]
+      ? `${services[0]} professional installation`
+      : `${base} craftsmanship`,
+
+    services[1]
+      ? `${services[1]} professional work`
+      : `${base} professional service`,
+  ];
+
+  return Array.from(
+    new Set(
+      raw
+        .map(
+          cleanText
+        )
+        .filter(
+          Boolean
+        )
+    )
+  ).slice(
+    0,
+    3
+  );
+}
+
+function createStockCandidates(
+  stock:
+    Awaited<
+      ReturnType<
+        typeof getStockImageSets
+      >
+    >
+) {
+  const byId =
+    new Map(
+      stock.assets.map(
+        (
+          asset
+        ) => [
+          asset.id,
+          asset,
+        ]
+      )
+    );
+
+  const selectedIds:
+    string[] =
+    [];
+
+  for (
+    let round =
+      0;
+    round <
+      3;
+    round +=
+      1
+  ) {
+    for (
+      const ids of
+        stock.assetIdsByQuery
+    ) {
+      const id =
+        ids[round];
+
+      if (
+        id &&
+        !selectedIds.includes(
+          id
+        )
+      ) {
+        selectedIds.push(
+          id
+        );
+      }
+
+      if (
+        selectedIds.length >=
+          MAX_STOCK_IMAGES
+      ) {
+        break;
+      }
+    }
+
+    if (
+      selectedIds.length >=
+        MAX_STOCK_IMAGES
+    ) {
+      break;
+    }
+  }
+
+  return selectedIds
+    .map(
+      (
+        id
+      ) =>
+        byId.get(
+          id
+        )
+    )
+    .filter(
+      (
+        asset
+      ): asset is NonNullable<
+        typeof asset
+      > =>
+        Boolean(
+          asset
+        )
+    )
+    .map(
+      (
+        asset
+      ): VisualCandidate => ({
+        url:
+          asset.url,
+
+        role:
+          "APPROVED STOCK CONCEPT IMAGE — DECORATIVE / GENERAL SERVICE USE ONLY",
+
+        alt:
+          asset.alt,
+
+        context:
+          "High-resolution Pexels concept image. This is NOT a real employee, real project, real reference, real building or real company photograph. It may only support a hero, general service atmosphere or decorative section when a suitable high-resolution real image is unavailable.",
+      })
+    );
+}
+
+function createVisionCandidateOrder(
+  candidates:
+    VisualCandidate[]
+) {
+  const real =
+    candidates.filter(
+      (
+        candidate
+      ) =>
+        candidate.role !==
+          "REAL COMPANY LOGO" &&
+        !candidate.role.startsWith(
+          "APPROVED STOCK"
+        )
+    );
+
+  const stock =
+    candidates.filter(
+      (
+        candidate
+      ) =>
+        candidate.role.startsWith(
+          "APPROVED STOCK"
+        )
+    );
+
+  if (
+    stock.length ===
+      0
+  ) {
+    return candidates;
+  }
+
+  const ordered:
+    VisualCandidate[] =
+    [];
+
+  const seen =
+    new Set<string>();
+
+  function add(
+    candidate:
+      VisualCandidate
+      | undefined
+  ) {
+    if (
+      !candidate ||
+      seen.has(
+        candidate.url
+      )
+    ) {
+      return;
+    }
+
+    seen.add(
+      candidate.url
+    );
+
+    ordered.push(
+      candidate
+    );
+  }
+
+  add(
+    real[0]
+  );
+
+  add(
+    stock[0]
+  );
+
+  add(
+    real[1]
+  );
+
+  add(
+    stock[1]
+  );
+
+  for (
+    const candidate of
+      candidates
+  ) {
+    add(
+      candidate
+    );
+  }
+
+  return ordered;
 }
 
 /* =========================================================
@@ -2033,44 +2440,65 @@ function inspectImageUsage({
       ?.url ??
     null;
 
-  const nonLogo =
+  function isUsed(
+    candidate:
+      VisualCandidate
+  ) {
+    const escaped =
+      escapeHtmlAttribute(
+        candidate.url
+      );
+
+    return (
+      html.includes(
+        candidate.url
+      ) ||
+      html.includes(
+        escaped
+      )
+    );
+  }
+
+  const realNonLogo =
     candidates.filter(
       (
         candidate
       ) =>
         candidate.url !==
-        logoUrl
+          logoUrl &&
+        !candidate.role.startsWith(
+          "APPROVED STOCK"
+        )
     );
 
-  const usedNonLogo =
-    nonLogo.filter(
+  const stock =
+    candidates.filter(
       (
         candidate
-      ) => {
-        const escaped =
-          escapeHtmlAttribute(
-            candidate.url
-          );
+      ) =>
+        candidate.role.startsWith(
+          "APPROVED STOCK"
+        )
+    );
 
-        return (
-          html.includes(
-            candidate.url
-          ) ||
-          html.includes(
-            escaped
-          )
-        );
-      }
+  const usedReal =
+    realNonLogo.filter(
+      isUsed
+    );
+
+  const usedStock =
+    stock.filter(
+      isUsed
     );
 
   if (
-    nonLogo.length >=
+    realNonLogo.length >=
       4 &&
-    usedNonLogo.length <
-      3
+    usedReal.length <
+      2
   ) {
     warnings.push(
-      `Only ${usedNonLogo.length} of ${nonLogo.length} available real company images were used.`
+      `Only ${usedReal.length} of ${realNonLogo.length} available real company images were used.`
     );
   }
 
@@ -2092,7 +2520,10 @@ function inspectImageUsage({
 
   return {
     usedRealImages:
-      usedNonLogo.length,
+      usedReal.length,
+
+    usedStockImages:
+      usedStock.length,
 
     warnings,
   };
@@ -2158,7 +2589,10 @@ function buildModelContent({
 
       text:
         `
-REAL WEBSITE IMAGE ${index + 1}
+${candidate.role.startsWith("APPROVED STOCK") ? "APPROVED STOCK CONCEPT IMAGE" : "REAL WEBSITE IMAGE"} ${index + 1}
+
+SOURCE TYPE:
+${candidate.role.startsWith("APPROVED STOCK") ? "STOCK — SUPPORTING CONCEPT IMAGE ONLY" : "REAL COMPANY WEBSITE"}
 
 CRAWLER ROLE:
 ${candidate.role}
@@ -2166,10 +2600,10 @@ ${candidate.role}
 ALT:
 ${candidate.alt || "none"}
 
-CONTEXT:
+CONTEXT / QUALITY:
 ${candidate.context || "none"}
 
-EXACT REAL URL:
+EXACT APPROVED URL:
 ${candidate.url}
 
 VISUALLY ATTACHED:
@@ -2503,12 +2937,58 @@ export async function generateSolStaticDesign({
       .OPENAI_REDESIGN_DESIGN_MODEL ??
     "gpt-5.6-sol";
 
-  const candidates =
+  const realCandidates =
     collectVisualCandidates({
       source,
 
       site,
     });
+
+  const largeRealImageCount =
+    countLargeRealImages(
+      site
+    );
+
+  let stockCandidates:
+    VisualCandidate[] =
+    [];
+
+  if (
+    largeRealImageCount <
+      MIN_LARGE_REAL_IMAGES
+  ) {
+    try {
+      const stock =
+        await getStockImageSets({
+          queries:
+            buildStockQueries({
+              analysis,
+
+              site,
+            }),
+
+          seed:
+            `${analysis.company.name}:${source.finalUrl}:${generationIndex}`,
+        });
+
+      stockCandidates =
+        createStockCandidates(
+          stock
+        );
+    } catch (
+      error
+    ) {
+      console.warn(
+        "Could not prepare optional stock images. Continuing with real company images only:",
+        error
+      );
+    }
+  }
+
+  const candidates = [
+    ...realCandidates,
+    ...stockCandidates,
+  ];
 
   const mandate =
     getVariantMandate(
@@ -2517,7 +2997,9 @@ export async function generateSolStaticDesign({
 
   const visionImages =
     await prepareVisionImages(
-      candidates
+      createVisionCandidateOrder(
+        candidates
+      )
     );
 
   const visionByUrl =
@@ -2783,6 +3265,38 @@ CSS hover effects are fine.
 Small CSS-only transitions are fine.
 
 The actual page content must always remain visible.
+
+=========================================================
+TYPOGRAPHY SCALE — HARD REQUIREMENT
+=========================================================
+
+Typography may be expressive, but visual impact must NOT
+come from simply making text enormous.
+
+DESKTOP GUIDANCE:
+
+- hero H1 should normally sit around 48–76px
+- meaningful hero copy should generally never exceed 84px
+- section H2 headings should normally sit around 30–52px
+- body copy should normally sit around 16–19px
+
+MOBILE GUIDANCE:
+
+- hero H1 should normally sit around 34–46px
+- section headings should normally sit around 28–38px
+- body copy should normally remain at least 15–16px
+
+AVOID:
+
+- 100px+ marketing headlines
+- headlines occupying most of the viewport height
+- one or two words per line only because the font is huge
+- enormous decorative numbers
+- excessive vertical scrolling caused by oversized type
+
+Create hierarchy through composition, weight, contrast,
+spacing, imagery and grid relationships — not through
+extreme font size.
 
 =========================================================
 VARIATION
@@ -3212,35 +3726,74 @@ Prioritize real:
 Do not use an irrelevant image simply because it exists.
 
 =========================================================
-IMAGE QUANTITY
+IMAGE QUANTITY + RESOLUTION
 =========================================================
 
-Use several DIFFERENT real photographs when enough useful
-ones exist.
+Use several DIFFERENT images when useful material exists.
 
-Do NOT reuse one project photograph five times.
+Prefer authentic company photography whenever it is
+relevant AND large enough for the intended placement.
 
-A strong long homepage can comfortably use 4–8 different
-real company images if the supplied material supports it.
+The image records contain source-dimension guidance.
+Respect it.
 
-If only 2 relevant photographs exist, use those 2 well.
+REAL IMAGE SIZE RULES:
 
-Relevance is more important than filling space.
+- QUALITY: LARGE may be used for hero/full-width treatment
+- QUALITY: MEDIUM may be used for substantial sections but
+  should not be aggressively stretched full-screen
+- QUALITY: SUPPORTING belongs in smaller media blocks/cards
+- QUALITY: LOW-RES must NEVER be enlarged into a large hero
+  or full-width image
+
+Do not make a real company image visibly blurry merely to
+avoid using stock.
+
+At the same time, authenticity is critical.
+
+A low-resolution REAL employee, team or project photo may
+still be useful in a smaller authentic module.
+
+Do NOT replace it with fake people or a fake project.
 
 =========================================================
-IMAGE URL RULE
+APPROVED IMAGE URL RULE
 =========================================================
 
-Use ONLY supplied company image URLs.
+Use ONLY image URLs explicitly supplied in the image
+records attached to this request.
 
-Never use:
+There are two possible source types:
 
-- Unsplash
-- Pexels
-- fake stock
-- placeholder services
-- invented image URLs
-- random remote images
+1. REAL COMPANY WEBSITE
+2. STOCK — SUPPORTING CONCEPT IMAGE ONLY
+
+REAL COMPANY images are factual visual evidence.
+
+APPROVED STOCK images exist only to solve image-quality
+gaps in the design concept.
+
+Stock MAY be used for:
+
+- a general hero atmosphere when no suitable large real
+  image exists
+- general service atmosphere
+- decorative supporting imagery
+- visual backgrounds that make no factual company claim
+
+Stock must NEVER be presented as:
+
+- a real employee or team member
+- a real company project
+- a real reference
+- the real company premises
+- a real customer
+- a real company vehicle
+- factual evidence of work the company completed
+
+Never use an image URL that was not supplied.
+
+Never invent remote image URLs.
 
 The real logo may appear in both header and footer.
 
@@ -3514,7 +4067,7 @@ Verify:
 
 [ ] No unrelated image is used.
 
-[ ] No fake stock is used.
+[ ] No approved stock image is presented as a real employee, project, reference, premises or company photograph.
 
 [ ] No project image is needlessly repeated.
 
@@ -3909,7 +4462,11 @@ Return ONLY the complete HTML.
 
       `MAXIBESTOF=${designResearch ? "cached" : "none"}`,
 
-      `DISCOVERED_REAL_IMAGES=${candidates.length}`,
+      `DISCOVERED_REAL_IMAGES=${realCandidates.length}`,
+
+      `LARGE_REAL_IMAGES=${largeRealImageCount}`,
+
+      `APPROVED_STOCK_IMAGES=${stockCandidates.length}`,
 
       `VALID_VISION_IMAGES=${visionImages.length}`,
 
@@ -3918,6 +4475,8 @@ Return ONLY the complete HTML.
       `REPAIR_VISION_FALLBACK=${repairVisionFallbackUsed ? "yes" : "no"}`,
 
       `USED_REAL_IMAGES=${imageQa.usedRealImages}`,
+
+      `USED_STOCK_IMAGES=${imageQa.usedStockImages}`,
 
       `IMAGE_QA_WARNINGS=${imageQa.warnings.length}`,
 
