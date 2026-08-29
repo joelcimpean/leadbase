@@ -1743,6 +1743,292 @@ export async function generateLeadOutreachDraftForBulk(
   }
 }
 
+
+/* =========================================================
+   RESET SENT OUTREACH
+
+   Use this when the original email went to a wrong /
+   invalid recipient.
+
+   This does NOT undo the Gmail message. It only resets the
+   Leadbase state so the current draft can be reviewed,
+   approved and sent again to the contact's CURRENT email.
+
+   Any pending follow-up is cancelled. A new follow-up date
+   will be scheduled automatically after the new send.
+========================================================= */
+
+export async function resetSentOutreachDraft(
+  formData:
+    FormData
+) {
+  const draftId =
+    formData.get(
+      "draftId"
+    );
+
+  const leadId =
+    formData.get(
+      "leadId"
+    );
+
+  if (
+    typeof draftId !==
+      "string" ||
+    !draftId ||
+    typeof leadId !==
+      "string" ||
+    !leadId
+  ) {
+    return;
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
+  }
+
+  const {
+    data:
+      draft,
+    error:
+      draftError,
+  } =
+    await supabase
+      .from(
+        "outreach_drafts"
+      )
+      .select(`
+        id,
+        status,
+        follow_up_sent_at
+      `)
+      .eq(
+        "id",
+        draftId
+      )
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+  if (
+    draftError ||
+    !draft
+  ) {
+    console.error(
+      "Could not load sent outreach draft for reset:",
+      draftError
+    );
+
+    return;
+  }
+
+  if (
+    draft.status !==
+      "SENT"
+  ) {
+    console.warn(
+      "Only a SENT outreach draft can be reset."
+    );
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
+    );
+  }
+
+  /*
+   * If the follow-up has already been sent, we do not reset
+   * the original message. The UI also hides the button then.
+   */
+  if (
+    draft.follow_up_sent_at
+  ) {
+    console.warn(
+      "A sent outreach draft cannot be reset after its follow-up was already sent."
+    );
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
+    );
+  }
+
+  const {
+    data:
+      resetDraft,
+    error:
+      resetError,
+  } =
+    await supabase
+      .from(
+        "outreach_drafts"
+      )
+      .update({
+        status:
+          "DRAFT",
+
+        sent_at:
+          null,
+
+        sent_to:
+          null,
+
+        gmail_message_id:
+          null,
+
+        gmail_thread_id:
+          null,
+
+        sending_started_at:
+          null,
+
+        send_error:
+          null,
+
+        follow_up_sent_at:
+          null,
+
+        follow_up_sent_to:
+          null,
+
+        gmail_follow_up_message_id:
+          null,
+
+        gmail_follow_up_thread_id:
+          null,
+
+        follow_up_sending_started_at:
+          null,
+
+        follow_up_send_error:
+          null,
+      })
+      .eq(
+        "id",
+        draftId
+      )
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "status",
+        "SENT"
+      )
+      .is(
+        "follow_up_sent_at",
+        null
+      )
+      .select(
+        "id"
+      )
+      .maybeSingle();
+
+  if (
+    resetError
+  ) {
+    console.error(
+      "Could not reset sent outreach draft:",
+      resetError
+    );
+
+    return;
+  }
+
+  if (
+    !resetDraft
+  ) {
+    console.warn(
+      "Sent outreach draft was not reset because its state changed."
+    );
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
+    );
+  }
+
+  const {
+    error:
+      leadUpdateError,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .update({
+        status:
+          "DRAFT_READY",
+
+        last_contacted_at:
+          null,
+
+        next_follow_up_at:
+          null,
+      })
+      .eq(
+        "id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+  if (
+    leadUpdateError
+  ) {
+    console.error(
+      "Outreach draft was reset, but the lead state could not be reset:",
+      leadUpdateError
+    );
+  }
+
+  revalidateLead(
+    leadId
+  );
+
+  redirect(
+    `/leads/${leadId}#outreach`
+  );
+}
+
 /* =========================================================
    UPDATE OUTREACH DRAFT
 ========================================================= */

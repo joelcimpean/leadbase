@@ -7,6 +7,7 @@ import {
   Mail,
   MailCheck,
   PencilLine,
+  RotateCcw,
   Save,
   Sparkles,
   User,
@@ -26,6 +27,7 @@ import {
 
 import {
   approveOutreachDraft,
+  resetSentOutreachDraft,
   updateLeadContactSalutation,
   updateOutreachDraft,
 } from "../outreach-actions";
@@ -1059,13 +1061,57 @@ export async function OutreachSection({
 
                 {draft.status ===
                 "SENT" ? (
-                  <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 min-[420px]:w-auto sm:h-8 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400">
-                    <MailCheck className="size-3.5" />
+                  <>
+                    <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 min-[420px]:w-auto sm:h-8 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400">
+                      <MailCheck className="size-3.5" />
 
-                    {
-                      text.emailSent
-                    }
-                  </div>
+                      {
+                        text.emailSent
+                      }
+                    </div>
+
+                    {!draft.follow_up_sent_at ? (
+                      <form
+                        action={
+                          resetSentOutreachDraft
+                        }
+                      >
+                        <input
+                          type="hidden"
+                          name="draftId"
+                          value={
+                            draft.id
+                          }
+                        />
+
+                        <input
+                          type="hidden"
+                          name="leadId"
+                          value={
+                            leadId
+                          }
+                        />
+
+                        <button
+                          type="submit"
+                          title={
+                            language ===
+                            "de"
+                              ? "Versand zurücksetzen, Follow-up stoppen und erneut an die aktuelle E-Mail-Adresse senden"
+                              : "Reset sending, cancel the pending follow-up and resend to the current email address"
+                          }
+                          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground min-[420px]:w-auto sm:h-8"
+                        >
+                          <RotateCcw className="size-3.5" />
+
+                          {language ===
+                          "de"
+                            ? "Empfänger korrigieren"
+                            : "Correct recipient"}
+                        </button>
+                      </form>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
             </div>

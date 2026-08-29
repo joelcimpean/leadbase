@@ -9,6 +9,10 @@ import {
 } from "cheerio";
 
 import {
+  isAutomaticReply,
+} from "@/lib/email-message-classification";
+
+import {
   createGmailOAuthClient,
   decryptGmailToken,
 } from "@/lib/gmail-oauth";
@@ -106,7 +110,8 @@ type GmailMessagePart = {
 };
 
 type LeadReference = {
-  leadId: string;
+  leadId:
+    string;
 
   draftId:
     | string
@@ -114,25 +119,33 @@ type LeadReference = {
 };
 
 type ThreadReference = {
-  leadId: string;
+  leadId:
+    string;
 
-  draftId: string;
+  draftId:
+    string;
 
-  threadId: string;
+  threadId:
+    string;
 };
 
 type AttachmentMetadata = {
-  name: string;
+  name:
+    string;
 
-  type: string;
+  type:
+    string;
 
-  size: number;
+  size:
+    number;
 };
 
 type ParsedIncomingMessage = {
-  user_id: string;
+  user_id:
+    string;
 
-  lead_id: string;
+  lead_id:
+    string;
 
   outreach_draft_id:
     | string
@@ -204,17 +217,22 @@ function getSingleRelation<T>(
 }
 
 function chunkArray<T>(
-  values: T[],
-  size: number
+  values:
+    T[],
+  size:
+    number
 ) {
   const chunks:
     T[][] =
     [];
 
   for (
-    let index = 0;
-    index < values.length;
-    index += size
+    let index =
+      0;
+    index <
+      values.length;
+    index +=
+      size
   ) {
     chunks.push(
       values.slice(
@@ -229,7 +247,8 @@ function chunkArray<T>(
 }
 
 function isReasonableEmail(
-  value: string
+  value:
+    string
 ) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
     value.trim()
@@ -237,7 +256,8 @@ function isReasonableEmail(
 }
 
 function getEmailDomain(
-  email: string
+  email:
+    string
 ) {
   const parts =
     email
@@ -249,7 +269,7 @@ function getEmailDomain(
 
   if (
     parts.length !==
-    2
+      2
   ) {
     return null;
   }
@@ -261,19 +281,22 @@ function getEmailDomain(
 }
 
 function getErrorCode(
-  error: unknown
+  error:
+    unknown
 ) {
   if (
     typeof error ===
       "object" &&
     error !==
       null &&
-    "code" in error
+    "code" in
+      error
   ) {
     return Number(
       (
         error as {
-          code?: unknown;
+          code?:
+            unknown;
         }
       ).code
     );
@@ -291,7 +314,8 @@ function getHeader(
     | GmailMessagePart
     | null
     | undefined,
-  name: string
+  name:
+    string
 ) {
   const header =
     (
@@ -424,7 +448,8 @@ function findTextPart(
     | GmailMessagePart
     | null
     | undefined,
-  mimeType: string
+  mimeType:
+    string
 ): string | null {
   if (
     !part
@@ -464,7 +489,8 @@ function findTextPart(
 }
 
 function htmlToText(
-  html: string
+  html:
+    string
 ) {
   const $ =
     load(
@@ -508,7 +534,8 @@ function htmlToText(
 }
 
 function removeQuotedReply(
-  value: string
+  value:
+    string
 ) {
   let text =
     value
@@ -553,7 +580,7 @@ function removeQuotedReply(
 
   if (
     firstIndex >=
-    0
+      0
   ) {
     text =
       text
@@ -708,7 +735,8 @@ function isHardBounce({
   fromEmail,
   subject,
 }: {
-  fromEmail: string;
+  fromEmail:
+    string;
 
   subject:
     | string
@@ -753,13 +781,14 @@ export async function syncGmailRepliesForCurrentUser() {
   const supabase =
     await createClient();
 
-  /* USER */
+  /* =======================================================
+     USER
+  ======================================================= */
 
   const {
     data: {
       user,
     },
-
     error:
       userError,
   } =
@@ -774,12 +803,13 @@ export async function syncGmailRepliesForCurrentUser() {
     );
   }
 
-  /* CONNECTION */
+  /* =======================================================
+     CONNECTION
+  ======================================================= */
 
   const {
     data:
       connection,
-
     error:
       connectionError,
   } =
@@ -830,12 +860,13 @@ export async function syncGmailRepliesForCurrentUser() {
       .trim()
       .toLowerCase();
 
-  /* SENT OUTREACH */
+  /* =======================================================
+     SENT OUTREACH
+  ======================================================= */
 
   const {
     data:
       drafts,
-
     error:
       draftsError,
   } =
@@ -874,12 +905,13 @@ export async function syncGmailRepliesForCurrentUser() {
     );
   }
 
-  /* LEADS */
+  /* =======================================================
+     LEADS
+  ======================================================= */
 
   const {
     data:
       leads,
-
     error:
       leadsError,
   } =
@@ -908,7 +940,9 @@ export async function syncGmailRepliesForCurrentUser() {
     );
   }
 
-  /* LOOKUPS */
+  /* =======================================================
+     LOOKUPS
+  ======================================================= */
 
   const latestDraftByLead =
     new Map<
@@ -1027,8 +1061,7 @@ export async function syncGmailRepliesForCurrentUser() {
       domain,
       references,
     ] of
-      domainReferences
-        .entries()
+      domainReferences.entries()
   ) {
     const leadIds =
       new Set(
@@ -1042,7 +1075,7 @@ export async function syncGmailRepliesForCurrentUser() {
 
     if (
       leadIds.size ===
-      1
+        1
     ) {
       knownLeadByDomain.set(
         domain,
@@ -1051,7 +1084,9 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
-  /* THREAD MAP */
+  /* =======================================================
+     THREAD MAP
+  ======================================================= */
 
   const threadMap =
     new Map<
@@ -1101,7 +1136,9 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
-  /* GMAIL */
+  /* =======================================================
+     GMAIL
+  ======================================================= */
 
   const refreshToken =
     decryptGmailToken(
@@ -1126,7 +1163,9 @@ export async function syncGmailRepliesForCurrentUser() {
         oauth2Client,
     });
 
-  /* CANDIDATES */
+  /* =======================================================
+     CANDIDATES
+  ======================================================= */
 
   const candidateMessageIds =
     new Set<
@@ -1139,7 +1178,9 @@ export async function syncGmailRepliesForCurrentUser() {
       ThreadReference
     >();
 
-  /* EXISTING THREADS */
+  /* =======================================================
+     EXISTING THREADS
+  ======================================================= */
 
   for (
     const reference of
@@ -1207,7 +1248,9 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
-  /* NEW THREADS */
+  /* =======================================================
+     NEW THREADS
+  ======================================================= */
 
   const searchTerms = [
     ...Array.from(
@@ -1245,7 +1288,7 @@ export async function syncGmailRepliesForCurrentUser() {
   ) {
     if (
       searchChunk.length ===
-      0
+        0
     ) {
       continue;
     }
@@ -1275,7 +1318,7 @@ export async function syncGmailRepliesForCurrentUser() {
                 | null;
             }>
           | null;
-      
+
         nextPageToken?:
           | string
           | null;
@@ -1286,17 +1329,17 @@ export async function syncGmailRepliesForCurrentUser() {
           .list({
             userId:
               "me",
-      
+
             q:
               query,
-      
+
             maxResults:
               100,
-      
+
             pageToken,
           })
       ).data;
-      
+
       for (
         const message of
           listData.messages ??
@@ -1310,23 +1353,23 @@ export async function syncGmailRepliesForCurrentUser() {
           );
         }
       }
-      
+
       pageToken =
         listData.nextPageToken ??
         undefined;
-      
-        if (
-          !pageToken
-        ) {
-          break;
-        }
-            }
-          }
-        
-          if (
-            candidateMessageIds.size ===
-            0
-          ) {
+
+      if (
+        !pageToken
+      ) {
+        break;
+      }
+    }
+  }
+
+  if (
+    candidateMessageIds.size ===
+      0
+  ) {
     return {
       threadsChecked:
         threadMap.size,
@@ -1337,12 +1380,17 @@ export async function syncGmailRepliesForCurrentUser() {
       repliesFound:
         0,
 
+      automaticReplies:
+        0,
+
       newReplies:
         0,
     };
   }
 
-  /* ALREADY STORED */
+  /* =======================================================
+     ALREADY STORED
+  ======================================================= */
 
   const candidateIds =
     Array.from(
@@ -1412,7 +1460,7 @@ export async function syncGmailRepliesForCurrentUser() {
 
   if (
     unknownMessageIds.length ===
-    0
+      0
   ) {
     return {
       threadsChecked:
@@ -1424,16 +1472,26 @@ export async function syncGmailRepliesForCurrentUser() {
       repliesFound:
         0,
 
+      automaticReplies:
+        0,
+
       newReplies:
         0,
     };
   }
 
-  /* FETCH */
+  /* =======================================================
+     FETCH + CLASSIFY
+  ======================================================= */
 
   const parsedMessages:
     ParsedIncomingMessage[] =
     [];
+
+  const automaticReplyMessageIds =
+    new Set<
+      string
+    >();
 
   for (
     const messageId of
@@ -1525,7 +1583,7 @@ export async function syncGmailRepliesForCurrentUser() {
 
     if (
       from.email ===
-      ownEmail
+        ownEmail
     ) {
       continue;
     }
@@ -1541,7 +1599,9 @@ export async function syncGmailRepliesForCurrentUser() {
       continue;
     }
 
-    /* MATCH LEAD */
+    /* =====================================================
+       MATCH LEAD
+    ===================================================== */
 
     const threadReference =
       threadReferenceByMessageId.get(
@@ -1623,6 +1683,58 @@ export async function syncGmailRepliesForCurrentUser() {
       message.labelIds ??
       [];
 
+    const bodyText =
+      extractBody(
+        payload,
+        message.snippet
+      );
+
+    const automaticReply =
+      isAutomaticReply({
+        subject,
+
+        body:
+          bodyText,
+
+        autoSubmitted:
+          getHeader(
+            payload,
+            "Auto-Submitted"
+          ),
+
+        precedence:
+          getHeader(
+            payload,
+            "Precedence"
+          ),
+
+        xAutoReply:
+          getHeader(
+            payload,
+            "X-Autoreply"
+          ),
+
+        xAutorespond:
+          getHeader(
+            payload,
+            "X-Autorespond"
+          ),
+
+        xAutoResponseSuppress:
+          getHeader(
+            payload,
+            "X-Auto-Response-Suppress"
+          ),
+      });
+
+    if (
+      automaticReply
+    ) {
+      automaticReplyMessageIds.add(
+        message.id
+      );
+    }
+
     parsedMessages.push({
       user_id:
         user.id,
@@ -1657,10 +1769,7 @@ export async function syncGmailRepliesForCurrentUser() {
       subject,
 
       body_text:
-        extractBody(
-          payload,
-          message.snippet
-        ),
+        bodyText,
 
       received_at:
         receivedAt,
@@ -1689,7 +1798,7 @@ export async function syncGmailRepliesForCurrentUser() {
 
   if (
     validMessages.length ===
-    0
+      0
   ) {
     return {
       threadsChecked:
@@ -1701,12 +1810,20 @@ export async function syncGmailRepliesForCurrentUser() {
       repliesFound:
         0,
 
+      automaticReplies:
+        0,
+
       newReplies:
         0,
     };
   }
 
-  /* STORE */
+  /* =======================================================
+     STORE ALL INCOMING MESSAGES
+
+     Automatic replies remain visible in the inbox. They are
+     only excluded from "human reply" workflow changes.
+  ======================================================= */
 
   const {
     error:
@@ -1735,7 +1852,7 @@ export async function syncGmailRepliesForCurrentUser() {
     );
   }
 
-  const repliedLeadIds =
+  const incomingLeadIds =
     Array.from(
       new Set(
         validMessages.map(
@@ -1747,63 +1864,47 @@ export async function syncGmailRepliesForCurrentUser() {
       )
     );
 
-  /*
-   * IMPORTANT:
-   *
-   * Any genuinely new incoming customer mail restores
-   * the conversation to the active inbox.
-   *
-   * That means an archived / trashed / previously deleted
-   * lead can never silently disappear when they reply.
-   */
-
-  const cancelledAt =
-  new Date()
-    .toISOString();
-
-const {
-  error:
-    scheduledCancellationError,
-} =
-  await supabase
-    .from(
-      "scheduled_emails"
-    )
-    .update({
-      status:
-        "CANCELLED",
-
-      cancelled_at:
-        cancelledAt,
-
-      last_error:
-        "Cancelled automatically because a new customer email was received.",
-    })
-    .eq(
-      "user_id",
-      user.id
-    )
-    .in(
-      "lead_id",
-      repliedLeadIds
-    )
-    .eq(
-      "status",
-      "SCHEDULED"
+  const humanReplyMessages =
+    validMessages.filter(
+      (
+        message
+      ) =>
+        !automaticReplyMessageIds.has(
+          message.gmail_message_id
+        )
     );
 
-if (
-  scheduledCancellationError
-) {
-  console.error(
-    "Replies were stored but scheduled emails could not be cancelled:",
-    scheduledCancellationError
-  );
-}
+  const automaticReplyMessages =
+    validMessages.filter(
+      (
+        message
+      ) =>
+        automaticReplyMessageIds.has(
+          message.gmail_message_id
+        )
+    );
+
+  const repliedLeadIds =
+    Array.from(
+      new Set(
+        humanReplyMessages.map(
+          (
+            message
+          ) =>
+            message.lead_id
+        )
+      )
+    );
+
+  /* =======================================================
+     RESTORE EVERY NEW INCOMING MAIL TO INBOX
+
+     Automatic replies should still be visible to Joel.
+  ======================================================= */
 
   if (
-    repliedLeadIds.length >
-    0
+    incomingLeadIds.length >
+      0
   ) {
     const {
       error:
@@ -1814,7 +1915,7 @@ if (
           "inbox_conversation_states"
         )
         .upsert(
-          repliedLeadIds.map(
+          incomingLeadIds.map(
             (
               leadId
             ) => ({
@@ -1851,6 +1952,66 @@ if (
         inboxStateError
       );
     }
+  }
+
+  /* =======================================================
+     HUMAN REPLIES ONLY
+
+     A real human reply:
+     - cancels scheduled inbox replies
+     - stops the outreach follow-up
+     - changes the lead to REPLIED
+
+     Automatic replies do NONE of these things.
+  ======================================================= */
+
+  if (
+    repliedLeadIds.length >
+      0
+  ) {
+    const cancelledAt =
+      new Date()
+        .toISOString();
+
+    const {
+      error:
+        scheduledCancellationError,
+    } =
+      await supabase
+        .from(
+          "scheduled_emails"
+        )
+        .update({
+          status:
+            "CANCELLED",
+
+          cancelled_at:
+            cancelledAt,
+
+          last_error:
+            "Cancelled automatically because a human customer email was received.",
+        })
+        .eq(
+          "user_id",
+          user.id
+        )
+        .in(
+          "lead_id",
+          repliedLeadIds
+        )
+        .eq(
+          "status",
+          "SCHEDULED"
+        );
+
+    if (
+      scheduledCancellationError
+    ) {
+      console.error(
+        "Human replies were stored but scheduled emails could not be cancelled:",
+        scheduledCancellationError
+      );
+    }
 
     const {
       error:
@@ -1877,7 +2038,7 @@ if (
       followUpError
     ) {
       console.error(
-        "Replies were stored but follow-ups could not be stopped:",
+        "Human replies were stored but follow-ups could not be stopped:",
         followUpError
       );
     }
@@ -1917,7 +2078,7 @@ if (
       statusError
     ) {
       console.error(
-        "Replies were stored but lead statuses could not be updated:",
+        "Human replies were stored but lead statuses could not be updated:",
         statusError
       );
     }
@@ -1931,7 +2092,10 @@ if (
       unknownMessageIds.length,
 
     repliesFound:
-      validMessages.length,
+      humanReplyMessages.length,
+
+    automaticReplies:
+      automaticReplyMessages.length,
 
     newReplies:
       validMessages.length,
