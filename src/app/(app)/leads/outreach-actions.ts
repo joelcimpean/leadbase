@@ -3726,3 +3726,570 @@ export async function sendFollowUpOutreachDraft(
     `/leads/${lead.id}#outreach`
   );
 }
+/* =========================================================
+   SCHEDULE INITIAL OUTREACH — BULK
+========================================================= */
+
+export type BulkScheduleOutreachResult =
+  | {
+      success: true;
+      status:
+        "scheduled";
+      scheduledFor: string;
+    }
+  | {
+      success: true;
+      status:
+        "skipped";
+      reason: string;
+    }
+  | {
+      success: false;
+      status:
+        "failed";
+      error: string;
+    };
+
+export async function scheduleLeadOutreachForBulk(
+  leadId: string,
+  scheduledForIso: string
+): Promise<BulkScheduleOutreachResult> {
+  const cleanLeadId =
+    leadId.trim();
+
+  if (
+    !cleanLeadId
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        "Invalid lead ID.",
+    };
+  }
+
+  const scheduledFor =
+    new Date(
+      scheduledForIso
+    );
+
+  if (
+    !Number.isFinite(
+      scheduledFor.getTime()
+    )
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        "Invalid send time.",
+    };
+  }
+
+  if (
+    scheduledFor.getTime() <=
+      Date.now() +
+        30_000
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        "The send time must be in the future.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        "Unauthorized.",
+    };
+  }
+
+  const {
+    data:
+      lead,
+    error:
+      leadError,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .select(`
+        id,
+        status,
+
+        primary_contact:contacts (
+          id,
+          email
+        )
+      `)
+      .eq(
+        "id",
+        cleanLeadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+  if (
+    leadError ||
+    !lead
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        leadError?.message ??
+        "Lead not found.",
+    };
+  }
+
+  if (
+    lead.status ===
+      "DO_NOT_CONTACT"
+  ) {
+    return {
+      success:
+        true,
+      status:
+        "skipped",
+      reason:
+        "Lead is marked Do Not Contact.",
+    };
+  }
+
+  const contact =
+    getSingleRelation(
+      lead.primary_contact
+    );
+
+  const recipientEmail =
+    contact?.email
+      ?.trim()
+      .toLowerCase();
+
+  if (
+    !recipientEmail ||
+    !isReasonableEmail(
+      recipientEmail
+    )
+  ) {
+    return {
+      success:
+        true,
+      status:
+        "skipped",
+      reason:
+        "Lead has no valid recipient email.",
+    };
+  }
+
+  const {
+    data:
+      draft,
+    error:
+      draftError,
+  } =
+    await supabase
+      .from(
+        "outreach_drafts"
+      )
+      .select(`
+        id,
+        status,
+        subject,
+        body,
+        sent_at,
+        created_at
+      `)
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "lead_id",
+        cleanLeadId
+      )
+      .is(
+        "sent_at",
+        null
+      )
+      .in(
+        "status",
+        [
+          "DRAFT",
+          "APPROVED",
+        ]
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        1
+      )
+      .maybeSingle();
+
+  if (
+    draftError
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        draftError.message,
+    };
+  }
+
+  if (
+    !draft
+  ) {
+    return {
+      success:
+        true,
+      status:
+        "skipped",
+      reason:
+        "No unsent outreach draft exists.",
+    };
+  }
+
+  if (
+    !draft.subject
+      ?.trim() ||
+    !draft.body
+      ?.trim()
+  ) {
+    return {
+      success:
+        true,
+      status:
+        "skipped",
+      reason:
+        "Draft has no subject or body.",
+    };
+  }
+
+  const {
+    data:
+      existingSchedule,
+    error:
+      existingScheduleError,
+  } =
+    await supabase
+      .from(
+        "scheduled_emails"
+      )
+      .select(`
+        id,
+        scheduled_for
+      `)
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "lead_id",
+        cleanLeadId
+      )
+      .eq(
+        "message_type",
+        "OUTREACH"
+      )
+      .eq(
+        "outreach_draft_id",
+        draft.id
+      )
+      .in(
+        "status",
+        [
+          "SCHEDULED",
+          "PROCESSING",
+        ]
+      )
+      .limit(
+        1
+      )
+      .maybeSingle();
+
+  if (
+    existingScheduleError
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        existingScheduleError.message,
+    };
+  }
+
+  if (
+    existingSchedule
+  ) {
+    return {
+      success:
+        true,
+      status:
+        "skipped",
+      reason:
+        "This outreach draft is already scheduled.",
+    };
+  }
+
+  const {
+    error:
+      scheduleError,
+  } =
+    await supabase
+      .from(
+        "scheduled_emails"
+      )
+      .insert({
+        user_id:
+          user.id,
+
+        lead_id:
+          cleanLeadId,
+
+        message_type:
+          "OUTREACH",
+
+        outreach_draft_id:
+          draft.id,
+
+        reply_to_email_message_id:
+          null,
+
+        status:
+          "SCHEDULED",
+
+        body:
+          draft.body,
+
+        cc_emails:
+          [],
+
+        bcc_emails:
+          [],
+
+        attachments:
+          [],
+
+        scheduled_for:
+          scheduledFor.toISOString(),
+      });
+
+  if (
+    scheduleError
+  ) {
+    /*
+     * The partial unique index also protects against two
+     * fast clicks creating the same scheduled outreach.
+     */
+    if (
+      scheduleError.code ===
+        "23505"
+    ) {
+      return {
+        success:
+          true,
+        status:
+          "skipped",
+        reason:
+          "This outreach draft is already scheduled.",
+      };
+    }
+
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        scheduleError.message,
+    };
+  }
+
+  revalidatePath(
+    "/leads"
+  );
+
+  revalidateLead(
+    cleanLeadId
+  );
+
+  return {
+    success:
+      true,
+    status:
+      "scheduled",
+    scheduledFor:
+      scheduledFor.toISOString(),
+  };
+}
+
+/* =========================================================
+   CANCEL INITIAL OUTREACH SCHEDULE — BULK
+========================================================= */
+
+export type BulkCancelOutreachScheduleResult =
+  | {
+      success: true;
+      cancelled: number;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
+export async function cancelScheduledOutreachForBulk(
+  leadId: string
+): Promise<BulkCancelOutreachScheduleResult> {
+  const cleanLeadId =
+    leadId.trim();
+
+  if (
+    !cleanLeadId
+  ) {
+    return {
+      success:
+        false,
+      error:
+        "Invalid lead ID.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    return {
+      success:
+        false,
+      error:
+        "Unauthorized.",
+    };
+  }
+
+  const cancelledAt =
+    new Date()
+      .toISOString();
+
+  const {
+    data:
+      cancelledRows,
+    error:
+      cancelError,
+  } =
+    await supabase
+      .from(
+        "scheduled_emails"
+      )
+      .update({
+        status:
+          "CANCELLED",
+
+        cancelled_at:
+          cancelledAt,
+
+        last_error:
+          "Cancelled manually from the Leads page.",
+      })
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "lead_id",
+        cleanLeadId
+      )
+      .eq(
+        "message_type",
+        "OUTREACH"
+      )
+      .eq(
+        "status",
+        "SCHEDULED"
+      )
+      .select(
+        "id"
+      );
+
+  if (
+    cancelError
+  ) {
+    return {
+      success:
+        false,
+      error:
+        cancelError.message,
+    };
+  }
+
+  revalidatePath(
+    "/leads"
+  );
+
+  revalidateLead(
+    cleanLeadId
+  );
+
+  return {
+    success:
+      true,
+    cancelled:
+      cancelledRows
+        ?.length ??
+      0,
+  };
+}

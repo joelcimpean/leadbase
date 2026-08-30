@@ -15,6 +15,8 @@ import {
 } from "next/navigation";
 
 import {
+  CalendarClock,
+  CalendarX2,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -43,7 +45,9 @@ import {
 } from "./analysis-actions";
 
 import {
+  cancelScheduledOutreachForBulk,
   generateLeadOutreachDraftForBulk,
+  scheduleLeadOutreachForBulk,
 } from "./outreach-actions";
 
 import {
@@ -304,6 +308,43 @@ function normalizeUrl(
   )
     ? value
     : `https://${value}`;
+}
+
+function getDefaultScheduledSendValue() {
+  const date =
+    new Date();
+
+  date.setDate(
+    date.getDate() +
+      1
+  );
+
+  date.setHours(
+    9,
+    0,
+    0,
+    0
+  );
+
+  const pad =
+    (value: number) =>
+      String(
+        value
+      ).padStart(
+        2,
+        "0"
+      );
+
+  return `${date.getFullYear()}-${pad(
+    date.getMonth() +
+      1
+  )}-${pad(
+    date.getDate()
+  )}T${pad(
+    date.getHours()
+  )}:${pad(
+    date.getMinutes()
+  )}`;
 }
 
 /* =========================================================
@@ -1035,6 +1076,39 @@ export function LeadsTable({
       null
     );
 
+
+  const [
+    scheduling,
+    setScheduling,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    scheduleProgress,
+    setScheduleProgress,
+  ] =
+    useState<Progress | null>(
+      null
+    );
+
+  const [
+    scheduleValue,
+    setScheduleValue,
+  ] =
+    useState(
+      getDefaultScheduledSendValue
+    );
+
+  const [
+    cancellingSchedules,
+    setCancellingSchedules,
+  ] =
+    useState(
+      false
+    );
+
   const [
     bulkMessage,
     setBulkMessage,
@@ -1064,6 +1138,8 @@ export function LeadsTable({
     analyzing ||
     designing ||
     drafting ||
+    scheduling ||
+    cancellingSchedules ||
     isDeleting;
 
   /* =======================================================
@@ -1515,6 +1591,297 @@ export function LeadsTable({
 
       setDraftProgress(
         null
+      );
+    }
+  }
+
+  /* =======================================================
+     BULK SCHEDULE OUTREACH
+  ======================================================= */
+
+  async function handleBulkScheduleOutreach() {
+    if (
+      busy ||
+      selectedIds.size ===
+        0
+    ) {
+      return;
+    }
+
+    const localDate =
+      new Date(
+        scheduleValue
+      );
+
+    if (
+      !scheduleValue ||
+      !Number.isFinite(
+        localDate.getTime()
+      ) ||
+      localDate.getTime() <=
+        Date.now() +
+          30_000
+    ) {
+      setBulkMessage(
+        language ===
+          "de"
+          ? "Bitte wähle eine zukünftige Sendezeit."
+          : "Please choose a future send time."
+      );
+
+      return;
+    }
+
+    const ids =
+      Array.from(
+        selectedIds
+      );
+
+    const scheduledForIso =
+      localDate.toISOString();
+
+    setScheduling(
+      true
+    );
+
+    setBulkMessage(
+      null
+    );
+
+    setScheduleProgress({
+      current:
+        0,
+      total:
+        ids.length,
+    });
+
+    let scheduledCount =
+      0;
+
+    let skippedCount =
+      0;
+
+    let failedCount =
+      0;
+
+    try {
+      for (
+        let index =
+          0;
+        index <
+          ids.length;
+        index +=
+          1
+      ) {
+        const leadId =
+          ids[
+            index
+          ];
+
+        try {
+          const result =
+            await scheduleLeadOutreachForBulk(
+              leadId,
+              scheduledForIso
+            );
+
+          if (
+            !result.success
+          ) {
+            failedCount +=
+              1;
+
+            console.error(
+              `Could not schedule outreach for ${leadId}:`,
+              result.error
+            );
+          } else if (
+            result.status ===
+              "scheduled"
+          ) {
+            scheduledCount +=
+              1;
+          } else {
+            skippedCount +=
+              1;
+          }
+        } catch (
+          error
+        ) {
+          failedCount +=
+            1;
+
+          console.error(
+            `Could not schedule outreach for ${leadId}:`,
+            error
+          );
+        }
+
+        setScheduleProgress({
+          current:
+            index +
+            1,
+          total:
+            ids.length,
+        });
+      }
+
+      const formattedTime =
+        new Intl.DateTimeFormat(
+          language ===
+            "de"
+            ? "de-DE"
+            : "en-IE",
+          {
+            weekday:
+              "short",
+            day:
+              "2-digit",
+            month:
+              "2-digit",
+            hour:
+              "2-digit",
+            minute:
+              "2-digit",
+          }
+        ).format(
+          localDate
+        );
+
+      const parts =
+        [
+          language ===
+            "de"
+            ? `${scheduledCount} geplant für ${formattedTime}`
+            : `${scheduledCount} scheduled for ${formattedTime}`,
+
+          skippedCount >
+            0
+            ? language ===
+                "de"
+              ? `${skippedCount} übersprungen`
+              : `${skippedCount} skipped`
+            : null,
+
+          failedCount >
+            0
+            ? language ===
+                "de"
+              ? `${failedCount} fehlgeschlagen`
+              : `${failedCount} failed`
+            : null,
+        ].filter(
+          Boolean
+        );
+
+      setBulkMessage(
+        parts.join(
+          " · "
+        )
+      );
+
+      setSelectedIds(
+        new Set()
+      );
+
+      router.refresh();
+    } finally {
+      setScheduling(
+        false
+      );
+
+      setScheduleProgress(
+        null
+      );
+    }
+  }
+
+  async function handleBulkCancelScheduledOutreach() {
+    if (
+      busy ||
+      selectedIds.size ===
+        0
+    ) {
+      return;
+    }
+
+    const ids =
+      Array.from(
+        selectedIds
+      );
+
+    setCancellingSchedules(
+      true
+    );
+
+    setBulkMessage(
+      null
+    );
+
+    let cancelledCount =
+      0;
+
+    let failedCount =
+      0;
+
+    try {
+      for (
+        const leadId of
+          ids
+      ) {
+        try {
+          const result =
+            await cancelScheduledOutreachForBulk(
+              leadId
+            );
+
+          if (
+            !result.success
+          ) {
+            failedCount +=
+              1;
+          } else {
+            cancelledCount +=
+              result.cancelled;
+          }
+        } catch (
+          error
+        ) {
+          failedCount +=
+            1;
+
+          console.error(
+            `Could not cancel scheduled outreach for ${leadId}:`,
+            error
+          );
+        }
+      }
+
+      setBulkMessage(
+        language ===
+          "de"
+          ? `${cancelledCount} geplante Sendungen gestoppt${
+              failedCount >
+                0
+                ? ` · ${failedCount} fehlgeschlagen`
+                : ""
+            }`
+          : `${cancelledCount} scheduled sends cancelled${
+              failedCount >
+                0
+                ? ` · ${failedCount} failed`
+                : ""
+            }`
+      );
+
+      setSelectedIds(
+        new Set()
+      );
+
+      router.refresh();
+    } finally {
+      setCancellingSchedules(
+        false
       );
     }
   }
@@ -2074,6 +2441,97 @@ export function LeadsTable({
                 </>
               )}
             </Button>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-1.5">
+              <Input
+                type="datetime-local"
+                value={
+                  scheduleValue
+                }
+                onChange={(
+                  event
+                ) =>
+                  setScheduleValue(
+                    event.target.value
+                  )
+                }
+                disabled={
+                  busy
+                }
+                aria-label={
+                  language ===
+                    "de"
+                    ? "Sendezeit"
+                    : "Send time"
+                }
+                className="h-8 w-[190px] border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
+              />
+
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={
+                  busy
+                }
+                onClick={
+                  handleBulkScheduleOutreach
+                }
+                className="gap-2"
+              >
+                {scheduling ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+
+                    {scheduleProgress
+                      ? `${scheduleProgress.current}/${scheduleProgress.total}`
+                      : language ===
+                          "de"
+                        ? "Plane..."
+                        : "Scheduling..."}
+                  </>
+                ) : (
+                  <>
+                    <CalendarClock className="size-4" />
+
+                    {language ===
+                      "de"
+                      ? "Später senden"
+                      : "Send later"}
+                  </>
+                )}
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={
+                  busy
+                }
+                onClick={
+                  handleBulkCancelScheduledOutreach
+                }
+                className="gap-2"
+                title={
+                  language ===
+                    "de"
+                    ? "Geplanten Outreach für die Auswahl stoppen"
+                    : "Cancel scheduled outreach for selection"
+                }
+              >
+                {cancellingSchedules ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CalendarX2 className="size-4" />
+                )}
+
+                {language ===
+                  "de"
+                  ? "Versand stoppen"
+                  : "Cancel send"}
+              </Button>
+            </div>
 
             <Button
               type="button"
