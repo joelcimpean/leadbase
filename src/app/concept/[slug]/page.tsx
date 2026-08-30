@@ -17,6 +17,7 @@ import type {
   import {
     CustomerContactChoice,
     CustomerDesignFrame,
+    PreviewVisitTracker,
   } from "./customer-design-frame";
   
   /* =========================================================
@@ -351,37 +352,17 @@ import type {
       notFound();
     }
   
-    /* =======================================================
-       TRACK VIEW
-    ======================================================= */
-  
-    const supabase =
-      createPublicSupabaseClient();
-  
-    if (
-      supabase
-    ) {
-      const {
-        error:
-          trackingError,
-      } =
-        await supabase.rpc(
-          "track_public_design_preview_view",
-          {
-            p_slug:
-              slug,
-          }
-        );
-  
-      if (
-        trackingError
-      ) {
-        console.warn(
-          "Could not track public design preview view:",
-          trackingError
-        );
-      }
-    }
+    /*
+     * IMPORTANT:
+     *
+     * Do NOT call track_public_design_preview_view here.
+     * The old server-side counter counted every page load,
+     * including Joel's own tests.
+     *
+     * PreviewVisitTracker below creates the detailed visit
+     * record from the real browser and separates OWNER from
+     * external traffic.
+     */
   
     /* =======================================================
        BASIC DATA
@@ -451,6 +432,16 @@ import type {
   
     return (
       <main className="min-h-screen bg-white text-neutral-950">
+        {/*
+         * Invisible tracker.
+         * Customers see nothing from it.
+         */}
+        <PreviewVisitTracker
+          slug={
+            slug
+          }
+        />
+  
         {/* ===================================================
             CUSTOMER BAR
         =================================================== */}
@@ -565,3 +556,4 @@ import type {
       </main>
     );
   }
+  

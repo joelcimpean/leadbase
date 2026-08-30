@@ -936,6 +936,38 @@ async function ensureActiveCustomerPreviewUrl({
 }
 
 /* =========================================================
+   OUTREACH TRACKING URL
+========================================================= */
+
+function getOutreachPreviewUrl(
+  previewUrl:
+    string
+) {
+  try {
+    const url =
+      new URL(
+        previewUrl
+      );
+
+    url.searchParams.set(
+      "src",
+      "outreach"
+    );
+
+    return url.toString();
+  } catch {
+    const separator =
+      previewUrl.includes(
+        "?"
+      )
+        ? "&"
+        : "?";
+
+    return `${previewUrl}${separator}src=outreach`;
+  }
+}
+
+/* =========================================================
    INSERT CUSTOMER PREVIEW INTO EMAIL
 ========================================================= */
 
@@ -957,9 +989,17 @@ function addCustomerPreviewToBody(
     return message;
   }
 
+  const trackedPreviewUrl =
+    getOutreachPreviewUrl(
+      previewUrl
+    );
+
   if (
     message.includes(
       previewUrl
+    ) ||
+    message.includes(
+      trackedPreviewUrl
     )
   ) {
     return message;
@@ -967,7 +1007,7 @@ function addCustomerPreviewToBody(
 
   const previewBlock = [
     "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
-    previewUrl,
+    trackedPreviewUrl,
   ].join(
     "\n"
   );
@@ -993,15 +1033,23 @@ function addCustomerPreviewToFollowUp(
     return message;
   }
 
+  const trackedPreviewUrl =
+    getOutreachPreviewUrl(
+      previewUrl
+    );
+
   if (
     message.includes(
       previewUrl
+    ) ||
+    message.includes(
+      trackedPreviewUrl
     )
   ) {
     return message;
   }
 
-  return `${message}\n\nHier ist die Vorschau noch einmal:\n${previewUrl}`;
+  return `${message}\n\nHier ist die Vorschau noch einmal:\n${trackedPreviewUrl}`;
 }
 
 /* =========================================================
