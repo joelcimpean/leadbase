@@ -2127,6 +2127,18 @@ export function LeadsTable({
             </button>
           </div>
 
+          <Link
+            href="/scheduled"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/50"
+          >
+            <CalendarClock className="size-4" />
+
+            {language ===
+              "de"
+              ? "Geplante Mails"
+              : "Scheduled emails"}
+          </Link>
+
           <button
             type="button"
             onClick={() =>

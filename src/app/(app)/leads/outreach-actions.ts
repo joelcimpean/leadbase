@@ -4148,8 +4148,59 @@ export async function scheduleLeadOutreachForBulk(
     };
   }
 
+  /*
+   * Scheduling is an explicit send decision, so the draft
+   * becomes APPROVED immediately. The worker still checks
+   * everything again at the actual send time.
+   */
+  const {
+    error:
+      approveScheduledDraftError,
+  } =
+    await supabase
+      .from(
+        "outreach_drafts"
+      )
+      .update({
+        status:
+          "APPROVED",
+      })
+      .eq(
+        "id",
+        draft.id
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "lead_id",
+        cleanLeadId
+      )
+      .eq(
+        "status",
+        "DRAFT"
+      )
+      .is(
+        "sent_at",
+        null
+      );
+
+  if (
+    approveScheduledDraftError
+  ) {
+    console.error(
+      "Outreach was scheduled, but the draft could not be marked APPROVED:",
+      approveScheduledDraftError
+    );
+  }
+
   revalidatePath(
     "/leads"
+  );
+
+  revalidatePath(
+    "/scheduled"
   );
 
   revalidateLead(
@@ -4261,9 +4312,10 @@ export async function cancelScheduledOutreachForBulk(
         "status",
         "SCHEDULED"
       )
-      .select(
-        "id"
-      );
+      .select(`
+        id,
+        outreach_draft_id
+      `);
 
   if (
     cancelError
@@ -4276,8 +4328,83 @@ export async function cancelScheduledOutreachForBulk(
     };
   }
 
+  const cancelledDraftIds =
+    Array.from(
+      new Set(
+        (
+          cancelledRows ??
+          []
+        )
+          .map(
+            (
+              row
+            ) =>
+              row.outreach_draft_id
+          )
+          .filter(
+            (
+              value
+            ): value is string =>
+              typeof value ===
+                "string" &&
+              value.length >
+                0
+          )
+      )
+    );
+
+  if (
+    cancelledDraftIds.length >
+      0
+  ) {
+    const {
+      error:
+        draftResetError,
+    } =
+      await supabase
+        .from(
+          "outreach_drafts"
+        )
+        .update({
+          status:
+            "DRAFT",
+        })
+        .eq(
+          "user_id",
+          user.id
+        )
+        .in(
+          "id",
+          cancelledDraftIds
+        )
+        .is(
+          "sent_at",
+          null
+        )
+        .in(
+          "status",
+          [
+            "DRAFT",
+            "APPROVED",
+          ]
+        );
+
+    if (
+      draftResetError
+    ) {
+      console.error(
+        "Scheduled outreach was cancelled, but the draft status could not be reset:",
+        draftResetError
+      );
+    }
+  }
+
   revalidatePath(
     "/leads"
+  );
+
+  revalidatePath(
+    "/scheduled"
   );
 
   revalidateLead(
@@ -4292,4 +4419,39 @@ export async function cancelScheduledOutreachForBulk(
         ?.length ??
       0,
   };
+}
+
+
+/* =========================================================
+   CANCEL INITIAL OUTREACH SCHEDULE — SINGLE LEAD
+========================================================= */
+
+export async function cancelScheduledOutreach(
+  formData:
+    FormData
+) {
+  const leadId =
+    formData.get(
+      "leadId"
+    );
+
+  if (
+    typeof leadId !==
+      "string" ||
+    !leadId.trim()
+  ) {
+    return;
+  }
+
+  await cancelScheduledOutreachForBulk(
+    leadId.trim()
+  );
+
+  revalidatePath(
+    "/scheduled"
+  );
+
+  redirect(
+    `/leads/${leadId.trim()}#outreach`
+  );
 }

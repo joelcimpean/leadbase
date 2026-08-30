@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   CalendarClock,
+  CalendarX2,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -27,6 +28,7 @@ import {
 
 import {
   approveOutreachDraft,
+  cancelScheduledOutreach,
   resetSentOutreachDraft,
   updateLeadContactSalutation,
   updateOutreachDraft,
@@ -322,6 +324,9 @@ function draftStatusClass(
   switch (
     status
   ) {
+    case "SCHEDULED":
+      return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400";
+
     case "APPROVED":
       return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
 
@@ -352,6 +357,12 @@ function draftStatusLabel(
   switch (
     status
   ) {
+    case "SCHEDULED":
+      return language ===
+          "de"
+        ? "Geplant"
+        : "Scheduled";
+
     case "APPROVED":
       return text.statusApproved;
 
@@ -468,6 +479,7 @@ export async function OutreachSection({
     draftResult,
     leadResult,
     gmailResult,
+    scheduleResult,
   ] =
     await Promise.all([
       supabase
@@ -554,6 +566,43 @@ export async function OutreachSection({
           scopes
         `)
         .maybeSingle(),
+
+      supabase
+        .from(
+          "scheduled_emails"
+        )
+        .select(`
+          id,
+          outreach_draft_id,
+          status,
+          scheduled_for
+        `)
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .eq(
+          "message_type",
+          "OUTREACH"
+        )
+        .in(
+          "status",
+          [
+            "SCHEDULED",
+            "PROCESSING",
+          ]
+        )
+        .order(
+          "scheduled_for",
+          {
+            ascending:
+              true,
+          }
+        )
+        .limit(
+          1
+        )
+        .maybeSingle(),
     ]);
 
   if (
@@ -583,6 +632,15 @@ export async function OutreachSection({
     );
   }
 
+  if (
+    scheduleResult.error
+  ) {
+    console.error(
+      "Could not load scheduled outreach:",
+      scheduleResult.error
+    );
+  }
+
   const draft =
     draftResult.data;
 
@@ -591,6 +649,17 @@ export async function OutreachSection({
 
   const gmailConnection =
     gmailResult.data;
+
+  const rawActiveSchedule =
+    scheduleResult.data;
+
+  const activeSchedule =
+    rawActiveSchedule &&
+    draft &&
+    rawActiveSchedule.outreach_draft_id ===
+      draft.id
+      ? rawActiveSchedule
+      : null;
 
   const company =
     getSingleRelation(
@@ -711,12 +780,16 @@ export async function OutreachSection({
                     variant="outline"
                     className={
                       draftStatusClass(
-                        draft.status
+                        activeSchedule
+                          ? "SCHEDULED"
+                          : draft.status
                       )
                     }
                   >
                     {draftStatusLabel(
-                      draft.status,
+                      activeSchedule
+                        ? "SCHEDULED"
+                        : draft.status,
                       language
                     )}
                   </Badge>
@@ -902,6 +975,41 @@ export async function OutreachSection({
                   </p>
                 </div>
 
+                {activeSchedule ? (
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
+                    <p className="pt-0.5 text-xs font-medium text-muted-foreground">
+                      {language ===
+                      "de"
+                        ? "Geplant"
+                        : "Scheduled"}
+                    </p>
+
+                    <div className="min-w-0">
+                      <p className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-700 dark:text-violet-400">
+                        <CalendarClock className="size-4" />
+
+                        {formatDateTime(
+                          activeSchedule.scheduled_for,
+                          language
+                        )}
+                      </p>
+
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {activeSchedule.status ===
+                        "PROCESSING"
+                          ? language ===
+                              "de"
+                            ? "Wird gerade für den Versand verarbeitet."
+                            : "Currently being processed for sending."
+                          : language ===
+                              "de"
+                            ? "Wird automatisch zu diesem Zeitpunkt gesendet."
+                            : "Will be sent automatically at this time."}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
                 {draft.sent_at ? (
                   <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
                     <p className="pt-0.5 text-xs font-medium text-muted-foreground">
@@ -984,69 +1092,119 @@ export async function OutreachSection({
               </div>
 
               <div className="flex w-full flex-col gap-2 min-[420px]:flex-row min-[420px]:flex-wrap sm:w-auto sm:items-center [&>form]:w-full min-[420px]:[&>form]:w-auto">
-                {draft.status ===
-                "DRAFT" ? (
-                  <form
-                    action={
-                      approveOutreachDraft
-                    }
-                  >
-                    <input
-                      type="hidden"
-                      name="draftId"
-                      value={
-                        draft.id
-                      }
-                    />
-
-                    <input
-                      type="hidden"
-                      name="leadId"
-                      value={
-                        leadId
-                      }
-                    />
-
-                    <button
-                      type="submit"
-                      className="h-10 w-full rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:h-8 sm:w-auto"
-                    >
-                      {
-                        text.approveDraft
-                      }
-                    </button>
-                  </form>
-                ) : null}
-
-                {draft.status ===
-                "APPROVED" ? (
+                {activeSchedule ? (
                   <>
-                    <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 min-[420px]:w-auto sm:h-8 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400">
-                      <CheckCircle2 className="size-3.5" />
+                    <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 text-xs font-medium text-violet-700 min-[420px]:w-auto sm:h-8 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400">
+                      <CalendarClock className="size-3.5" />
 
-                      {
-                        text.readyToSend
-                      }
+                      {language ===
+                      "de"
+                        ? `Geplant · ${formatDateTime(
+                            activeSchedule.scheduled_for,
+                            language
+                          )}`
+                        : `Scheduled · ${formatDateTime(
+                            activeSchedule.scheduled_for,
+                            language
+                          )}`}
                     </div>
 
-                    {recipientEmail &&
-                    gmailReady ? (
-                      <div className="w-full min-[420px]:w-auto [&>*]:w-full min-[420px]:[&>*]:w-auto">
-                        <SendEmailButton
-                          leadId={
+                    {activeSchedule.status ===
+                    "SCHEDULED" ? (
+                      <form
+                        action={
+                          cancelScheduledOutreach
+                        }
+                      >
+                        <input
+                          type="hidden"
+                          name="leadId"
+                          value={
                             leadId
                           }
-                          draftId={
-                            draft.id
-                          }
-                          recipientEmail={
-                            recipientEmail
-                          }
                         />
-                      </div>
+
+                        <button
+                          type="submit"
+                          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground min-[420px]:w-auto sm:h-8"
+                        >
+                          <CalendarX2 className="size-3.5" />
+
+                          {language ===
+                          "de"
+                            ? "Geplanten Versand stoppen"
+                            : "Cancel scheduled send"}
+                        </button>
+                      </form>
                     ) : null}
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    {draft.status ===
+                    "DRAFT" ? (
+                      <form
+                        action={
+                          approveOutreachDraft
+                        }
+                      >
+                        <input
+                          type="hidden"
+                          name="draftId"
+                          value={
+                            draft.id
+                          }
+                        />
+
+                        <input
+                          type="hidden"
+                          name="leadId"
+                          value={
+                            leadId
+                          }
+                        />
+
+                        <button
+                          type="submit"
+                          className="h-10 w-full rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:h-8 sm:w-auto"
+                        >
+                          {
+                            text.approveDraft
+                          }
+                        </button>
+                      </form>
+                    ) : null}
+
+                    {draft.status ===
+                    "APPROVED" ? (
+                      <>
+                        <div className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 min-[420px]:w-auto sm:h-8 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400">
+                          <CheckCircle2 className="size-3.5" />
+
+                          {
+                            text.readyToSend
+                          }
+                        </div>
+
+                        {recipientEmail &&
+                        gmailReady ? (
+                          <div className="w-full min-[420px]:w-auto [&>*]:w-full min-[420px]:[&>*]:w-auto">
+                            <SendEmailButton
+                              leadId={
+                                leadId
+                              }
+                              draftId={
+                                draft.id
+                              }
+                              recipientEmail={
+                                recipientEmail
+                              }
+                            />
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </>
+                )}
 
                 {draft.status ===
                 "SENDING" ? (
