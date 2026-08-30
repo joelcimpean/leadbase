@@ -7,13 +7,18 @@ import {
   ChevronRight,
   ExternalLink,
   ImageIcon,
+  Layers3,
   Loader2,
+  Maximize2,
   Monitor,
+  Plus,
   RotateCcw,
   Save,
   Search,
   Smartphone,
   Tablet,
+  Trash2,
+  Type,
   Upload,
 } from "lucide-react";
 
@@ -61,6 +66,15 @@ type DeviceMode =
 type EditableImageKind =
   | "img"
   | "background";
+
+type EditableTargetKind =
+  | EditableImageKind
+  | "text"
+  | "element";
+
+type ImageActionMode =
+  | "replace"
+  | "insert";
 
 type SaveResponse = {
   ok?:
@@ -151,7 +165,7 @@ type RegisteredTarget = {
     string;
 
   kind:
-    EditableImageKind;
+    EditableTargetKind;
 
   element:
     Element;
@@ -276,6 +290,55 @@ function replaceFirstBackgroundUrl({
 }
 
 /* =========================================================
+   EDITOR HELPERS
+========================================================= */
+
+function normalizeCssSize(
+  value:
+    string
+) {
+  const cleaned =
+    value.trim();
+
+  if (
+    !cleaned
+  ) {
+    return "";
+  }
+
+  if (
+    /^-?\d+(?:\.\d+)?$/.test(
+      cleaned
+    )
+  ) {
+    return `${cleaned}px`;
+  }
+
+  return cleaned;
+}
+
+function getTargetLabel(
+  kind:
+    EditableTargetKind
+) {
+  switch (
+    kind
+  ) {
+    case "img":
+      return "Bild";
+
+    case "background":
+      return "Hintergrund";
+
+    case "text":
+      return "Text";
+
+    default:
+      return "Element";
+  }
+}
+
+/* =========================================================
    COMPONENT
 ========================================================= */
 
@@ -354,6 +417,123 @@ export function DesignEditor({
       EditableImageKind | null
     >(
       null
+    );
+
+  const [
+    selectedTargetKind,
+    setSelectedTargetKind,
+  ] =
+    useState<
+      EditableTargetKind | null
+    >(
+      null
+    );
+
+  const [
+    selectedTagName,
+    setSelectedTagName,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    selectedText,
+    setSelectedText,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    selectedComputedSize,
+    setSelectedComputedSize,
+  ] =
+    useState({
+      width:
+        0,
+
+      height:
+        0,
+
+      objectFit:
+        "",
+
+      position:
+        "",
+
+      zIndex:
+        "",
+
+      overflow:
+        "",
+
+      parentOverflow:
+        "",
+    });
+
+  const [
+    widthValue,
+    setWidthValue,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    heightValue,
+    setHeightValue,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    fitValue,
+    setFitValue,
+  ] =
+    useState(
+      "unchanged"
+    );
+
+  const [
+    positionValue,
+    setPositionValue,
+  ] =
+    useState(
+      "unchanged"
+    );
+
+  const [
+    zIndexValue,
+    setZIndexValue,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    overflowValue,
+    setOverflowValue,
+  ] =
+    useState(
+      "unchanged"
+    );
+
+  const [
+    parentOverflowValue,
+    setParentOverflowValue,
+  ] =
+    useState(
+      "unchanged"
+    );
+
+  const [
+    imageActionMode,
+    setImageActionMode,
+  ] =
+    useState<ImageActionMode>(
+      "replace"
     );
 
   const [
@@ -592,6 +772,73 @@ export function DesignEditor({
           null
         );
 
+        setSelectedTargetKind(
+          null
+        );
+
+        setSelectedTagName(
+          ""
+        );
+
+        setSelectedText(
+          ""
+        );
+
+        setSelectedComputedSize({
+          width:
+            0,
+
+          height:
+            0,
+
+          objectFit:
+            "",
+
+          position:
+            "",
+
+          zIndex:
+            "",
+
+          overflow:
+            "",
+
+          parentOverflow:
+            "",
+        });
+
+        setWidthValue(
+          ""
+        );
+
+        setHeightValue(
+          ""
+        );
+
+        setFitValue(
+          "unchanged"
+        );
+
+        setPositionValue(
+          "unchanged"
+        );
+
+        setZIndexValue(
+          ""
+        );
+
+        setOverflowValue(
+          "unchanged"
+        );
+
+        setParentOverflowValue(
+          "unchanged"
+        );
+
+        setImageActionMode(
+          "replace"
+        );
+
         setSelectedImageUrl(
           ""
         );
@@ -628,6 +875,73 @@ export function DesignEditor({
 
       setSelectedImageKind(
         null
+      );
+
+      setSelectedTargetKind(
+        null
+      );
+
+      setSelectedTagName(
+        ""
+      );
+
+      setSelectedText(
+        ""
+      );
+
+      setSelectedComputedSize({
+        width:
+          0,
+
+        height:
+          0,
+
+        objectFit:
+          "",
+
+        position:
+          "",
+
+        zIndex:
+          "",
+
+        overflow:
+          "",
+
+        parentOverflow:
+          "",
+      });
+
+      setWidthValue(
+        ""
+      );
+
+      setHeightValue(
+        ""
+      );
+
+      setFitValue(
+        "unchanged"
+      );
+
+      setPositionValue(
+        "unchanged"
+      );
+
+      setZIndexValue(
+        ""
+      );
+
+      setOverflowValue(
+        "unchanged"
+      );
+
+      setParentOverflowValue(
+        "unchanged"
+      );
+
+      setImageActionMode(
+        "replace"
       );
 
       setSelectedImageUrl(
@@ -698,6 +1012,186 @@ export function DesignEditor({
   );
 
   /* =======================================================
+     POPULATE SELECTION PANEL
+  ======================================================= */
+
+  const populateSelectionPanel =
+    useCallback(
+      ({
+        element,
+        kind,
+        imageUrl =
+          "",
+      }: {
+        element:
+          Element;
+
+        kind:
+          EditableTargetKind;
+
+        imageUrl?:
+          string;
+      }) => {
+        const frameWindow =
+          iframeRef.current
+            ?.contentWindow;
+
+        if (
+          !frameWindow
+        ) {
+          return;
+        }
+
+        const rect =
+          element.getBoundingClientRect();
+
+        let computed:
+          CSSStyleDeclaration;
+
+        try {
+          computed =
+            frameWindow.getComputedStyle(
+              element
+            );
+        } catch {
+          return;
+        }
+
+        let parentOverflow =
+          "";
+
+        if (
+          element.parentElement
+        ) {
+          try {
+            parentOverflow =
+              frameWindow
+                .getComputedStyle(
+                  element.parentElement
+                )
+                .overflow;
+          } catch {
+            parentOverflow =
+              "";
+          }
+        }
+
+        setSelectedTargetKind(
+          kind
+        );
+
+        setSelectedTagName(
+          element.tagName.toLowerCase()
+        );
+
+        if (
+          kind ===
+            "img" ||
+          kind ===
+            "background"
+        ) {
+          setSelectedImageKind(
+            kind
+          );
+
+          setSelectedImageUrl(
+            imageUrl
+          );
+
+          setCustomUrl(
+            imageUrl
+          );
+
+          setImageActionMode(
+            "replace"
+          );
+        } else {
+          setSelectedImageKind(
+            null
+          );
+
+          setSelectedImageUrl(
+            ""
+          );
+
+          setCustomUrl(
+            ""
+          );
+
+          setImageActionMode(
+            "insert"
+          );
+        }
+
+        setSelectedText(
+          kind ===
+            "text"
+            ? element.textContent ??
+                ""
+            : ""
+        );
+
+        setSelectedComputedSize({
+          width:
+            Math.round(
+              rect.width
+            ),
+
+          height:
+            Math.round(
+              rect.height
+            ),
+
+          objectFit:
+            kind ===
+              "background"
+              ? computed.backgroundSize
+              : computed.objectFit,
+
+          position:
+            computed.position,
+
+          zIndex:
+            computed.zIndex,
+
+          overflow:
+            computed.overflow,
+
+          parentOverflow,
+        });
+
+        setWidthValue(
+          ""
+        );
+
+        setHeightValue(
+          ""
+        );
+
+        setFitValue(
+          "unchanged"
+        );
+
+        setPositionValue(
+          "unchanged"
+        );
+
+        setZIndexValue(
+          ""
+        );
+
+        setOverflowValue(
+          "unchanged"
+        );
+
+        setParentOverflowValue(
+          "unchanged"
+        );
+      },
+      []
+    );
+
+  /* =======================================================
      INSTALL EDITOR
   ======================================================= */
 
@@ -729,11 +1223,6 @@ export function DesignEditor({
           return false;
         }
 
-        /*
-         * TypeScript narrows the values above, but that
-         * narrowing is not preserved inside the nested
-         * callbacks below.
-         */
         const activeDocument:
           Document =
           frameDocument;
@@ -851,7 +1340,7 @@ export function DesignEditor({
           "leadbase-editor-hover-label";
 
         hoverLabel.textContent =
-          "Bild ändern";
+          "Bearbeiten";
 
         activeDocument.body.appendChild(
           hoverLabel
@@ -930,21 +1419,33 @@ export function DesignEditor({
         function registerTarget({
           element,
           kind,
-          url,
+          url =
+            "",
         }: {
           element:
             Element;
 
           kind:
-            EditableImageKind;
+            EditableTargetKind;
 
-          url:
+          url?:
             string;
         }) {
           if (
             registered.has(
               element
-            ) ||
+            )
+          ) {
+            return;
+          }
+
+          if (
+            (
+              kind ===
+                "img" ||
+              kind ===
+                "background"
+            ) &&
             !isRemoteUrl(
               url
             )
@@ -952,28 +1453,36 @@ export function DesignEditor({
             return;
           }
 
+          const rect =
+            element.getBoundingClientRect();
+
+          if (
+            rect.width <
+              6 ||
+            rect.height <
+              6
+          ) {
+            return;
+          }
+
           if (
             kind ===
-            "background"
-          ) {
-            const rect =
-              element.getBoundingClientRect();
-
-            if (
+              "background" &&
+            (
               rect.width <
                 32 ||
               rect.height <
                 32
-            ) {
-              return;
-            }
+            )
+          ) {
+            return;
           }
 
           counter +=
             1;
 
           const id =
-            `image-${counter}`;
+            `editor-${counter}`;
 
           element.setAttribute(
             "data-leadbase-editor-target-id",
@@ -985,10 +1494,23 @@ export function DesignEditor({
             kind
           );
 
-          element.setAttribute(
-            "data-leadbase-editor-url",
+          if (
             url
-          );
+          ) {
+            element.setAttribute(
+              "data-leadbase-editor-url",
+              url
+            );
+          }
+
+          const label =
+            kind ===
+              "text"
+              ? "Text bearbeiten"
+              : kind ===
+                  "element"
+                ? "Element bearbeiten"
+                : "Bild bearbeiten";
 
           const handleMouseEnter =
             () => {
@@ -998,7 +1520,7 @@ export function DesignEditor({
                 ) ===
                 "true"
                   ? "Ausgewählt"
-                  : "Bild ändern";
+                  : label;
 
               positionHoverLabel(
                 element
@@ -1037,17 +1559,12 @@ export function DesignEditor({
                 id
               );
 
-              setSelectedImageKind(
-                kind
-              );
-
-              setSelectedImageUrl(
-                currentUrl
-              );
-
-              setCustomUrl(
-                currentUrl
-              );
+              populateSelectionPanel({
+                element,
+                kind,
+                imageUrl:
+                  currentUrl,
+              });
 
               setSaved(
                 false
@@ -1067,8 +1584,7 @@ export function DesignEditor({
 
           element.addEventListener(
             "click",
-            handleClick,
-            true
+            handleClick
           );
 
           element.addEventListener(
@@ -1085,15 +1601,10 @@ export function DesignEditor({
             element,
             {
               id,
-
               kind,
-
               element,
-
               handleClick,
-
               handleMouseEnter,
-
               handleMouseLeave,
             }
           );
@@ -1197,11 +1708,48 @@ export function DesignEditor({
 
             registerTarget({
               element,
-
               kind:
                 "background",
-
               url,
+            });
+          }
+
+          const textElements =
+            Array.from(
+              activeDocument.querySelectorAll<HTMLElement>(
+                "h1,h2,h3,h4,h5,h6,p,span,a,li,button,small,strong,b,em,label"
+              )
+            );
+
+          for (
+            const element of
+              textElements
+          ) {
+            if (
+              registered.has(
+                element
+              ) ||
+              element.children.length >
+                0
+            ) {
+              continue;
+            }
+
+            const value =
+              element.textContent
+                ?.trim() ??
+              "";
+
+            if (
+              !value
+            ) {
+              continue;
+            }
+
+            registerTarget({
+              element,
+              kind:
+                "text",
             });
           }
         }
@@ -1231,6 +1779,24 @@ export function DesignEditor({
             scanDocument,
             3000
           );
+
+        const mutationObserver =
+          new MutationObserver(
+            () => {
+              scanDocument();
+            }
+          );
+
+        mutationObserver.observe(
+          activeDocument.body,
+          {
+            childList:
+              true,
+
+            subtree:
+              true,
+          }
+        );
 
         const handleDocumentLoad =
           (
@@ -1305,6 +1871,8 @@ export function DesignEditor({
               retry4
             );
 
+            mutationObserver.disconnect();
+
             activeDocument.removeEventListener(
               "load",
               handleDocumentLoad,
@@ -1328,8 +1896,7 @@ export function DesignEditor({
             ) {
               target.element.removeEventListener(
                 "click",
-                target.handleClick,
-                true
+                target.handleClick
               );
 
               target.element.removeEventListener(
@@ -1349,7 +1916,9 @@ export function DesignEditor({
           0
         );
       },
-      []
+      [
+        populateSelectionPanel,
+      ]
     );
 
   /* =======================================================
@@ -1621,6 +2190,706 @@ export function DesignEditor({
     );
 
   /* =======================================================
+     INSERT NEW IMAGE
+  ======================================================= */
+
+  const insertImage =
+    useCallback(
+      (
+        nextUrl:
+          string
+      ) => {
+        const cleaned =
+          nextUrl.trim();
+
+        if (
+          !isRemoteUrl(
+            cleaned
+          )
+        ) {
+          setError(
+            "Bitte eine gültige http- oder https-Bild-URL verwenden."
+          );
+
+          return;
+        }
+
+        const frameDocument =
+          iframeRef.current
+            ?.contentDocument;
+
+        const frameWindow =
+          iframeRef.current
+            ?.contentWindow;
+
+        const target =
+          getSelectedElement();
+
+        if (
+          !frameDocument ||
+          !frameWindow ||
+          !target ||
+          !target.parentElement
+        ) {
+          setError(
+            "Bitte zuerst ein Element auswählen, nach dem das neue Bild eingefügt werden soll."
+          );
+
+          return;
+        }
+
+        const image =
+          frameDocument.createElement(
+            "img"
+          );
+
+        image.setAttribute(
+          "src",
+          cleaned
+        );
+
+        image.setAttribute(
+          "alt",
+          ""
+        );
+
+        image.style.display =
+          "block";
+
+        image.style.maxWidth =
+          "100%";
+
+        image.style.height =
+          "auto";
+
+        target.parentElement.insertBefore(
+          image,
+          target.nextSibling
+        );
+
+        setAllowedImages(
+          (
+            current
+          ) =>
+            current.includes(
+              cleaned
+            )
+              ? current
+              : [
+                  cleaned,
+                  ...current,
+                ]
+        );
+
+        setDirty(
+          true
+        );
+
+        setSaved(
+          false
+        );
+
+        setError(
+          null
+        );
+
+        frameWindow.setTimeout(
+          () => {
+            image.dispatchEvent(
+              new MouseEvent(
+                "click",
+                {
+                  bubbles:
+                    true,
+
+                  cancelable:
+                    true,
+
+                  view:
+                    frameWindow,
+                }
+              )
+            );
+          },
+          60
+        );
+      },
+      [
+        getSelectedElement,
+      ]
+    );
+
+  /* =======================================================
+     APPLY IMAGE ACTION
+  ======================================================= */
+
+  const applyImageUrl =
+    useCallback(
+      (
+        nextUrl:
+          string
+      ) => {
+        if (
+          imageActionMode ===
+            "replace" &&
+          selectedImageKind
+        ) {
+          replaceImage(
+            nextUrl
+          );
+
+          return;
+        }
+
+        insertImage(
+          nextUrl
+        );
+      },
+      [
+        imageActionMode,
+        insertImage,
+        replaceImage,
+        selectedImageKind,
+      ]
+    );
+
+  /* =======================================================
+     EDIT TEXT
+  ======================================================= */
+
+  function applySelectedText() {
+    if (
+      selectedTargetKind !==
+        "text"
+    ) {
+      return;
+    }
+
+    const target =
+      getSelectedElement();
+
+    if (
+      !target
+    ) {
+      setError(
+        "Der ausgewählte Text wurde nicht mehr gefunden."
+      );
+
+      return;
+    }
+
+    target.textContent =
+      selectedText;
+
+    setDirty(
+      true
+    );
+
+    setSaved(
+      false
+    );
+
+    setError(
+      null
+    );
+  }
+
+  /* =======================================================
+     LAYOUT
+  ======================================================= */
+
+  function applyLayoutChanges() {
+    const target =
+      getSelectedElement();
+
+    const frameWindow =
+      iframeRef.current
+        ?.contentWindow;
+
+    if (
+      !target ||
+      !frameWindow
+    ) {
+      setError(
+        "Bitte zuerst ein Element auswählen."
+      );
+
+      return;
+    }
+
+    const element =
+      target as
+        HTMLElement;
+
+    const normalizedWidth =
+      normalizeCssSize(
+        widthValue
+      );
+
+    const normalizedHeight =
+      normalizeCssSize(
+        heightValue
+      );
+
+    if (
+      normalizedWidth
+    ) {
+      element.style.setProperty(
+        "width",
+        normalizedWidth,
+        "important"
+      );
+
+      /*
+       * Logos often look too small because an inherited
+       * max-width caps them. Explicit resizing should win.
+       */
+      if (
+        selectedImageKind ===
+          "img"
+      ) {
+        element.style.setProperty(
+          "max-width",
+          "none",
+          "important"
+        );
+      }
+    }
+
+    if (
+      normalizedHeight
+    ) {
+      element.style.setProperty(
+        "height",
+        normalizedHeight,
+        "important"
+      );
+
+      if (
+        selectedImageKind ===
+          "img"
+      ) {
+        element.style.setProperty(
+          "max-height",
+          "none",
+          "important"
+        );
+      }
+    }
+
+    if (
+      fitValue !==
+        "unchanged"
+    ) {
+      if (
+        selectedImageKind ===
+          "img"
+      ) {
+        (
+          element as
+            HTMLImageElement
+        ).style.objectFit =
+          fitValue;
+      } else if (
+        selectedImageKind ===
+          "background"
+      ) {
+        element.style.backgroundSize =
+          fitValue ===
+            "fill"
+            ? "100% 100%"
+            : fitValue;
+      }
+    }
+
+    if (
+      positionValue !==
+        "unchanged"
+    ) {
+      element.style.position =
+        positionValue;
+    }
+
+    const cleanedZIndex =
+      zIndexValue.trim();
+
+    if (
+      cleanedZIndex
+    ) {
+      element.style.zIndex =
+        cleanedZIndex;
+
+      try {
+        if (
+          frameWindow
+            .getComputedStyle(
+              element
+            )
+            .position ===
+            "static" &&
+          positionValue ===
+            "unchanged"
+        ) {
+          element.style.position =
+            "relative";
+        }
+      } catch {
+        // Ignore style inspection failure.
+      }
+    }
+
+    if (
+      overflowValue !==
+        "unchanged"
+    ) {
+      element.style.overflow =
+        overflowValue;
+    }
+
+    if (
+      parentOverflowValue !==
+        "unchanged" &&
+      element.parentElement
+    ) {
+      element.parentElement.style.overflow =
+        parentOverflowValue;
+    }
+
+    const rect =
+      element.getBoundingClientRect();
+
+    let computed:
+      CSSStyleDeclaration;
+
+    try {
+      computed =
+        frameWindow.getComputedStyle(
+          element
+        );
+    } catch {
+      setDirty(
+        true
+      );
+
+      return;
+    }
+
+    let parentOverflow =
+      "";
+
+    if (
+      element.parentElement
+    ) {
+      try {
+        parentOverflow =
+          frameWindow
+            .getComputedStyle(
+              element.parentElement
+            )
+            .overflow;
+      } catch {
+        parentOverflow =
+          "";
+      }
+    }
+
+    setSelectedComputedSize({
+      width:
+        Math.round(
+          rect.width
+        ),
+
+      height:
+        Math.round(
+          rect.height
+        ),
+
+      objectFit:
+        selectedImageKind ===
+          "background"
+          ? computed.backgroundSize
+          : computed.objectFit,
+
+      position:
+        computed.position,
+
+      zIndex:
+        computed.zIndex,
+
+      overflow:
+        computed.overflow,
+
+      parentOverflow,
+    });
+
+    setWidthValue(
+      ""
+    );
+
+    setHeightValue(
+      ""
+    );
+
+    setFitValue(
+      "unchanged"
+    );
+
+    setPositionValue(
+      "unchanged"
+    );
+
+    setZIndexValue(
+      ""
+    );
+
+    setOverflowValue(
+      "unchanged"
+    );
+
+    setParentOverflowValue(
+      "unchanged"
+    );
+
+    setDirty(
+      true
+    );
+
+    setSaved(
+      false
+    );
+
+    setError(
+      null
+    );
+  }
+
+  /* =======================================================
+     REVEAL OVERFLOW
+  ======================================================= */
+
+  function revealAncestorOverflow() {
+    const target =
+      getSelectedElement();
+
+    if (
+      !target
+    ) {
+      return;
+    }
+
+    let parent =
+      target.parentElement;
+
+    while (
+      parent &&
+      parent.tagName.toLowerCase() !==
+        "body"
+    ) {
+      parent.style.setProperty(
+        "overflow",
+        "visible",
+        "important"
+      );
+
+      parent.style.setProperty(
+        "overflow-x",
+        "visible",
+        "important"
+      );
+
+      parent.style.setProperty(
+        "overflow-y",
+        "visible",
+        "important"
+      );
+
+      parent =
+        parent.parentElement;
+    }
+
+    setDirty(
+      true
+    );
+
+    setSaved(
+      false
+    );
+
+    setError(
+      null
+    );
+  }
+
+  /* =======================================================
+     SELECT PARENT
+  ======================================================= */
+
+  function selectParentElement() {
+    const current =
+      getSelectedElement();
+
+    const frameDocument =
+      iframeRef.current
+        ?.contentDocument;
+
+    if (
+      !current ||
+      !frameDocument
+    ) {
+      return;
+    }
+
+    const parent =
+      current.parentElement;
+
+    if (
+      !parent ||
+      parent.tagName.toLowerCase() ===
+        "body"
+    ) {
+      setError(
+        "Es gibt kein weiteres bearbeitbares Elternelement."
+      );
+
+      return;
+    }
+
+    frameDocument
+      .querySelectorAll(
+        "[data-leadbase-editor-selected]"
+      )
+      .forEach(
+        (
+          element
+        ) => {
+          element.removeAttribute(
+            "data-leadbase-editor-selected"
+          );
+        }
+      );
+
+    const existingId =
+      parent.getAttribute(
+        "data-leadbase-editor-target-id"
+      );
+
+    const id =
+      existingId ||
+      `manual-parent-${Date.now()}`;
+
+    if (
+      !existingId
+    ) {
+      parent.setAttribute(
+        "data-leadbase-editor-target-id",
+        id
+      );
+
+      parent.setAttribute(
+        "data-leadbase-editor-kind",
+        "element"
+      );
+    }
+
+    parent.setAttribute(
+      "data-leadbase-editor-selected",
+      "true"
+    );
+
+    setSelectedTargetId(
+      id
+    );
+
+    populateSelectionPanel({
+      element:
+        parent,
+      kind:
+        "element",
+    });
+
+    setSaved(
+      false
+    );
+
+    setError(
+      null
+    );
+  }
+
+  /* =======================================================
+     REMOVE
+  ======================================================= */
+
+  function removeSelectedElement() {
+    const target =
+      getSelectedElement();
+
+    if (
+      !target ||
+      !selectedTargetKind
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        selectedTargetKind ===
+          "background"
+          ? "Hintergrundbild wirklich entfernen?"
+          : "Ausgewähltes Element wirklich entfernen?"
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    if (
+      selectedTargetKind ===
+        "background"
+    ) {
+      (
+        target as
+          HTMLElement
+      ).style.backgroundImage =
+        "none";
+    } else if (
+      selectedTargetKind ===
+        "img"
+    ) {
+      const picture =
+        target.closest(
+          "picture"
+        );
+
+      if (
+        picture
+      ) {
+        picture.remove();
+      } else {
+        target.remove();
+      }
+    } else {
+      target.remove();
+    }
+
+    clearSelection();
+
+    setDirty(
+      true
+    );
+
+    setSaved(
+      false
+    );
+
+    setError(
+      null
+    );
+  }
+
+  /* =======================================================
      UPLOAD OWN IMAGE
   ======================================================= */
 
@@ -1679,11 +2948,22 @@ export function DesignEditor({
     }
 
     if (
-      !selectedTargetId ||
+      !selectedTargetId
+    ) {
+      setError(
+        "Bitte zuerst ein Element im Design auswählen."
+      );
+
+      return;
+    }
+
+    if (
+      imageActionMode ===
+        "replace" &&
       !selectedImageKind
     ) {
       setError(
-        "Bitte zuerst ein Bild im Design auswählen."
+        "Zum Ersetzen bitte zuerst ein bestehendes Bild auswählen oder auf Hinzufügen wechseln."
       );
 
       return;
@@ -1772,7 +3052,7 @@ export function DesignEditor({
               ]
       );
 
-      replaceImage(
+      applyImageUrl(
         uploadedUrl
       );
     } catch (
@@ -2378,28 +3658,28 @@ ${clone.outerHTML}`;
           <div className="sticky top-16 max-h-[calc(100dvh-64px)] overflow-y-auto p-4">
             <div className="mb-5">
               <p className="text-sm font-semibold">
-                Bild bearbeiten
+                Design bearbeiten
               </p>
 
               <p className="mt-1 text-xs leading-5 text-white/45">
-                Bewege die Maus direkt über ein Bild im Design.
-                Es bekommt einen blauen Rahmen und kann direkt
-                angeklickt werden.
+                Klicke ein Bild oder einen Text direkt im Design an.
+                Du kannst Inhalte ändern, vergrößern, Ebenen anpassen,
+                Overflow freigeben, neue Bilder einfügen oder Elemente entfernen.
               </p>
             </div>
 
             {selectedTargetId ===
             null ? (
               <div className="flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed border-white/15 px-6 text-center">
-                <ImageIcon className="size-6 text-white/30" />
+                <Layers3 className="size-6 text-white/30" />
 
                 <p className="mt-3 text-sm font-medium text-white/70">
-                  Kein Bild ausgewählt
+                  Nichts ausgewählt
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-white/35">
-                  Fahre über ein Bild. Sobald der blaue Rahmen
-                  erscheint, kannst du es anklicken.
+                  Fahre über ein Bild oder einen Text. Sobald der blaue
+                  Rahmen erscheint, kannst du das Element anklicken.
                 </p>
               </div>
             ) : (
@@ -2407,30 +3687,354 @@ ${clone.outerHTML}`;
                 <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-300">
-                      Ausgewähltes Bild
+                      Auswahl
                     </p>
 
                     <span className="rounded-md bg-black/20 px-1.5 py-0.5 text-[9px] font-medium uppercase text-white/45">
-                      {selectedImageKind ===
-                      "background"
-                        ? "Background"
-                        : "Image"}
+                      {selectedTargetKind
+                        ? getTargetLabel(
+                            selectedTargetKind
+                          )
+                        : "Element"}
                     </span>
                   </div>
 
-                  <p className="mt-2 break-all text-[11px] leading-5 text-white/55">
-                    {
-                      selectedImageUrl
+                  <p className="mt-2 text-xs font-medium text-white/80">
+                    &lt;{selectedTagName || "element"}&gt;
+                  </p>
+
+                  <p className="mt-1 text-[10px] text-white/40">
+                    Aktuell ca. {selectedComputedSize.width} ×{" "}
+                    {selectedComputedSize.height}px
+                  </p>
+
+                  {selectedImageUrl ? (
+                    <p className="mt-2 break-all text-[10px] leading-4 text-white/40">
+                      {
+                        selectedImageUrl
+                      }
+                    </p>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={
+                      selectParentElement
                     }
+                    className="mt-3 inline-flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-blue-400/20 bg-black/10 px-3 text-[10px] font-semibold text-blue-100 transition-colors hover:bg-black/20"
+                  >
+                    <Layers3 className="size-3.5" />
+                    Elternelement auswählen
+                  </button>
+                </div>
+
+                {selectedTargetKind ===
+                "text" ? (
+                  <div className="mt-5 border-t border-white/10 pt-5">
+                    <div className="flex items-center gap-2">
+                      <Type className="size-4 text-white/50" />
+
+                      <p className="text-xs font-semibold text-white/80">
+                        Text bearbeiten
+                      </p>
+                    </div>
+
+                    <textarea
+                      value={
+                        selectedText
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setSelectedText(
+                          event.target.value
+                        )
+                      }
+                      rows={
+                        5
+                      }
+                      className="mt-3 w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-xs leading-5 text-white outline-none transition-colors placeholder:text-white/25 focus:border-blue-500"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={
+                        applySelectedText
+                      }
+                      className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg bg-white px-3 text-xs font-semibold text-black"
+                    >
+                      Text übernehmen
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="mt-5 border-t border-white/10 pt-5">
+                  <div className="flex items-center gap-2">
+                    <Maximize2 className="size-4 text-white/50" />
+
+                    <p className="text-xs font-semibold text-white/80">
+                      Größe & Layout
+                    </p>
+                  </div>
+
+                  <p className="mt-1 text-[10px] leading-4 text-white/35">
+                    Bei Breite/Höhe kannst du z. B. 180, 180px, 40% oder auto eingeben.
+                    Leere Felder bleiben unverändert.
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-white/50">
+                      Breite
+                      <input
+                        type="text"
+                        value={
+                          widthValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setWidthValue(
+                            event.target.value
+                          )
+                        }
+                        placeholder={`${selectedComputedSize.width}px`}
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 text-xs text-white outline-none focus:border-blue-500"
+                      />
+                    </label>
+
+                    <label className="text-[10px] text-white/50">
+                      Höhe
+                      <input
+                        type="text"
+                        value={
+                          heightValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setHeightValue(
+                            event.target.value
+                          )
+                        }
+                        placeholder={`${selectedComputedSize.height}px`}
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 text-xs text-white outline-none focus:border-blue-500"
+                      />
+                    </label>
+                  </div>
+
+                  {selectedImageKind ? (
+                    <label className="mt-3 block text-[10px] text-white/50">
+                      {selectedImageKind ===
+                      "background"
+                        ? "Background Size"
+                        : "Object Fit"}
+
+                      <select
+                        value={
+                          fitValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setFitValue(
+                            event.target.value
+                          )
+                        }
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-[#111] px-2.5 text-xs text-white outline-none focus:border-blue-500"
+                      >
+                        <option value="unchanged">
+                          Unverändert · aktuell {selectedComputedSize.objectFit || "—"}
+                        </option>
+                        <option value="cover">Cover</option>
+                        <option value="contain">Contain</option>
+                        <option value="fill">Fill</option>
+                      </select>
+                    </label>
+                  ) : null}
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-white/50">
+                      Position
+                      <select
+                        value={
+                          positionValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setPositionValue(
+                            event.target.value
+                          )
+                        }
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-[#111] px-2 text-xs text-white outline-none focus:border-blue-500"
+                      >
+                        <option value="unchanged">
+                          {`Unverändert (${selectedComputedSize.position || "—"})`}
+                        </option>
+                        <option value="relative">Relative</option>
+                        <option value="absolute">Absolute</option>
+                        <option value="static">Static</option>
+                        <option value="sticky">Sticky</option>
+                        <option value="fixed">Fixed</option>
+                      </select>
+                    </label>
+
+                    <label className="text-[10px] text-white/50">
+                      Z-Index
+                      <input
+                        type="text"
+                        value={
+                          zIndexValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setZIndexValue(
+                            event.target.value
+                          )
+                        }
+                        placeholder={selectedComputedSize.zIndex || "auto"}
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-2.5 text-xs text-white outline-none focus:border-blue-500"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-white/50">
+                      Element Overflow
+                      <select
+                        value={
+                          overflowValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setOverflowValue(
+                            event.target.value
+                          )
+                        }
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-[#111] px-2 text-xs text-white outline-none focus:border-blue-500"
+                      >
+                        <option value="unchanged">
+                          {`Unverändert (${selectedComputedSize.overflow || "—"})`}
+                        </option>
+                        <option value="visible">Visible</option>
+                        <option value="hidden">Hidden</option>
+                        <option value="clip">Clip</option>
+                        <option value="auto">Auto</option>
+                      </select>
+                    </label>
+
+                    <label className="text-[10px] text-white/50">
+                      Parent Overflow
+                      <select
+                        value={
+                          parentOverflowValue
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setParentOverflowValue(
+                            event.target.value
+                          )
+                        }
+                        className="mt-1.5 h-9 w-full rounded-lg border border-white/10 bg-[#111] px-2 text-xs text-white outline-none focus:border-blue-500"
+                      >
+                        <option value="unchanged">
+                          {`Unverändert (${selectedComputedSize.parentOverflow || "—"})`}
+                        </option>
+                        <option value="visible">Visible</option>
+                        <option value="hidden">Hidden</option>
+                        <option value="clip">Clip</option>
+                        <option value="auto">Auto</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      applyLayoutChanges
+                    }
+                    className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-white px-3 text-xs font-semibold text-black"
+                  >
+                    Layout übernehmen
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      revealAncestorOverflow
+                    }
+                    className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    Alle übergeordneten Overflows → Visible
+                  </button>
+
+                  <p className="mt-2 text-[10px] leading-4 text-white/30">
+                    Ideal für Bilder, die von einem Container abgeschnitten werden.
                   </p>
                 </div>
 
-                <div className="mt-5">
+                <div className="mt-5 border-t border-white/10 pt-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white/80">
+                        Bilder
+                      </p>
+
+                      <p className="mt-0.5 text-[10px] text-white/35">
+                        Bild ersetzen oder ein neues direkt nach der Auswahl einfügen.
+                      </p>
+                    </div>
+
+                    <Plus className="size-4 text-white/35" />
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 rounded-lg border border-white/10 bg-black/20 p-1">
+                    <button
+                      type="button"
+                      disabled={
+                        !selectedImageKind
+                      }
+                      onClick={() =>
+                        setImageActionMode(
+                          "replace"
+                        )
+                      }
+                      className={`h-8 rounded-md text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-25 ${
+                        imageActionMode ===
+                        "replace"
+                          ? "bg-white text-black"
+                          : "text-white/50 hover:text-white"
+                      }`}
+                    >
+                      Ersetzen
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setImageActionMode(
+                          "insert"
+                        )
+                      }
+                      className={`h-8 rounded-md text-[10px] font-semibold transition-colors ${
+                        imageActionMode ===
+                        "insert"
+                          ? "bg-white text-black"
+                          : "text-white/50 hover:text-white"
+                      }`}
+                    >
+                      Hinzufügen
+                    </button>
+                  </div>
+
                   <label
                     htmlFor="custom-image-url"
-                    className="text-xs font-medium text-white/70"
+                    className="mt-4 block text-xs font-medium text-white/70"
                   >
-                    Eigene Bild-URL
+                    Bild-URL
                   </label>
 
                   <input
@@ -2439,13 +4043,12 @@ ${clone.outerHTML}`;
                     value={
                       customUrl
                     }
-                    onChange={
-                      (
-                        event
-                      ) =>
-                        setCustomUrl(
-                          event.target.value
-                        )
+                    onChange={(
+                      event
+                    ) =>
+                      setCustomUrl(
+                        event.target.value
+                      )
                     }
                     placeholder="https://..."
                     className="mt-2 h-10 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs text-white outline-none transition-colors placeholder:text-white/25 focus:border-blue-500"
@@ -2459,17 +4062,18 @@ ${clone.outerHTML}`;
                       )
                     }
                     onClick={() =>
-                      replaceImage(
+                      applyImageUrl(
                         customUrl
                       )
                     }
-                    className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg border border-white/10 text-xs font-semibold transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                    className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-white/10 text-xs font-semibold transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    Dieses Bild verwenden
+                    {imageActionMode ===
+                    "replace"
+                      ? "Dieses Bild verwenden"
+                      : "Bild nach Auswahl hinzufügen"}
                   </button>
-                </div>
 
-                <div className="mt-5">
                   <input
                     ref={
                       fileInputRef
@@ -2477,26 +4081,24 @@ ${clone.outerHTML}`;
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
                     className="hidden"
-                    onChange={
-                      (
-                        event
-                      ) => {
-                        const file =
-                          event.target
-                            .files?.[0];
+                    onChange={(
+                      event
+                    ) => {
+                      const file =
+                        event.target
+                          .files?.[0];
 
-                        event.target.value =
-                          "";
+                      event.target.value =
+                        "";
 
-                        if (
+                      if (
+                        file
+                      ) {
+                        void uploadOwnImage(
                           file
-                        ) {
-                          void uploadOwnImage(
-                            file
-                          );
-                        }
+                        );
                       }
-                    }
+                    }}
                   />
 
                   <button
@@ -2508,23 +4110,27 @@ ${clone.outerHTML}`;
                       fileInputRef.current
                         ?.click()
                     }
-                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-2 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {uploading ? (
                       <Loader2 className="size-4 animate-spin" />
+                    ) : imageActionMode ===
+                      "insert" ? (
+                      <Plus className="size-4" />
                     ) : (
                       <Upload className="size-4" />
                     )}
 
                     {uploading
                       ? "Bild wird hochgeladen..."
-                      : "Eigenes Bild hochladen"}
+                      : imageActionMode ===
+                          "insert"
+                        ? "Eigenes Bild hinzufügen"
+                        : "Eigenes Bild hochladen & ersetzen"}
                   </button>
 
                   <p className="mt-2 text-[10px] leading-4 text-white/30">
                     JPG, PNG, WebP oder GIF · maximal 10 MB.
-                    Nach dem Upload wird das ausgewählte Bild
-                    direkt ersetzt.
                   </p>
                 </div>
 
@@ -2547,7 +4153,6 @@ ${clone.outerHTML}`;
                       className="inline-flex items-center gap-1 text-[10px] text-white/40 transition-colors hover:text-white"
                     >
                       Pexels
-
                       <ExternalLink className="size-3" />
                     </a>
                   </div>
@@ -2566,13 +4171,12 @@ ${clone.outerHTML}`;
                         value={
                           stockQuery
                         }
-                        onChange={
-                          (
-                            event
-                          ) =>
-                            setStockQuery(
-                              event.target.value
-                            )
+                        onChange={(
+                          event
+                        ) =>
+                          setStockQuery(
+                            event.target.value
+                          )
                         }
                         placeholder="z. B. Dachdecker Baustelle"
                         className="h-10 w-full rounded-lg border border-white/10 bg-black/20 pl-9 pr-3 text-xs text-white outline-none transition-colors placeholder:text-white/25 focus:border-blue-500"
@@ -2623,12 +4227,17 @@ ${clone.outerHTML}`;
                               <button
                                 type="button"
                                 onClick={() =>
-                                  replaceImage(
+                                  applyImageUrl(
                                     photo.imageUrl
                                   )
                                 }
                                 className="group relative block aspect-[4/3] w-full overflow-hidden bg-black/30"
-                                title="Dieses Pexels-Foto verwenden"
+                                title={
+                                  imageActionMode ===
+                                  "replace"
+                                    ? "Dieses Pexels-Foto verwenden"
+                                    : "Dieses Pexels-Foto hinzufügen"
+                                }
                               >
                                 <img
                                   src={
@@ -2643,7 +4252,10 @@ ${clone.outerHTML}`;
                                 />
 
                                 <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-left text-[9px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">
-                                  Bild verwenden
+                                  {imageActionMode ===
+                                  "replace"
+                                    ? "Bild verwenden"
+                                    : "Bild hinzufügen"}
                                 </span>
                               </button>
 
@@ -2656,7 +4268,6 @@ ${clone.outerHTML}`;
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="block truncate text-[9px] text-white/40 transition-colors hover:text-white"
-                                    title={`Foto von ${photo.photographer} auf Pexels`}
                                   >
                                     Foto:{" "}
                                     {
@@ -2698,7 +4309,6 @@ ${clone.outerHTML}`;
                             })
                           }
                           className="flex size-8 items-center justify-center rounded-lg border border-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-25"
-                          title="Vorherige Seite"
                         >
                           <ChevronLeft className="size-4" />
                         </button>
@@ -2734,23 +4344,10 @@ ${clone.outerHTML}`;
                             })
                           }
                           className="flex size-8 items-center justify-center rounded-lg border border-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-25"
-                          title="Nächste Seite"
                         >
                           <ChevronRight className="size-4" />
                         </button>
                       </div>
-
-                      <p className="mt-3 text-center text-[9px] text-white/25">
-                        Photos provided by{" "}
-                        <a
-                          href="https://www.pexels.com"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline decoration-white/20 underline-offset-2 transition-colors hover:text-white"
-                        >
-                          Pexels
-                        </a>
-                      </p>
                     </>
                   ) : null}
                 </div>
@@ -2787,16 +4384,23 @@ ${clone.outerHTML}`;
                               }
                               type="button"
                               onClick={() =>
-                                replaceImage(
+                                applyImageUrl(
                                   imageUrl
                                 )
                               }
                               className={`group relative aspect-[4/3] overflow-hidden rounded-lg border transition-all ${
-                                active
+                                active &&
+                                imageActionMode ===
+                                  "replace"
                                   ? "border-blue-500 ring-2 ring-blue-500/30"
                                   : "border-white/10 hover:border-white/30"
                               }`}
-                              title="Bild verwenden"
+                              title={
+                                imageActionMode ===
+                                "replace"
+                                  ? "Bild verwenden"
+                                  : "Bild hinzufügen"
+                              }
                             >
                               <img
                                 src={
@@ -2808,9 +4412,18 @@ ${clone.outerHTML}`;
                                 className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                               />
 
-                              {active ? (
+                              {active &&
+                              imageActionMode ===
+                                "replace" ? (
                                 <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-blue-600 text-white">
                                   <Check className="size-3" />
+                                </span>
+                              ) : null}
+
+                              {imageActionMode ===
+                              "insert" ? (
+                                <span className="absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full bg-black/70 text-white">
+                                  <Plus className="size-3" />
                                 </span>
                               ) : null}
                             </button>
@@ -2820,10 +4433,26 @@ ${clone.outerHTML}`;
                     </div>
                   ) : (
                     <p className="mt-3 text-xs leading-5 text-white/35">
-                      Für diese Variante wurden keine weiteren
-                      Firmenbilder gespeichert.
+                      Für diese Variante wurden keine weiteren Firmenbilder gespeichert.
                     </p>
                   )}
+                </div>
+
+                <div className="mt-6 border-t border-white/10 pt-5">
+                  <button
+                    type="button"
+                    onClick={
+                      removeSelectedElement
+                    }
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-red-500/25 bg-red-500/10 px-3 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15"
+                  >
+                    <Trash2 className="size-4" />
+
+                    {selectedTargetKind ===
+                    "background"
+                      ? "Hintergrundbild entfernen"
+                      : "Ausgewähltes Element entfernen"}
+                  </button>
                 </div>
               </>
             )}
