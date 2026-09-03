@@ -13,6 +13,13 @@ import {
 } from "@/lib/email-message-classification";
 
 import {
+  classifyReplyIntelligence,
+  detectOutOfOfficeFollowUpAt,
+  replyIntelligenceColumns,
+  type ReplyClassification,
+} from "@/lib/reply-intelligence";
+
+import {
   createGmailOAuthClient,
   decryptGmailToken,
 } from "@/lib/gmail-oauth";
@@ -129,6 +136,28 @@ type ThreadReference = {
     string;
 };
 
+type LeadContext = {
+  companyName:
+    string
+    | null;
+
+  contactName:
+    string
+    | null;
+
+  currentStatus:
+    string
+    | null;
+
+  currentPriority:
+    string
+    | null;
+
+  nextFollowUpAt:
+    string
+    | null;
+};
+
 type AttachmentMetadata = {
   name:
     string;
@@ -186,6 +215,49 @@ type ParsedIncomingMessage = {
 
   attachments:
     AttachmentMetadata[];
+
+  is_automatic_reply:
+    boolean;
+
+  reply_classification:
+    ReplyClassification;
+
+  reply_classification_confidence:
+    number;
+
+  reply_classification_reason:
+    string;
+
+  reply_follow_up_at:
+    string
+    | null;
+
+  reply_detected_date_text:
+    string
+    | null;
+
+  reply_alternative_contact_name:
+    string
+    | null;
+
+  reply_alternative_contact_email:
+    string
+    | null;
+
+  reply_classified_at:
+    string;
+
+  reply_classification_model:
+    string;
+
+  reply_classification_input_tokens:
+    number;
+
+  reply_classification_output_tokens:
+    number;
+
+  reply_classification_total_tokens:
+    number;
 };
 
 /* =========================================================
@@ -774,6 +846,777 @@ function isHardBounce({
 }
 
 /* =========================================================
+   HISTORICAL CLASSIFICATION BACKFILL
+
+   Existing inbox messages from before Phase 2 are
+   classified in small batches whenever Gmail sync runs.
+
+   Important:
+   This backfill only adds intelligence metadata. It does
+   NOT retroactively change CRM statuses or follow-ups.
+========================================================= */
+
+async function backfillStoredReplyIntelligence({
+  supabase,
+  userId,
+  leadContextById,
+}: {
+  supabase:
+    Awaited<
+      ReturnType<
+        typeof createClient
+      >
+    >;
+
+  userId:
+    string;
+
+  leadContextById:
+    Map<
+      string,
+      LeadContext
+    >;
+}) {
+  const {
+    data:
+      messages,
+
+    error,
+  } =
+    await supabase
+      .from(
+        "email_messages"
+      )
+      .select(`
+        id,
+        lead_id,
+        from_name,
+        from_email,
+        subject,
+        body_text,
+        received_at
+      `)
+      .eq(
+        "user_id",
+        userId
+      )
+      .eq(
+        "direction",
+        "INCOMING"
+      )
+      .is(
+        "reply_classification",
+        null
+      )
+      .order(
+        "received_at",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        5
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not load old messages for reply-intelligence backfill:",
+      error
+    );
+
+    return 0;
+  }
+
+  let classified =
+    0;
+
+  for (
+    const message of
+      messages ??
+      []
+  ) {
+    const automaticReply =
+      isAutomaticReply({
+        subject:
+          message.subject,
+
+        body:
+          message.body_text,
+      });
+
+    const hardBounce =
+      isHardBounce({
+        fromEmail:
+          message.from_email,
+
+        subject:
+          message.subject,
+      });
+
+    const context =
+      leadContextById.get(
+        message.lead_id
+      ) ??
+      null;
+
+    const result =
+      await classifyReplyIntelligence({
+        subject:
+          message.subject,
+
+        body:
+          message.body_text,
+
+        fromEmail:
+          message.from_email,
+
+        fromName:
+          message.from_name,
+
+        companyName:
+          context?.companyName ??
+          null,
+
+        contactName:
+          context?.contactName ??
+          null,
+
+        receivedAt:
+          message.received_at,
+
+        automaticReply,
+
+        hardBounce,
+      });
+
+    const {
+      error:
+        updateError,
+    } =
+      await supabase
+        .from(
+          "email_messages"
+        )
+        .update(
+          replyIntelligenceColumns({
+            result,
+
+            automaticReply,
+          })
+        )
+        .eq(
+          "id",
+          message.id
+        )
+        .eq(
+          "user_id",
+          userId
+        )
+        .is(
+          "reply_classification",
+          null
+        );
+
+    if (
+      updateError
+    ) {
+      console.error(
+        `Could not backfill reply intelligence for ${message.id}:`,
+        updateError
+      );
+
+      continue;
+    }
+
+    classified +=
+      1;
+  }
+
+  return classified;
+}
+
+/* =========================================================
+   AUTO-REPLY REPAIR / CRM RECONCILIATION
+
+   Phase 2 originally classified old inbox messages without
+   retroactively touching CRM state. That was intentionally
+   conservative, but it means older OOO / acknowledgement
+   messages can still leave a lead looking "Replied" and can
+   leave an old follow-up date in place.
+
+   This lightweight reconciliation:
+   - re-checks recent incoming messages with the deterministic
+     classifier,
+   - reclassifies only messages whose automatic-reply signal
+     changed,
+   - restores REPLIED -> CONTACTED when a lead has no genuine
+     human reply,
+   - postpones OOO follow-ups to the detected return date.
+========================================================= */
+
+async function repairRecentAutomaticReplies({
+  supabase,
+  userId,
+  leadContextById,
+}: {
+  supabase:
+    Awaited<
+      ReturnType<
+        typeof createClient
+      >
+    >;
+
+  userId:
+    string;
+
+  leadContextById:
+    Map<
+      string,
+      LeadContext
+    >;
+}) {
+  const {
+    data:
+      messages,
+
+    error,
+  } =
+    await supabase
+      .from(
+        "email_messages"
+      )
+      .select(`
+        id,
+        lead_id,
+        from_name,
+        from_email,
+        subject,
+        body_text,
+        received_at,
+        is_automatic_reply,
+        reply_classification,
+        reply_classification_confidence,
+        reply_follow_up_at
+      `)
+      .eq(
+        "user_id",
+        userId
+      )
+      .eq(
+        "direction",
+        "INCOMING"
+      )
+      .order(
+        "received_at",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        100
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not load recent incoming messages for auto-reply repair:",
+      error
+    );
+
+    return {
+      repairedMessages:
+        0,
+
+      reconciledLeads:
+        0,
+    };
+  }
+
+  const effectiveMessages =
+    new Map<
+      string,
+      {
+        leadId:
+          string;
+
+        receivedAt:
+          string;
+
+        automaticReply:
+          boolean;
+
+        classification:
+          ReplyClassification
+          | null;
+
+        followUpAt:
+          string
+          | null;
+      }[]
+    >();
+
+  let repairedMessages =
+    0;
+
+  for (
+    const message of
+      messages ??
+      []
+  ) {
+    const detectedAutomatic =
+      isAutomaticReply({
+        subject:
+          message.subject,
+
+        body:
+          message.body_text,
+      });
+
+    const hardBounce =
+      isHardBounce({
+        fromEmail:
+          message.from_email,
+
+        subject:
+          message.subject,
+      });
+
+    let automaticReply =
+      Boolean(
+        message.is_automatic_reply
+      );
+
+    let classification =
+      (
+        message.reply_classification as
+          | ReplyClassification
+          | null
+      ) ??
+      null;
+
+    let followUpAt =
+      message.reply_follow_up_at ??
+      null;
+
+    const deterministicOooFollowUpAt =
+      detectedAutomatic &&
+      classification ===
+        "OUT_OF_OFFICE"
+        ? detectOutOfOfficeFollowUpAt({
+            body:
+              message.body_text,
+
+            receivedAt:
+              message.received_at,
+          })
+        : null;
+
+    /*
+     * Explicit date ranges are stronger than the old fallback.
+     * Repair the stored intelligence metadata without another
+     * OpenAI call when possible.
+     */
+    if (
+      deterministicOooFollowUpAt &&
+      deterministicOooFollowUpAt !==
+        followUpAt
+    ) {
+      const {
+        error:
+          dateRepairError,
+      } =
+        await supabase
+          .from(
+            "email_messages"
+          )
+          .update({
+            is_automatic_reply:
+              true,
+
+            reply_classification:
+              "OUT_OF_OFFICE",
+
+            reply_classification_confidence:
+              Math.max(
+                Number(
+                  message.reply_classification_confidence ??
+                  0
+                ),
+                0.98
+              ),
+
+            reply_classification_reason:
+              "Expliziter Abwesenheitszeitraum in der Nachricht erkannt.",
+
+            reply_follow_up_at:
+              deterministicOooFollowUpAt,
+
+            reply_classified_at:
+              new Date()
+                .toISOString(),
+
+            reply_classification_model:
+              "deterministic-ooo-date",
+          })
+          .eq(
+            "id",
+            message.id
+          )
+          .eq(
+            "user_id",
+            userId
+          );
+
+      if (
+        dateRepairError
+      ) {
+        console.error(
+          `Could not repair explicit OOO follow-up date for ${message.id}:`,
+          dateRepairError
+        );
+      } else {
+        repairedMessages +=
+          1;
+
+        automaticReply =
+          true;
+
+        classification =
+          "OUT_OF_OFFICE";
+
+        followUpAt =
+          deterministicOooFollowUpAt;
+      }
+    }
+
+    /*
+     * Re-run intelligence only when deterministic detection
+     * newly proves this was automatic. This keeps the repair
+     * cheap and avoids reclassifying the entire inbox.
+     */
+    if (
+      detectedAutomatic &&
+      !automaticReply &&
+      !deterministicOooFollowUpAt
+    ) {
+      const context =
+        leadContextById.get(
+          message.lead_id
+        ) ??
+        null;
+
+      const result =
+        await classifyReplyIntelligence({
+          subject:
+            message.subject,
+
+          body:
+            message.body_text,
+
+          fromEmail:
+            message.from_email,
+
+          fromName:
+            message.from_name,
+
+          companyName:
+            context?.companyName ??
+            null,
+
+          contactName:
+            context?.contactName ??
+            null,
+
+          receivedAt:
+            message.received_at,
+
+          automaticReply:
+            true,
+
+          hardBounce,
+        });
+
+      const {
+        error:
+          updateError,
+      } =
+        await supabase
+          .from(
+            "email_messages"
+          )
+          .update(
+            replyIntelligenceColumns({
+              result,
+
+              automaticReply:
+                true,
+            })
+          )
+          .eq(
+            "id",
+            message.id
+          )
+          .eq(
+            "user_id",
+            userId
+          );
+
+      if (
+        updateError
+      ) {
+        console.error(
+          `Could not repair automatic-reply metadata for ${message.id}:`,
+          updateError
+        );
+      } else {
+        repairedMessages +=
+          1;
+
+        automaticReply =
+          true;
+
+        classification =
+          result.classification;
+
+        followUpAt =
+          result.followUpAt;
+      }
+    }
+
+    const existing =
+      effectiveMessages.get(
+        message.lead_id
+      ) ??
+      [];
+
+    existing.push({
+      leadId:
+        message.lead_id,
+
+      receivedAt:
+        message.received_at,
+
+      automaticReply,
+
+      classification,
+
+      followUpAt,
+    });
+
+    effectiveMessages.set(
+      message.lead_id,
+      existing
+    );
+  }
+
+  let reconciledLeads =
+    0;
+
+  for (
+    const [
+      leadId,
+      leadMessages,
+    ] of
+      effectiveMessages.entries()
+  ) {
+    const context =
+      leadContextById.get(
+        leadId
+      ) ??
+      null;
+
+    if (
+      !context
+    ) {
+      continue;
+    }
+
+    const sorted =
+      [
+        ...leadMessages,
+      ].sort(
+        (
+          a,
+          b
+        ) =>
+          new Date(
+            a.receivedAt
+          ).getTime() -
+          new Date(
+            b.receivedAt
+          ).getTime()
+      );
+
+    const hasHumanReply =
+      sorted.some(
+        (
+          message
+        ) =>
+          !message.automaticReply &&
+          message.classification !==
+            "BOUNCE"
+      );
+
+    const latestAutomatic =
+      [
+        ...sorted,
+      ]
+        .reverse()
+        .find(
+          (
+            message
+          ) =>
+            message.automaticReply
+        ) ??
+      null;
+
+    const updates: {
+      status?:
+        string;
+
+      next_follow_up_at?:
+        string
+        | null;
+
+      smart_follow_up_mode?:
+        string;
+
+      smart_follow_up_reason?:
+        string;
+
+      smart_follow_up_updated_at?:
+        string;
+    } = {};
+
+    /*
+     * If the lead only ever received automatic messages,
+     * "REPLIED" is misleading. CONTACTED is the correct CRM
+     * state because there is still no human response.
+     */
+    if (
+      !hasHumanReply &&
+      context.currentStatus ===
+        "REPLIED"
+    ) {
+      updates.status =
+        "CONTACTED";
+    }
+
+    /*
+     * Latest OOO controls the cold follow-up date until a
+     * real person replies. If no exact return date exists,
+     * postpone safely by seven days from the OOO message.
+     */
+    if (
+      !hasHumanReply &&
+      latestAutomatic
+        ?.classification ===
+        "OUT_OF_OFFICE"
+    ) {
+      const fallbackFollowUp =
+        new Date(
+          new Date(
+            latestAutomatic.receivedAt
+          ).getTime() +
+            7 *
+              24 *
+              60 *
+              60 *
+              1000
+        ).toISOString();
+
+      const proposed =
+        latestAutomatic
+          .followUpAt ??
+        fallbackFollowUp;
+
+      const current =
+        context.nextFollowUpAt
+          ? new Date(
+              context.nextFollowUpAt
+            ).getTime()
+          : null;
+
+      const proposedTime =
+        new Date(
+          proposed
+        ).getTime();
+
+      updates.next_follow_up_at =
+        current &&
+        current >
+          proposedTime
+          ? context.nextFollowUpAt
+          : proposed;
+
+      updates.smart_follow_up_mode =
+        "OOO";
+
+      updates.smart_follow_up_reason =
+        "Follow-up postponed until after the out-of-office period.";
+
+      updates.smart_follow_up_updated_at =
+        new Date()
+          .toISOString();
+    }
+
+    if (
+      Object.keys(
+        updates
+      ).length ===
+      0
+    ) {
+      continue;
+    }
+
+    const {
+      error:
+        leadUpdateError,
+    } =
+      await supabase
+        .from(
+          "leads"
+        )
+        .update(
+          updates
+        )
+        .eq(
+          "id",
+          leadId
+        )
+        .eq(
+          "user_id",
+          userId
+        );
+
+    if (
+      leadUpdateError
+    ) {
+      console.error(
+        `Could not reconcile auto-reply CRM state for ${leadId}:`,
+        leadUpdateError
+      );
+
+      continue;
+    }
+
+    reconciledLeads +=
+      1;
+  }
+
+  return {
+    repairedMessages,
+
+    reconciledLeads,
+  };
+}
+
+/* =========================================================
    SYNC
 ========================================================= */
 
@@ -921,10 +1764,19 @@ export async function syncGmailRepliesForCurrentUser() {
       )
       .select(`
         id,
+        status,
+        priority,
+        next_follow_up_at,
+
+        company:companies (
+          id,
+          name
+        ),
 
         primary_contact:contacts (
           id,
-          email
+          email,
+          full_name
         )
       `)
       .eq(
@@ -967,6 +1819,12 @@ export async function syncGmailRepliesForCurrentUser() {
     }
   }
 
+  const leadContextById =
+    new Map<
+      string,
+      LeadContext
+    >();
+
   const knownContactByEmail =
     new Map<
       string,
@@ -988,6 +1846,36 @@ export async function syncGmailRepliesForCurrentUser() {
       getSingleRelation(
         lead.primary_contact
       );
+
+    const company =
+      getSingleRelation(
+        lead.company
+      );
+
+    leadContextById.set(
+      lead.id,
+      {
+        companyName:
+          company?.name ??
+          null,
+
+        contactName:
+          contact?.full_name ??
+          null,
+
+        currentStatus:
+          lead.status ??
+          null,
+
+        currentPriority:
+          lead.priority ??
+          null,
+
+        nextFollowUpAt:
+          lead.next_follow_up_at ??
+          null,
+      }
+    );
 
     const email =
       contact?.email
@@ -1083,6 +1971,26 @@ export async function syncGmailRepliesForCurrentUser() {
       );
     }
   }
+
+  const historicalClassified =
+    await backfillStoredReplyIntelligence({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadContextById,
+    });
+
+  const autoReplyRepair =
+    await repairRecentAutomaticReplies({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadContextById,
+    });
 
   /* =======================================================
      THREAD MAP
@@ -1385,6 +2293,8 @@ export async function syncGmailRepliesForCurrentUser() {
 
       newReplies:
         0,
+
+      historicalClassified,
     };
   }
 
@@ -1477,6 +2387,8 @@ export async function syncGmailRepliesForCurrentUser() {
 
       newReplies:
         0,
+
+      historicalClassified,
     };
   }
 
@@ -1487,11 +2399,6 @@ export async function syncGmailRepliesForCurrentUser() {
   const parsedMessages:
     ParsedIncomingMessage[] =
     [];
-
-  const automaticReplyMessageIds =
-    new Set<
-      string
-    >();
 
   for (
     const messageId of
@@ -1588,19 +2495,40 @@ export async function syncGmailRepliesForCurrentUser() {
       continue;
     }
 
-    if (
+    const hardBounce =
       isHardBounce({
         fromEmail:
           from.email,
 
         subject,
-      })
-    ) {
-      continue;
-    }
+      });
+
+    const failedRecipient =
+      hardBounce
+        ? (
+            parseEmailAddress(
+              getHeader(
+                payload,
+                "X-Failed-Recipients"
+              ) ??
+              getHeader(
+                payload,
+                "Final-Recipient"
+              ) ??
+              getHeader(
+                payload,
+                "Original-Recipient"
+              )
+            ).email
+          )
+        : null;
 
     /* =====================================================
        MATCH LEAD
+
+       Bounces are allowed to continue here. If Gmail keeps
+       the delivery failure in a known outreach thread we
+       can safely attach it to that lead and surface it.
     ===================================================== */
 
     const threadReference =
@@ -1622,6 +2550,17 @@ export async function syncGmailRepliesForCurrentUser() {
         draftId:
           threadReference.draftId,
       };
+    }
+
+    if (
+      !leadReference &&
+      failedRecipient
+    ) {
+      leadReference =
+        knownContactByEmail.get(
+          failedRecipient
+        ) ??
+        null;
     }
 
     if (
@@ -1727,13 +2666,47 @@ export async function syncGmailRepliesForCurrentUser() {
           ),
       });
 
-    if (
-      automaticReply
-    ) {
-      automaticReplyMessageIds.add(
-        message.id
-      );
-    }
+    const leadContext =
+      leadContextById.get(
+        leadReference.leadId
+      ) ??
+      null;
+
+    const intelligence =
+      await classifyReplyIntelligence({
+        subject,
+
+        body:
+          bodyText,
+
+        fromEmail:
+          from.email,
+
+        fromName:
+          from.name,
+
+        companyName:
+          leadContext?.companyName ??
+          null,
+
+        contactName:
+          leadContext?.contactName ??
+          null,
+
+        receivedAt,
+
+        automaticReply,
+
+        hardBounce,
+      });
+
+    const intelligenceColumns =
+      replyIntelligenceColumns({
+        result:
+          intelligence,
+
+        automaticReply,
+      });
 
     parsedMessages.push({
       user_id:
@@ -1783,6 +2756,8 @@ export async function syncGmailRepliesForCurrentUser() {
         collectAttachments(
           payload
         ),
+
+      ...intelligenceColumns,
     });
   }
 
@@ -1815,6 +2790,8 @@ export async function syncGmailRepliesForCurrentUser() {
 
       newReplies:
         0,
+
+      historicalClassified,
     };
   }
 
@@ -1869,9 +2846,9 @@ export async function syncGmailRepliesForCurrentUser() {
       (
         message
       ) =>
-        !automaticReplyMessageIds.has(
-          message.gmail_message_id
-        )
+        !message.is_automatic_reply &&
+        message.reply_classification !==
+          "BOUNCE"
     );
 
   const automaticReplyMessages =
@@ -1879,27 +2856,22 @@ export async function syncGmailRepliesForCurrentUser() {
       (
         message
       ) =>
-        automaticReplyMessageIds.has(
-          message.gmail_message_id
-        )
+        message.is_automatic_reply
     );
 
-  const repliedLeadIds =
-    Array.from(
-      new Set(
-        humanReplyMessages.map(
-          (
-            message
-          ) =>
-            message.lead_id
-        )
-      )
+  const bounceMessages =
+    validMessages.filter(
+      (
+        message
+      ) =>
+        message.reply_classification ===
+        "BOUNCE"
     );
 
   /* =======================================================
      RESTORE EVERY NEW INCOMING MAIL TO INBOX
 
-     Automatic replies should still be visible to Joel.
+     Automatic replies and technical bounces stay visible.
   ======================================================= */
 
   if (
@@ -1955,23 +2927,270 @@ export async function syncGmailRepliesForCurrentUser() {
   }
 
   /* =======================================================
-     HUMAN REPLIES ONLY
+     AI CRM AUTOMATION
 
-     A real human reply:
-     - cancels scheduled inbox replies
-     - stops the outreach follow-up
-     - changes the lead to REPLIED
-
-     Automatic replies do NONE of these things.
+     Safe rule:
+     - no automatic reply is ever sent
+     - low-confidence intent never causes an aggressive CRM
+       status change
+     - a normal human reply still stops the old cold-email
+       sequence, matching the previous Leadbase behavior
   ======================================================= */
 
-  if (
-    repliedLeadIds.length >
-      0
+  const latestNewMessageByLead =
+    new Map<
+      string,
+      ParsedIncomingMessage
+    >();
+
+  for (
+    const message of
+      validMessages
   ) {
+    const current =
+      latestNewMessageByLead.get(
+        message.lead_id
+      );
+
+    if (
+      !current ||
+      new Date(
+        message.received_at
+      ).getTime() >
+        new Date(
+          current.received_at
+        ).getTime()
+    ) {
+      latestNewMessageByLead.set(
+        message.lead_id,
+        message
+      );
+    }
+  }
+
+  for (
+    const [
+      leadId,
+      message,
+    ] of
+      latestNewMessageByLead.entries()
+  ) {
+    const classification =
+      message.reply_classification;
+
+    const confidence =
+      message.reply_classification_confidence;
+
+    const leadContext =
+      leadContextById.get(
+        leadId
+      ) ??
+      null;
+
     const cancelledAt =
       new Date()
         .toISOString();
+
+    /* -----------------------------------------------------
+       BOUNCE
+    ----------------------------------------------------- */
+
+    if (
+      classification ===
+      "BOUNCE"
+    ) {
+      const {
+        error:
+          scheduledCancellationError,
+      } =
+        await supabase
+          .from(
+            "scheduled_emails"
+          )
+          .update({
+            status:
+              "CANCELLED",
+
+            cancelled_at:
+              cancelledAt,
+
+            last_error:
+              "Cancelled automatically because the latest customer email was classified as a bounce.",
+          })
+          .eq(
+            "user_id",
+            user.id
+          )
+          .eq(
+            "lead_id",
+            leadId
+          )
+          .eq(
+            "status",
+            "SCHEDULED"
+          );
+
+      if (
+        scheduledCancellationError
+      ) {
+        console.error(
+          "Bounce was stored but scheduled emails could not be cancelled:",
+          scheduledCancellationError
+        );
+      }
+
+      const {
+        error:
+          bounceFollowUpError,
+      } =
+        await supabase
+          .from(
+            "leads"
+          )
+          .update({
+            next_follow_up_at:
+              null,
+
+            smart_follow_up_mode:
+              "STOPPED",
+
+            smart_follow_up_reason:
+              "Follow-up stopped because the email bounced.",
+
+            smart_follow_up_updated_at:
+              new Date()
+                .toISOString(),
+          })
+          .eq(
+            "user_id",
+            user.id
+          )
+          .eq(
+            "id",
+            leadId
+          );
+
+      if (
+        bounceFollowUpError
+      ) {
+        console.error(
+          "Bounce was stored but follow-up could not be stopped:",
+          bounceFollowUpError
+        );
+      }
+
+      continue;
+    }
+
+    /* -----------------------------------------------------
+       AUTOMATIC REPLY
+
+       Only an actual OOO may postpone the next follow-up.
+       Generic auto acknowledgements stay informational.
+    ----------------------------------------------------- */
+
+    if (
+      message.is_automatic_reply
+    ) {
+      if (
+        classification ===
+        "OUT_OF_OFFICE"
+      ) {
+        const fallbackDate =
+          new Date(
+            Date.now() +
+              7 *
+                24 *
+                60 *
+                60 *
+                1000
+          ).toISOString();
+
+        const proposedFollowUp =
+          message.reply_follow_up_at ??
+          fallbackDate;
+
+        const currentFollowUp =
+          leadContext?.nextFollowUpAt
+            ? new Date(
+                leadContext.nextFollowUpAt
+              ).getTime()
+            : null;
+
+        const proposedTime =
+          new Date(
+            proposedFollowUp
+          ).getTime();
+
+        /*
+         * Never pull an existing follow-up earlier because
+         * of an OOO message.
+         */
+        const nextFollowUp =
+          currentFollowUp &&
+          currentFollowUp >
+            proposedTime
+            ? leadContext
+                ?.nextFollowUpAt ??
+              proposedFollowUp
+            : proposedFollowUp;
+
+        const {
+          error:
+            oooUpdateError,
+        } =
+          await supabase
+            .from(
+              "leads"
+            )
+            .update({
+              next_follow_up_at:
+                nextFollowUp,
+
+              smart_follow_up_mode:
+                "OOO",
+
+              smart_follow_up_reason:
+                "Follow-up postponed until after the out-of-office period.",
+
+              smart_follow_up_updated_at:
+                new Date()
+                  .toISOString(),
+            })
+            .eq(
+              "user_id",
+              user.id
+            )
+            .eq(
+              "id",
+              leadId
+            )
+            .not(
+              "status",
+              "in",
+              '("WON","LOST","DO_NOT_CONTACT")'
+            );
+
+        if (
+          oooUpdateError
+        ) {
+          console.error(
+            "OOO reply was stored but follow-up date could not be postponed:",
+            oooUpdateError
+          );
+        }
+      }
+
+      continue;
+    }
+
+    /* -----------------------------------------------------
+       HUMAN REPLY BASELINE
+
+       A real customer response stops the old cold outreach
+       schedule. A later-contact request can then set a new
+       CRM follow-up date below.
+    ----------------------------------------------------- */
 
     const {
       error:
@@ -1989,15 +3208,15 @@ export async function syncGmailRepliesForCurrentUser() {
             cancelledAt,
 
           last_error:
-            "Cancelled automatically because a human customer email was received.",
+            `Cancelled automatically after human reply classified as ${classification}.`,
         })
         .eq(
           "user_id",
           user.id
         )
-        .in(
+        .eq(
           "lead_id",
-          repliedLeadIds
+          leadId
         )
         .eq(
           "status",
@@ -2008,9 +3227,24 @@ export async function syncGmailRepliesForCurrentUser() {
       scheduledCancellationError
     ) {
       console.error(
-        "Human replies were stored but scheduled emails could not be cancelled:",
+        "Human reply was stored but scheduled emails could not be cancelled:",
         scheduledCancellationError
       );
+    }
+
+    let nextFollowUp:
+      string | null =
+      null;
+
+    if (
+      classification ===
+        "FOLLOW_UP_LATER" &&
+      confidence >=
+        0.7 &&
+      message.reply_follow_up_at
+    ) {
+      nextFollowUp =
+        message.reply_follow_up_at;
     }
 
     const {
@@ -2023,25 +3257,76 @@ export async function syncGmailRepliesForCurrentUser() {
         )
         .update({
           next_follow_up_at:
-            null,
+            nextFollowUp,
+
+          smart_follow_up_mode:
+            nextFollowUp
+              ? "REQUESTED"
+              : "STOPPED",
+
+          smart_follow_up_reason:
+            nextFollowUp
+              ? "Customer explicitly requested to be contacted again later."
+              : "Cold follow-up stopped because a real customer reply was received.",
+
+          smart_follow_up_updated_at:
+            new Date()
+              .toISOString(),
         })
         .eq(
           "user_id",
           user.id
         )
-        .in(
+        .eq(
           "id",
-          repliedLeadIds
+          leadId
         );
 
     if (
       followUpError
     ) {
       console.error(
-        "Human replies were stored but follow-ups could not be stopped:",
+        "Human reply was stored but follow-up state could not be updated:",
         followUpError
       );
     }
+
+    /* -----------------------------------------------------
+       STATUS
+
+       Normal human answer -> REPLIED.
+
+       Clear high-confidence rejection -> LOST.
+
+       Advanced pipeline states are never downgraded.
+    ----------------------------------------------------- */
+
+    const targetStatus =
+      classification ===
+        "NOT_INTERESTED" &&
+      confidence >=
+        0.82
+        ? "LOST"
+        : "REPLIED";
+
+    const statusSourceStates =
+      targetStatus ===
+        "LOST"
+        ? [
+            "NEW",
+            "RESEARCHING",
+            "QUALIFIED",
+            "DRAFT_READY",
+            "CONTACTED",
+            "REPLIED",
+          ]
+        : [
+            "NEW",
+            "RESEARCHING",
+            "QUALIFIED",
+            "DRAFT_READY",
+            "CONTACTED",
+          ];
 
     const {
       error:
@@ -2053,34 +3338,82 @@ export async function syncGmailRepliesForCurrentUser() {
         )
         .update({
           status:
-            "REPLIED",
+            targetStatus,
         })
         .eq(
           "user_id",
           user.id
         )
-        .in(
+        .eq(
           "id",
-          repliedLeadIds
+          leadId
         )
         .in(
           "status",
-          [
-            "NEW",
-            "RESEARCHING",
-            "QUALIFIED",
-            "DRAFT_READY",
-            "CONTACTED",
-          ]
+          statusSourceStates
         );
 
     if (
       statusError
     ) {
       console.error(
-        "Human replies were stored but lead statuses could not be updated:",
+        "Reply was stored but lead status could not be updated:",
         statusError
       );
+    }
+
+    /* -----------------------------------------------------
+       PRIORITY
+
+       Positive interest and genuine questions are strong
+       action signals, but only when classification is
+       reasonably confident.
+    ----------------------------------------------------- */
+
+    if (
+      (
+        classification ===
+          "INTERESTED" ||
+        classification ===
+          "QUESTION"
+      ) &&
+      confidence >=
+        0.72
+    ) {
+      const {
+        error:
+          priorityError,
+      } =
+        await supabase
+          .from(
+            "leads"
+          )
+          .update({
+            priority:
+              "HIGH",
+          })
+          .eq(
+            "user_id",
+            user.id
+          )
+          .eq(
+            "id",
+            leadId
+          )
+          .not(
+            "status",
+            "in",
+            '("WON","LOST","DO_NOT_CONTACT")'
+          );
+
+      if (
+        priorityError
+      ) {
+        console.error(
+          "Interested/question reply was stored but priority could not be raised:",
+          priorityError
+        );
+      }
     }
   }
 
@@ -2099,5 +3432,16 @@ export async function syncGmailRepliesForCurrentUser() {
 
     newReplies:
       validMessages.length,
+
+    bounces:
+      bounceMessages.length,
+
+    historicalClassified,
+
+    repairedAutomaticReplies:
+      autoReplyRepair.repairedMessages,
+
+    reconciledAutomaticReplyLeads:
+      autoReplyRepair.reconciledLeads,
   };
 }

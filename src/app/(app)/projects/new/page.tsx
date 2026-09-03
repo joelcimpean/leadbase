@@ -10,7 +10,6 @@ import {
 } from "../actions";
 
 import {
-  Button,
   buttonVariants,
 } from "@/components/ui/button";
 
@@ -32,6 +31,10 @@ import {
 } from "@/components/ui/textarea";
 
 import {
+  PendingSubmitButton,
+} from "@/components/pending-submit-button";
+
+import {
   languageCopy,
 } from "@/lib/i18n";
 
@@ -39,15 +42,51 @@ import {
   getAppLanguage,
 } from "@/lib/i18n-server";
 
+import {
+  createClient,
+} from "@/lib/supabase/server";
+
 /* =========================================================
    TYPES
 ========================================================= */
 
 type NewProjectPageProps = {
   searchParams: Promise<{
-    error?: string;
+    error?:
+      string;
+
+    leadId?:
+      string;
   }>;
 };
+
+/* =========================================================
+   RELATION
+========================================================= */
+
+function getSingleRelation<T>(
+  value:
+    | T
+    | T[]
+    | null
+    | undefined
+): T | null {
+  if (
+    Array.isArray(
+      value
+    )
+  ) {
+    return (
+      value[0] ??
+      null
+    );
+  }
+
+  return (
+    value ??
+    null
+  );
+}
 
 /* =========================================================
    PAGE
@@ -57,15 +96,14 @@ export default async function NewProjectPage({
   searchParams,
 }: NewProjectPageProps) {
   const [
-    {
-      error,
-    },
-
+    params,
     language,
+    supabase,
   ] =
     await Promise.all([
       searchParams,
       getAppLanguage(),
+      createClient(),
     ]);
 
   const text =
@@ -73,17 +111,110 @@ export default async function NewProjectPage({
       language
     ].projects;
 
+  const leadId =
+    params.leadId
+      ?.trim() ??
+    "";
+
+  let clientName =
+    "";
+
+  let websiteUrl =
+    "";
+
+  if (
+    leadId
+  ) {
+    const {
+      data: {
+        user,
+      },
+    } =
+      await supabase.auth.getUser();
+
+    const {
+      data:
+        lead,
+      error:
+        leadError,
+    } =
+      user
+        ? await supabase
+        .from(
+          "leads"
+        )
+        .select(`
+          id,
+
+          company:companies (
+            id,
+            name,
+            website_url
+          )
+        `)
+        .eq(
+          "id",
+          leadId
+        )
+        .eq(
+          "user_id",
+          user.id
+        )
+        .maybeSingle()
+        : {
+            data:
+              null,
+
+            error:
+              null,
+          };
+
+    if (
+      leadError
+    ) {
+      console.error(
+        "Could not load lead project prefill:",
+        leadError
+      );
+    }
+
+    const company =
+      getSingleRelation(
+        lead?.company
+      );
+
+    clientName =
+      company?.name ??
+      "";
+
+    websiteUrl =
+      company?.website_url ??
+      "";
+  }
+
+  const backHref =
+    leadId
+      ? `/leads/${encodeURIComponent(
+          leadId
+        )}`
+      : "/projects";
+
   return (
     <div className="mx-auto w-full max-w-[850px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       <Link
-        href="/projects"
+        href={
+          backHref
+        }
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
 
-        {
-          text.backToProjects
-        }
+        {leadId
+          ? language ===
+              "de"
+            ? "Zurück zum Lead"
+            : "Back to lead"
+          : text.backToProjects}
       </Link>
 
       <header className="mt-5 sm:mt-6">
@@ -100,9 +231,12 @@ export default async function NewProjectPage({
         </h1>
 
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          {
-            text.addPageDescription
-          }
+          {leadId
+            ? language ===
+                "de"
+              ? "Vorhandene Kundendaten wurden aus dem Lead übernommen. Ergänze nur noch die tatsächlichen Projektdaten."
+              : "Existing customer data was copied from the lead. Add only the actual project details."
+            : text.addPageDescription}
         </p>
       </header>
 
@@ -141,6 +275,9 @@ export default async function NewProjectPage({
                 placeholder={
                   text.clientPlaceholder
                 }
+                defaultValue={
+                  clientName
+                }
                 required
               />
 
@@ -161,6 +298,9 @@ export default async function NewProjectPage({
                   }
                   type="url"
                   placeholder="https://example.com"
+                  defaultValue={
+                    websiteUrl
+                  }
                 />
               </div>
 
@@ -174,9 +314,20 @@ export default async function NewProjectPage({
                 <select
                   id="status"
                   name="status"
-                  defaultValue="COMPLETED"
+                  defaultValue=""
+                  required
                   className="h-11 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring sm:h-10"
                 >
+                  <option
+                    value=""
+                    disabled
+                  >
+                    {language ===
+                    "de"
+                      ? "Status auswählen"
+                      : "Select status"}
+                  </option>
+
                   <option value="PLANNED">
                     {
                       text.statusPlanned
@@ -261,17 +412,19 @@ export default async function NewProjectPage({
           </CardContent>
         </Card>
 
-        {error ? (
+        {params.error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
             {
-              error
+              params.error
             }
           </div>
         ) : null}
 
         <div className="grid grid-cols-2 gap-2 border-t pt-4 sm:flex sm:justify-end">
           <Link
-            href="/projects"
+            href={
+              backHref
+            }
             className={buttonVariants({
               variant:
                 "outline",
@@ -285,14 +438,19 @@ export default async function NewProjectPage({
             }
           </Link>
 
-          <Button
-            type="submit"
-            className="h-11 w-full sm:h-9 sm:w-auto"
+          <PendingSubmitButton
+            pendingText={
+              language ===
+                "de"
+                ? "Wird hinzugefügt..."
+                : "Adding project..."
+            }
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:h-9 sm:w-auto"
           >
             {
               text.addProjectButton
             }
-          </Button>
+          </PendingSubmitButton>
         </div>
       </form>
     </div>
@@ -308,23 +466,34 @@ function Field({
   label,
   type = "text",
   placeholder,
+  defaultValue,
   required = false,
   min,
   step,
 }: {
-  name: string;
+  name:
+    string;
 
-  label: string;
+  label:
+    string;
 
-  type?: string;
+  type?:
+    string;
 
-  placeholder?: string;
+  placeholder?:
+    string;
 
-  required?: boolean;
+  defaultValue?:
+    string;
 
-  min?: string;
+  required?:
+    boolean;
 
-  step?: string;
+  min?:
+    string;
+
+  step?:
+    string;
 }) {
   return (
     <div className="min-w-0 space-y-2">
@@ -346,6 +515,9 @@ function Field({
         }
         placeholder={
           placeholder
+        }
+        defaultValue={
+          defaultValue
         }
         required={
           required

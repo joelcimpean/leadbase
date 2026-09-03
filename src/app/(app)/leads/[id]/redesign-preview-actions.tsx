@@ -27,6 +27,10 @@ import {
 } from "react";
 
 import {
+    PreviewGifActions,
+  } from "./preview-gif-actions";
+
+import {
   createPortal,
 } from "react-dom";
 
@@ -2746,6 +2750,13 @@ export function RedesignPreviewActions({
             }
           </p>
         ) : null}
+
+{shareUrl ? (
+  <PreviewGifActions
+    leadId={leadId}
+    shareUrl={shareUrl}
+  />
+) : null}
       </div>
 
       {

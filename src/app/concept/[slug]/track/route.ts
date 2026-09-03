@@ -11,6 +11,11 @@ import {
   } from "@/lib/supabase/server";
   
   import {
+    recalculateSmartFollowUpForLead,
+    shouldRecalculateFromPreviewUpdate,
+  } from "@/lib/smart-follow-up";
+  
+  import {
     createAdminClient,
   } from "@/lib/supabase/admin";
   
@@ -684,6 +689,52 @@ import {
             ? "OUTREACH"
             : "DIRECT";
   
+      const nextEngaged =
+        existing.is_engaged ||
+        engaged;
+  
+      const nextDurationSeconds =
+        Math.max(
+          existing.duration_seconds ??
+            0,
+          durationSeconds
+        );
+  
+      const nextScrollPercent =
+        Math.max(
+          existing.max_scroll_percent ??
+            0,
+          maxScrollPercent
+        );
+  
+      const shouldRecalculate =
+        !isOwner &&
+        !existing.is_owner &&
+        shouldRecalculateFromPreviewUpdate({
+          existingEngaged:
+            Boolean(
+              existing.is_engaged
+            ),
+  
+          existingDurationSeconds:
+            Number(
+              existing.duration_seconds ??
+                0
+            ),
+  
+          existingScrollPercent:
+            Number(
+              existing.max_scroll_percent ??
+                0
+            ),
+  
+          nextEngaged,
+  
+          nextDurationSeconds,
+  
+          nextScrollPercent,
+        });
+  
       const {
         error:
           updateError,
@@ -701,8 +752,7 @@ import {
               isOwner,
   
             is_engaged:
-              existing.is_engaged ||
-              engaged,
+              nextEngaged,
   
             engaged_at:
               existing.engaged_at ||
@@ -716,18 +766,10 @@ import {
               now,
   
             duration_seconds:
-              Math.max(
-                existing.duration_seconds ??
-                  0,
-                durationSeconds
-              ),
+              nextDurationSeconds,
   
             max_scroll_percent:
-              Math.max(
-                existing.max_scroll_percent ??
-                  0,
-                maxScrollPercent
-              ),
+              nextScrollPercent,
   
             interaction_count:
               Math.max(
@@ -796,6 +838,21 @@ import {
               500,
           }
         );
+      }
+  
+      if (
+        shouldRecalculate
+      ) {
+        await recalculateSmartFollowUpForLead({
+          supabase:
+            admin,
+  
+          userId:
+            preview.user_id,
+  
+          leadId:
+            preview.lead_id,
+        });
       }
   
       return NextResponse.json({
@@ -957,6 +1014,21 @@ import {
           legacyCountError
         );
       }
+  
+      /*
+       * A brand-new external session is always a meaningful
+       * signal: first view or repeat visit.
+       */
+      await recalculateSmartFollowUpForLead({
+        supabase:
+          admin,
+  
+        userId:
+          preview.user_id,
+  
+        leadId:
+          preview.lead_id,
+      });
     }
   
     return NextResponse.json({

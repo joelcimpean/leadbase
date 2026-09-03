@@ -5,18 +5,25 @@ import {
 } from "next/navigation";
 
 import {
+  AlertTriangle,
+  ArrowRight,
   ArrowUpRight,
+  BarChart3,
   Banknote,
+  BellRing,
   BriefcaseBusiness,
-  CalendarCheck,
-  CircleCheck,
+  CalendarClock,
+  CheckCircle2,
+  CircleDot,
   Clock3,
+  Flame,
+  Inbox,
   Mail,
   MessageSquareReply,
-  ReceiptText,
   Search,
-  Trophy,
-  UserPlus,
+  ShieldAlert,
+  Sparkles,
+  UserRoundCheck,
   Users,
   WalletCards,
 } from "lucide-react";
@@ -31,11 +38,6 @@ import {
 } from "@/components/ui/card";
 
 import {
-  languageCopy,
-  type AppLanguage,
-} from "@/lib/i18n";
-
-import {
   getAppLanguage,
 } from "@/lib/i18n-server";
 
@@ -44,71 +46,85 @@ import {
 } from "@/lib/supabase/server";
 
 /* =========================================================
-   PIPELINE
+   TYPES
 ========================================================= */
 
-const PIPELINE_STATUSES = [
-  {
-    status: "NEW",
-    en: "New",
-    de: "Neu",
-  },
+type AppLanguage =
+  | "de"
+  | "en";
 
-  {
-    status: "RESEARCHING",
-    en: "Researching",
-    de: "Recherche",
-  },
+type CommandItem = {
+  key:
+    string;
 
-  {
-    status: "QUALIFIED",
-    en: "Qualified",
-    de: "Qualifiziert",
-  },
+  priority:
+    number;
 
-  {
-    status: "DRAFT_READY",
-    en: "Draft ready",
-    de: "Entwurf bereit",
-  },
+  title:
+    string;
 
-  {
-    status: "CONTACTED",
-    en: "Contacted",
-    de: "Kontaktiert",
-  },
+  description:
+    string;
 
-  {
-    status: "REPLIED",
-    en: "Replied",
-    de: "Geantwortet",
-  },
+  href:
+    string;
 
-  {
-    status: "CALL_BOOKED",
-    en: "Call booked",
-    de: "Call gebucht",
-  },
+  badge:
+    string;
 
-  {
-    status: "PROPOSAL",
-    en: "Proposal",
-    de: "Angebot",
-  },
+  badgeClass:
+    string;
 
-  {
-    status: "WON",
-    en: "Won",
-    de: "Gewonnen",
-  },
-] as const;
+  sortTime:
+    number;
+};
 
-const CLOSED_PIPELINE_STATUSES =
+type ContactRelation = {
+  full_name:
+    string
+    | null;
+
+  email:
+    string
+    | null;
+
+  email_quality_status:
+    string
+    | null;
+
+  email_quality_detail:
+    string
+    | null;
+
+  email_candidate:
+    string
+    | null;
+};
+
+type CompanyRelation = {
+  name:
+    string;
+};
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const CLOSED_STATUSES =
   new Set([
     "WON",
     "LOST",
     "NOT_A_FIT",
     "DO_NOT_CONTACT",
+  ]);
+
+const EMAIL_ISSUE_STATUSES =
+  new Set([
+    "MISSING",
+    "INVALID",
+    "PLACEHOLDER",
+    "DOMAIN_MISMATCH",
+    "SUSPICIOUS",
   ]);
 
 /* =========================================================
@@ -120,6 +136,7 @@ function getSingleRelation<T>(
     | T
     | T[]
     | null
+    | undefined
 ): T | null {
   if (
     Array.isArray(
@@ -132,7 +149,10 @@ function getSingleRelation<T>(
     );
   }
 
-  return value;
+  return (
+    value ??
+    null
+  );
 }
 
 function getLocale(
@@ -142,11 +162,12 @@ function getLocale(
   return language ===
     "de"
     ? "de-DE"
-    : "en-IE";
+    : "en-GB";
 }
 
 function formatCurrency(
-  value: number,
+  value:
+    number,
   language:
     AppLanguage
 ) {
@@ -169,143 +190,10 @@ function formatCurrency(
   );
 }
 
-function formatRelativeTime(
+function formatDateTime(
   value:
-    | string
+    string
     | null,
-
-  language:
-    AppLanguage
-) {
-  if (
-    !value
-  ) {
-    return "";
-  }
-
-  const timestamp =
-    new Date(
-      value
-    ).getTime();
-
-  if (
-    Number.isNaN(
-      timestamp
-    )
-  ) {
-    return "";
-  }
-
-  const difference =
-    timestamp -
-    Date.now();
-
-  const absoluteSeconds =
-    Math.abs(
-      Math.round(
-        difference /
-          1000
-      )
-    );
-
-  const formatter =
-    new Intl.RelativeTimeFormat(
-      getLocale(
-        language
-      ),
-      {
-        numeric:
-          "auto",
-      }
-    );
-
-  if (
-    absoluteSeconds <
-    60
-  ) {
-    return formatter.format(
-      0,
-      "second"
-    );
-  }
-
-  const minutes =
-    Math.round(
-      difference /
-        60000
-    );
-
-  if (
-    Math.abs(
-      minutes
-    ) <
-    60
-  ) {
-    return formatter.format(
-      minutes,
-      "minute"
-    );
-  }
-
-  const hours =
-    Math.round(
-      difference /
-        3600000
-    );
-
-  if (
-    Math.abs(
-      hours
-    ) <
-    24
-  ) {
-    return formatter.format(
-      hours,
-      "hour"
-    );
-  }
-
-  const days =
-    Math.round(
-      difference /
-        86400000
-    );
-
-  if (
-    Math.abs(
-      days
-    ) <
-    7
-  ) {
-    return formatter.format(
-      days,
-      "day"
-    );
-  }
-
-  return new Intl.DateTimeFormat(
-    getLocale(
-      language
-    ),
-    {
-      day:
-        "2-digit",
-
-      month:
-        "short",
-    }
-  ).format(
-    new Date(
-      value
-    )
-  );
-}
-
-function formatShortDate(
-  value:
-    | string
-    | null,
-
   language:
     AppLanguage
 ) {
@@ -320,14 +208,20 @@ function formatShortDate(
       language
     ),
     {
+      timeZone:
+        "Europe/Berlin",
+
       day:
         "2-digit",
 
       month:
         "short",
 
-      year:
-        "numeric",
+      hour:
+        "2-digit",
+
+      minute:
+        "2-digit",
     }
   ).format(
     new Date(
@@ -336,26 +230,451 @@ function formatShortDate(
   );
 }
 
-function projectStatusClass(
-  status: string
+function formatToday(
+  language:
+    AppLanguage
 ) {
+  return new Intl.DateTimeFormat(
+    getLocale(
+      language
+    ),
+    {
+      timeZone:
+        "Europe/Berlin",
+
+      weekday:
+        "long",
+
+      day:
+        "2-digit",
+
+      month:
+        "long",
+
+      year:
+        "numeric",
+    }
+  ).format(
+    new Date()
+  );
+}
+
+function timestamp(
+  value:
+    string
+    | null
+    | undefined
+) {
+  if (
+    !value
+  ) {
+    return 0;
+  }
+
+  const result =
+    new Date(
+      value
+    ).getTime();
+
+  return Number.isFinite(
+    result
+  )
+    ? result
+    : 0;
+}
+
+function getTimeZoneOffsetMs(
+  date:
+    Date,
+  timeZone:
+    string
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone,
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+
+        second:
+          "2-digit",
+
+        hourCycle:
+          "h23",
+      }
+    ).formatToParts(
+      date
+    );
+
+  const values =
+    Object.fromEntries(
+      parts
+        .filter(
+          (
+            part
+          ) =>
+            part.type !==
+            "literal"
+        )
+        .map(
+          (
+            part
+          ) => [
+            part.type,
+            part.value,
+          ]
+        )
+    );
+
+  const zonedAsUtc =
+    Date.UTC(
+      Number(
+        values.year
+      ),
+      Number(
+        values.month
+      ) -
+        1,
+      Number(
+        values.day
+      ),
+      Number(
+        values.hour
+      ),
+      Number(
+        values.minute
+      ),
+      Number(
+        values.second
+      )
+    );
+
+  return (
+    zonedAsUtc -
+    date.getTime()
+  );
+}
+
+function berlinLocalDateTimeToIso({
+  year,
+  month,
+  day,
+  hour = 0,
+  minute = 0,
+}: {
+  year:
+    number;
+
+  month:
+    number;
+
+  day:
+    number;
+
+  hour?:
+    number;
+
+  minute?:
+    number;
+}) {
+  const wallClockAsUtc =
+    new Date(
+      Date.UTC(
+        year,
+        month -
+          1,
+        day,
+        hour,
+        minute,
+        0
+      )
+    );
+
+  const firstOffset =
+    getTimeZoneOffsetMs(
+      wallClockAsUtc,
+      "Europe/Berlin"
+    );
+
+  let result =
+    new Date(
+      wallClockAsUtc.getTime() -
+        firstOffset
+    );
+
+  const secondOffset =
+    getTimeZoneOffsetMs(
+      result,
+      "Europe/Berlin"
+    );
+
+  result =
+    new Date(
+      wallClockAsUtc.getTime() -
+        secondOffset
+    );
+
+  return result.toISOString();
+}
+
+function getBerlinDayBounds() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Europe/Berlin",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
+
+  const values =
+    Object.fromEntries(
+      parts
+        .filter(
+          (
+            part
+          ) =>
+            part.type !==
+            "literal"
+        )
+        .map(
+          (
+            part
+          ) => [
+            part.type,
+            part.value,
+          ]
+        )
+    );
+
+  const year =
+    Number(
+      values.year
+    );
+
+  const month =
+    Number(
+      values.month
+    );
+
+  const day =
+    Number(
+      values.day
+    );
+
+  const nextDay =
+    new Date(
+      Date.UTC(
+        year,
+        month -
+          1,
+        day +
+          1
+      )
+    );
+
+  return {
+    start:
+      berlinLocalDateTimeToIso({
+        year,
+        month,
+        day,
+      }),
+
+    end:
+      berlinLocalDateTimeToIso({
+        year:
+          nextDay.getUTCFullYear(),
+
+        month:
+          nextDay.getUTCMonth() +
+          1,
+
+        day:
+          nextDay.getUTCDate(),
+      }),
+  };
+}
+
+function isInside(
+  value:
+    string
+    | null
+    | undefined,
+  start:
+    string,
+  end:
+    string
+) {
+  const valueTime =
+    timestamp(
+      value
+    );
+
+  return (
+    valueTime >=
+      timestamp(
+        start
+      ) &&
+    valueTime <
+      timestamp(
+        end
+      )
+  );
+}
+
+function statusLabel(
+  status:
+    string,
+  language:
+    AppLanguage
+) {
+  const de =
+    language ===
+    "de";
+
+  switch (
+    status
+  ) {
+    case "NEW":
+      return de
+        ? "Neu"
+        : "New";
+
+    case "RESEARCHING":
+      return de
+        ? "Recherche"
+        : "Researching";
+
+    case "QUALIFIED":
+      return de
+        ? "Qualifiziert"
+        : "Qualified";
+
+    case "DRAFT_READY":
+      return de
+        ? "Entwurf bereit"
+        : "Draft ready";
+
+    case "CONTACTED":
+      return de
+        ? "Kontaktiert"
+        : "Contacted";
+
+    case "REPLIED":
+      return de
+        ? "Geantwortet"
+        : "Replied";
+
+    case "CALL_BOOKED":
+      return de
+        ? "Call gebucht"
+        : "Call booked";
+
+    case "PROPOSAL":
+      return de
+        ? "Angebot"
+        : "Proposal";
+
+    case "WON":
+      return de
+        ? "Gewonnen"
+        : "Won";
+
+    case "LOST":
+      return de
+        ? "Verloren"
+        : "Lost";
+
+    default:
+      return status;
+  }
+}
+
+function projectStatusLabel(
+  status:
+    string,
+  language:
+    AppLanguage
+) {
+  const de =
+    language ===
+    "de";
+
   switch (
     status
   ) {
     case "PLANNED":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
+      return de
+        ? "Geplant"
+        : "Planned";
 
     case "IN_PROGRESS":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
+      return de
+        ? "In Arbeit"
+        : "In progress";
 
     case "COMPLETED":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
+      return de
+        ? "Abgeschlossen"
+        : "Completed";
 
     case "CANCELLED":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
+      return de
+        ? "Abgebrochen"
+        : "Cancelled";
 
     default:
-      return "";
+      return status;
+  }
+}
+
+function pipelineBarClass(
+  status:
+    string
+) {
+  switch (
+    status
+  ) {
+    case "WON":
+      return "bg-emerald-500";
+
+    case "REPLIED":
+    case "CALL_BOOKED":
+    case "PROPOSAL":
+      return "bg-blue-500";
+
+    case "CONTACTED":
+    case "DRAFT_READY":
+      return "bg-violet-500";
+
+    default:
+      return "bg-foreground";
   }
 }
 
@@ -373,15 +692,9 @@ export default async function DashboardPage() {
       getAppLanguage(),
     ]);
 
-  const text =
-    languageCopy[
-      language
-    ].dashboard;
-
-  const projectText =
-    languageCopy[
-      language
-    ].projects;
+  const de =
+    language ===
+    "de";
 
   const {
     data: {
@@ -402,12 +715,30 @@ export default async function DashboardPage() {
     );
   }
 
+  const {
+    start:
+      todayStart,
+    end:
+      tomorrowStart,
+  } =
+    getBerlinDayBounds();
+
+  const recentPreviewCutoff =
+    new Date(
+      Date.now() -
+        7 *
+          24 *
+          60 *
+          60 *
+          1000
+    ).toISOString();
+
   const [
     leadsResult,
     draftsResult,
-    incomingMessagesResult,
+    messagesResult,
+    visitsResult,
     sentEmailsResult,
-    activitiesResult,
     projectsResult,
   ] =
     await Promise.all([
@@ -418,11 +749,28 @@ export default async function DashboardPage() {
         .select(`
           id,
           status,
+          priority,
+          opportunity_score,
           estimated_project_value,
+          last_contacted_at,
+          next_follow_up_at,
+          hot_lead_score,
+          hot_lead_level,
+          hot_lead_reasons,
+          smart_follow_up_mode,
+          smart_follow_up_reason,
           created_at,
 
           company:companies (
             name
+          ),
+
+          primary_contact:contacts (
+            full_name,
+            email,
+            email_quality_status,
+            email_quality_detail,
+            email_candidate
           )
         `)
         .eq(
@@ -444,11 +792,22 @@ export default async function DashboardPage() {
         .select(`
           id,
           lead_id,
-          status
+          status,
+          subject,
+          send_error,
+          sent_at,
+          created_at
         `)
         .eq(
           "user_id",
           user.id
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
         ),
 
       supabase
@@ -456,8 +815,17 @@ export default async function DashboardPage() {
           "email_messages"
         )
         .select(`
+          id,
           lead_id,
-          direction
+          from_name,
+          from_email,
+          subject,
+          received_at,
+          is_unread,
+          is_automatic_reply,
+          reply_classification,
+          reply_classification_confidence,
+          reply_follow_up_at
         `)
         .eq(
           "user_id",
@@ -466,6 +834,47 @@ export default async function DashboardPage() {
         .eq(
           "direction",
           "INCOMING"
+        )
+        .order(
+          "received_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          250
+        ),
+
+      supabase
+        .from(
+          "design_preview_visits"
+        )
+        .select(`
+          lead_id,
+          session_id,
+          is_owner,
+          is_engaged,
+          duration_seconds,
+          max_scroll_percent,
+          source,
+          first_seen_at,
+          last_seen_at
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .gte(
+          "last_seen_at",
+          recentPreviewCutoff
+        )
+        .order(
+          "last_seen_at",
+          {
+            ascending:
+              false,
+          }
         ),
 
       supabase
@@ -489,33 +898,6 @@ export default async function DashboardPage() {
         .eq(
           "activity_type",
           "EMAIL_SENT"
-        ),
-
-      supabase
-        .from(
-          "activities"
-        )
-        .select(`
-          id,
-          lead_id,
-          activity_type,
-          title,
-          description,
-          created_at
-        `)
-        .eq(
-          "user_id",
-          user.id
-        )
-        .order(
-          "created_at",
-          {
-            ascending:
-              false,
-          }
-        )
-        .limit(
-          6
         ),
 
       supabase
@@ -547,58 +929,41 @@ export default async function DashboardPage() {
         ),
     ]);
 
-  if (
-    leadsResult.error
+  for (
+    const [
+      label,
+      error,
+    ] of [
+      [
+        "leads",
+        leadsResult.error,
+      ],
+      [
+        "drafts",
+        draftsResult.error,
+      ],
+      [
+        "messages",
+        messagesResult.error,
+      ],
+      [
+        "preview visits",
+        visitsResult.error,
+      ],
+      [
+        "projects",
+        projectsResult.error,
+      ],
+    ] as const
   ) {
-    console.error(
-      "Could not load dashboard leads:",
-      leadsResult.error
-    );
-  }
-
-  if (
-    draftsResult.error
-  ) {
-    console.error(
-      "Could not load dashboard drafts:",
-      draftsResult.error
-    );
-  }
-
-  if (
-    incomingMessagesResult.error
-  ) {
-    console.error(
-      "Could not load dashboard replies:",
-      incomingMessagesResult.error
-    );
-  }
-
-  if (
-    sentEmailsResult.error
-  ) {
-    console.error(
-      "Could not load dashboard email count:",
-      sentEmailsResult.error
-    );
-  }
-
-  if (
-    activitiesResult.error
-  ) {
-    console.error(
-      "Could not load dashboard activities:",
-      activitiesResult.error
-    );
-  }
-
-  if (
-    projectsResult.error
-  ) {
-    console.error(
-      "Could not load dashboard projects:",
-      projectsResult.error
-    );
+    if (
+      error
+    ) {
+      console.error(
+        `Could not load dashboard ${label}:`,
+        error
+      );
+    }
   }
 
   const leads =
@@ -609,12 +974,12 @@ export default async function DashboardPage() {
     draftsResult.data ??
     [];
 
-  const incomingMessages =
-    incomingMessagesResult.data ??
+  const messages =
+    messagesResult.data ??
     [];
 
-  const activities =
-    activitiesResult.data ??
+  const visits =
+    visitsResult.data ??
     [];
 
   const projects =
@@ -622,8 +987,964 @@ export default async function DashboardPage() {
     [];
 
   /* =======================================================
-     STATUS COUNTS
+     LEAD LOOKUPS
   ======================================================= */
+
+  const leadById =
+    new Map<
+      string,
+      (
+        typeof leads
+      )[number]
+    >();
+
+  const companyNameByLeadId =
+    new Map<
+      string,
+      string
+    >();
+
+  for (
+    const lead of
+      leads
+  ) {
+    leadById.set(
+      lead.id,
+      lead
+    );
+
+    const company =
+      getSingleRelation<
+        CompanyRelation
+      >(
+        lead.company
+      );
+
+    companyNameByLeadId.set(
+      lead.id,
+      company?.name ??
+        (
+          de
+            ? "Unbekanntes Unternehmen"
+            : "Unknown company"
+        )
+    );
+  }
+
+  /* =======================================================
+     LATEST DRAFT BY LEAD
+  ======================================================= */
+
+  const latestDraftByLead =
+    new Map<
+      string,
+      (
+        typeof drafts
+      )[number]
+    >();
+
+  for (
+    const draft of
+      drafts
+  ) {
+    if (
+      !draft.lead_id ||
+      latestDraftByLead.has(
+        draft.lead_id
+      )
+    ) {
+      continue;
+    }
+
+    latestDraftByLead.set(
+      draft.lead_id,
+      draft
+    );
+  }
+
+  /* =======================================================
+     LATEST / UNREAD HUMAN REPLIES
+  ======================================================= */
+
+  const latestMessageByLead =
+    new Map<
+      string,
+      (
+        typeof messages
+      )[number]
+    >();
+
+  const unreadHumanReplyByLead =
+    new Map<
+      string,
+      (
+        typeof messages
+      )[number]
+    >();
+
+  const latestOooByLead =
+    new Map<
+      string,
+      (
+        typeof messages
+      )[number]
+    >();
+
+  for (
+    const message of
+      messages
+  ) {
+    if (
+      !latestMessageByLead.has(
+        message.lead_id
+      )
+    ) {
+      latestMessageByLead.set(
+        message.lead_id,
+        message
+      );
+    }
+
+    const humanReply =
+      !message.is_automatic_reply &&
+      message.reply_classification !==
+        "BOUNCE";
+
+    if (
+      humanReply &&
+      message.is_unread &&
+      !unreadHumanReplyByLead.has(
+        message.lead_id
+      )
+    ) {
+      unreadHumanReplyByLead.set(
+        message.lead_id,
+        message
+      );
+    }
+
+    if (
+      message.is_automatic_reply &&
+      message.reply_classification ===
+        "OUT_OF_OFFICE" &&
+      !latestOooByLead.has(
+        message.lead_id
+      )
+    ) {
+      latestOooByLead.set(
+        message.lead_id,
+        message
+      );
+    }
+  }
+
+  /* =======================================================
+     PREVIEW SIGNALS
+  ======================================================= */
+
+  const previewByLead =
+    new Map<
+      string,
+      {
+        sessions:
+          Set<string>;
+
+        engaged:
+          boolean;
+
+        maxDuration:
+          number;
+
+        maxScroll:
+          number;
+
+        latestSeen:
+          string
+          | null;
+
+        outreach:
+          boolean;
+      }
+    >();
+
+  for (
+    const visit of
+      visits
+  ) {
+    if (
+      visit.is_owner
+    ) {
+      continue;
+    }
+
+    const current =
+      previewByLead.get(
+        visit.lead_id
+      ) ??
+      {
+        sessions:
+          new Set<string>(),
+
+        engaged:
+          false,
+
+        maxDuration:
+          0,
+
+        maxScroll:
+          0,
+
+        latestSeen:
+          null,
+
+        outreach:
+          false,
+      };
+
+    current.sessions.add(
+      visit.session_id
+    );
+
+    current.engaged =
+      current.engaged ||
+      Boolean(
+        visit.is_engaged
+      );
+
+    current.maxDuration =
+      Math.max(
+        current.maxDuration,
+        Number(
+          visit.duration_seconds ??
+            0
+        )
+      );
+
+    current.maxScroll =
+      Math.max(
+        current.maxScroll,
+        Number(
+          visit.max_scroll_percent ??
+            0
+        )
+      );
+
+    current.outreach =
+      current.outreach ||
+      visit.source ===
+        "OUTREACH";
+
+    if (
+      !current.latestSeen ||
+      timestamp(
+        visit.last_seen_at
+      ) >
+        timestamp(
+          current.latestSeen
+        )
+    ) {
+      current.latestSeen =
+        visit.last_seen_at;
+    }
+
+    previewByLead.set(
+      visit.lead_id,
+      current
+    );
+  }
+
+  /* =======================================================
+     COMMAND CENTER COUNTS
+  ======================================================= */
+
+  const openLeads =
+    leads.filter(
+      (
+        lead
+      ) =>
+        !CLOSED_STATUSES.has(
+          lead.status
+        )
+    );
+
+  const hotLeads =
+    openLeads
+      .filter(
+        (
+          lead
+        ) =>
+          lead.hot_lead_level ===
+            "HOT" ||
+          Number(
+            lead.hot_lead_score ??
+              0
+          ) >=
+            70
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          Number(
+            b.hot_lead_score ??
+              0
+          ) -
+          Number(
+            a.hot_lead_score ??
+              0
+          )
+      );
+
+  const followUpsDue =
+    openLeads
+      .filter(
+        (
+          lead
+        ) =>
+          Boolean(
+            lead.next_follow_up_at
+          ) &&
+          timestamp(
+            lead.next_follow_up_at
+          ) <
+            timestamp(
+              tomorrowStart
+            )
+      )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          timestamp(
+            a.next_follow_up_at
+          ) -
+          timestamp(
+            b.next_follow_up_at
+          )
+      );
+
+  const emailIssueLeads =
+    openLeads.filter(
+      (
+        lead
+      ) => {
+        const contact =
+          getSingleRelation<
+            ContactRelation
+          >(
+            lead.primary_contact
+          );
+
+        return EMAIL_ISSUE_STATUSES.has(
+          contact
+            ?.email_quality_status ??
+            ""
+        );
+      }
+    );
+
+  const readyDraftLeads =
+    openLeads.filter(
+      (
+        lead
+      ) => {
+        const draft =
+          latestDraftByLead.get(
+            lead.id
+          );
+
+        const contact =
+          getSingleRelation<
+            ContactRelation
+          >(
+            lead.primary_contact
+          );
+
+        const emailStatus =
+          contact
+            ?.email_quality_status ??
+          "";
+
+        const emailBlocked =
+          emailStatus ===
+            "MISSING" ||
+          emailStatus ===
+            "INVALID" ||
+          emailStatus ===
+            "PLACEHOLDER";
+
+        return (
+          Boolean(
+            draft
+          ) &&
+          !draft?.sent_at &&
+          (
+            draft?.status ===
+              "DRAFT" ||
+            draft?.status ===
+              "APPROVED"
+          ) &&
+          !draft?.send_error &&
+          !emailBlocked
+        );
+      }
+    );
+
+  const oooReturningToday =
+    Array.from(
+      latestOooByLead.entries()
+    ).filter(
+      (
+        [
+          leadId,
+          message,
+        ]
+      ) => {
+        const lead =
+          leadById.get(
+            leadId
+          );
+
+        return (
+          Boolean(
+            lead
+          ) &&
+          !CLOSED_STATUSES.has(
+            lead?.status ??
+              ""
+          ) &&
+          isInside(
+            message.reply_follow_up_at,
+            todayStart,
+            tomorrowStart
+          )
+        );
+      }
+    );
+
+  const activeProjects =
+    projects.filter(
+      (
+        project
+      ) =>
+        project.status ===
+          "IN_PROGRESS" ||
+        project.status ===
+          "PLANNED"
+    );
+
+  /* =======================================================
+     COMMAND QUEUE
+  ======================================================= */
+
+  const commandByKey =
+    new Map<
+      string,
+      CommandItem
+    >();
+
+  function addCommand(
+    item:
+      CommandItem
+  ) {
+    const existing =
+      commandByKey.get(
+        item.key
+      );
+
+    if (
+      !existing ||
+      item.priority >
+        existing.priority
+    ) {
+      commandByKey.set(
+        item.key,
+        item
+      );
+    }
+  }
+
+  /* -------------------------------------------------------
+     1) UNREAD HUMAN REPLIES
+  ------------------------------------------------------- */
+
+  for (
+    const [
+      leadId,
+      message,
+    ] of
+      unreadHumanReplyByLead.entries()
+  ) {
+    const companyName =
+      companyNameByLeadId.get(
+        leadId
+      ) ??
+      (
+        de
+          ? "Unbekanntes Unternehmen"
+          : "Unknown company"
+      );
+
+    const classification =
+      message.reply_classification;
+
+    const badge =
+      classification ===
+        "INTERESTED"
+        ? de
+          ? "Interessiert"
+          : "Interested"
+        : classification ===
+            "QUESTION"
+          ? de
+            ? "Rückfrage"
+            : "Question"
+          : de
+            ? "Neue Antwort"
+            : "New reply";
+
+    addCommand({
+      key:
+        `lead:${leadId}`,
+
+      priority:
+        classification ===
+          "INTERESTED"
+          ? 120
+          : classification ===
+              "QUESTION"
+            ? 115
+            : 110,
+
+      title:
+        companyName,
+
+      description:
+        message.subject ??
+        (
+          de
+            ? "Neue ungelesene Kundenantwort"
+            : "New unread customer reply"
+        ),
+
+      href:
+        `/inbox?lead=${encodeURIComponent(
+          leadId
+        )}`,
+
+      badge,
+
+      badgeClass:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300",
+
+      sortTime:
+        timestamp(
+          message.received_at
+        ),
+    });
+  }
+
+  /* -------------------------------------------------------
+     2) OOO RETURNS TODAY
+  ------------------------------------------------------- */
+
+  for (
+    const [
+      leadId,
+      message,
+    ] of
+      oooReturningToday
+  ) {
+    addCommand({
+      key:
+        `lead:${leadId}`,
+
+      priority:
+        105,
+
+      title:
+        companyNameByLeadId.get(
+          leadId
+        ) ??
+        (
+          de
+            ? "Unbekanntes Unternehmen"
+            : "Unknown company"
+        ),
+
+      description:
+        de
+          ? "Abwesenheit endet heute – Follow-up kann wieder sinnvoll sein."
+          : "Out-of-office period ends today — follow-up is relevant again.",
+
+      href:
+        `/leads/${leadId}#outreach`,
+
+      badge:
+        de
+          ? "Wieder da"
+          : "Back today",
+
+      badgeClass:
+        "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300",
+
+      sortTime:
+        timestamp(
+          message.reply_follow_up_at
+        ),
+    });
+  }
+
+  /* -------------------------------------------------------
+     3) DUE / OVERDUE FOLLOW-UPS
+  ------------------------------------------------------- */
+
+  for (
+    const lead of
+      followUpsDue
+  ) {
+    const overdue =
+      timestamp(
+        lead.next_follow_up_at
+      ) <
+      timestamp(
+        todayStart
+      );
+
+    addCommand({
+      key:
+        `lead:${lead.id}`,
+
+      priority:
+        overdue
+          ? 100
+          : 95,
+
+      title:
+        companyNameByLeadId.get(
+          lead.id
+        ) ??
+        (
+          de
+            ? "Unbekanntes Unternehmen"
+            : "Unknown company"
+        ),
+
+      description:
+        overdue
+          ? de
+            ? `Follow-up überfällig · ${formatDateTime(
+                lead.next_follow_up_at,
+                language
+              )}`
+            : `Follow-up overdue · ${formatDateTime(
+                lead.next_follow_up_at,
+                language
+              )}`
+          : de
+            ? `Follow-up heute · ${formatDateTime(
+                lead.next_follow_up_at,
+                language
+              )}`
+            : `Follow-up today · ${formatDateTime(
+                lead.next_follow_up_at,
+                language
+              )}`,
+
+      href:
+        `/leads/${lead.id}#outreach`,
+
+      badge:
+        overdue
+          ? de
+            ? "Überfällig"
+            : "Overdue"
+          : de
+            ? "Heute"
+            : "Today",
+
+      badgeClass:
+        overdue
+          ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+          : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300",
+
+      sortTime:
+        timestamp(
+          lead.next_follow_up_at
+        ),
+    });
+  }
+
+  /* -------------------------------------------------------
+     4) HOT LEADS
+  ------------------------------------------------------- */
+
+  for (
+    const lead of
+      hotLeads
+  ) {
+    const preview =
+      previewByLead.get(
+        lead.id
+      );
+
+    const score =
+      Number(
+        lead.hot_lead_score ??
+          0
+      );
+
+    addCommand({
+      key:
+        `lead:${lead.id}`,
+
+      priority:
+        85 +
+        Math.min(
+          10,
+          Math.floor(
+            score /
+              10
+          )
+        ),
+
+      title:
+        companyNameByLeadId.get(
+          lead.id
+        ) ??
+        (
+          de
+            ? "Unbekanntes Unternehmen"
+            : "Unknown company"
+        ),
+
+      description:
+        preview?.sessions.size
+          ? de
+            ? `Hot Score ${score} · ${preview.sessions.size} externe Preview-Session${preview.sessions.size === 1 ? "" : "s"}`
+            : `Hot score ${score} · ${preview.sessions.size} external preview session${preview.sessions.size === 1 ? "" : "s"}`
+          : de
+            ? `Hot Score ${score} · jetzt priorisieren`
+            : `Hot score ${score} · prioritize now`,
+
+      href:
+        `/leads/${lead.id}`,
+
+      badge:
+        `🔥 ${score} HOT`,
+
+      badgeClass:
+        "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-300",
+
+      sortTime:
+        timestamp(
+          preview?.latestSeen
+        ),
+    });
+  }
+
+  /* -------------------------------------------------------
+     5) EMAIL ISSUES
+  ------------------------------------------------------- */
+
+  for (
+    const lead of
+      emailIssueLeads
+  ) {
+    const contact =
+      getSingleRelation<
+        ContactRelation
+      >(
+        lead.primary_contact
+      );
+
+    addCommand({
+      key:
+        `lead:${lead.id}`,
+
+      priority:
+        75,
+
+      title:
+        companyNameByLeadId.get(
+          lead.id
+        ) ??
+        (
+          de
+            ? "Unbekanntes Unternehmen"
+            : "Unknown company"
+        ),
+
+      description:
+        contact
+          ?.email_quality_detail ??
+        (
+          de
+            ? "Empfängeradresse sollte vor dem nächsten Versand geprüft werden."
+            : "Recipient email should be checked before the next send."
+        ),
+
+      href:
+        `/leads/${lead.id}#outreach`,
+
+      badge:
+        de
+          ? "E-Mail prüfen"
+          : "Check email",
+
+      badgeClass:
+        "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300",
+
+      sortTime:
+        timestamp(
+          lead.created_at
+        ),
+    });
+  }
+
+  /* -------------------------------------------------------
+     6) DRAFTS TO REVIEW
+  ------------------------------------------------------- */
+
+  for (
+    const lead of
+      readyDraftLeads
+  ) {
+    const draft =
+      latestDraftByLead.get(
+        lead.id
+      );
+
+    addCommand({
+      key:
+        `lead:${lead.id}`,
+
+      priority:
+        65,
+
+      title:
+        companyNameByLeadId.get(
+          lead.id
+        ) ??
+        (
+          de
+            ? "Unbekanntes Unternehmen"
+            : "Unknown company"
+        ),
+
+      description:
+        draft?.subject ??
+        (
+          de
+            ? "Outreach-Entwurf wartet auf Prüfung."
+            : "Outreach draft is waiting for review."
+        ),
+
+      href:
+        `/leads/${lead.id}#outreach`,
+
+      badge:
+        draft?.status ===
+          "APPROVED"
+          ? de
+            ? "Freigegeben"
+            : "Approved"
+          : de
+            ? "Entwurf"
+            : "Draft",
+
+      badgeClass:
+        "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300",
+
+      sortTime:
+        timestamp(
+          draft?.created_at
+        ),
+    });
+  }
+
+  /* -------------------------------------------------------
+     7) ACTIVE PROJECTS
+  ------------------------------------------------------- */
+
+  for (
+    const project of
+      activeProjects
+  ) {
+    addCommand({
+      key:
+        `project:${project.id}`,
+
+      priority:
+        project.status ===
+          "IN_PROGRESS"
+          ? 58
+          : 50,
+
+      title:
+        project.project_name,
+
+      description:
+        `${project.client_name} · ${projectStatusLabel(
+          project.status,
+          language
+        )}`,
+
+      href:
+        `/projects/${project.id}/edit`,
+
+      badge:
+        de
+          ? "Projekt"
+          : "Project",
+
+      badgeClass:
+        "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
+
+      sortTime:
+        timestamp(
+          project.started_at ??
+          project.created_at
+        ),
+    });
+  }
+
+  const commandItems =
+    Array.from(
+      commandByKey.values()
+    )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b.priority -
+            a.priority ||
+          b.sortTime -
+            a.sortTime
+      )
+      .slice(
+        0,
+        10
+      );
+
+  /* =======================================================
+     PIPELINE
+  ======================================================= */
+
+  const pipelineStatuses = [
+    "NEW",
+    "RESEARCHING",
+    "QUALIFIED",
+    "DRAFT_READY",
+    "CONTACTED",
+    "REPLIED",
+    "CALL_BOOKED",
+    "PROPOSAL",
+    "WON",
+  ];
 
   const statusCounts =
     new Map<
@@ -633,7 +1954,7 @@ export default async function DashboardPage() {
 
   for (
     const lead of
-    leads
+      leads
   ) {
     statusCounts.set(
       lead.status,
@@ -648,115 +1969,7 @@ export default async function DashboardPage() {
   }
 
   /* =======================================================
-     DRAFTS
-  ======================================================= */
-
-  const draftReadyLeadIds =
-    new Set<string>();
-
-  for (
-    const draft of
-    drafts
-  ) {
-    if (
-      draft.status ===
-        "DRAFT" &&
-      draft.lead_id
-    ) {
-      draftReadyLeadIds.add(
-        draft.lead_id
-      );
-    }
-  }
-
-  /* =======================================================
-     REPLIES
-  ======================================================= */
-
-  const repliedLeadIds =
-    new Set<string>();
-
-  for (
-    const message of
-    incomingMessages
-  ) {
-    if (
-      message.lead_id
-    ) {
-      repliedLeadIds.add(
-        message.lead_id
-      );
-    }
-  }
-
-  /* =======================================================
-     PIPELINE VALUE
-  ======================================================= */
-
-  const pipelineValue =
-    leads.reduce(
-      (
-        total,
-        lead
-      ) => {
-        if (
-          CLOSED_PIPELINE_STATUSES.has(
-            lead.status
-          )
-        ) {
-          return total;
-        }
-
-        const value =
-          Number(
-            lead.estimated_project_value ??
-              0
-          );
-
-        if (
-          !Number.isFinite(
-            value
-          )
-        ) {
-          return total;
-        }
-
-        return (
-          total +
-          value
-        );
-      },
-      0
-    );
-
-  /* =======================================================
-     COMPANY NAMES
-  ======================================================= */
-
-  const companyNamesByLeadId =
-    new Map<
-      string,
-      string
-    >();
-
-  for (
-    const lead of
-    leads
-  ) {
-    const company =
-      getSingleRelation(
-        lead.company
-      );
-
-    companyNamesByLeadId.set(
-      lead.id,
-      company?.name ??
-        text.unknownCompany
-    );
-  }
-
-  /* =======================================================
-     PROJECT METRICS
+     BUSINESS METRICS
   ======================================================= */
 
   const revenueProjects =
@@ -768,25 +1981,17 @@ export default async function DashboardPage() {
         "CANCELLED"
     );
 
-  const bookedProjectValue =
+  const bookedValue =
     revenueProjects.reduce(
       (
         total,
         project
-      ) => {
-        const value =
-          Number(
-            project.total_value ??
-              0
-          );
-
-        return Number.isFinite(
-          value
-        )
-          ? total +
-              value
-          : total;
-      },
+      ) =>
+        total +
+        Number(
+          project.total_value ??
+            0
+        ),
       0
     );
 
@@ -795,72 +2000,49 @@ export default async function DashboardPage() {
       (
         total,
         project
-      ) => {
-        const value =
-          Number(
-            project.amount_paid ??
-              0
-          );
-
-        return Number.isFinite(
-          value
-        )
-          ? total +
-              value
-          : total;
-      },
+      ) =>
+        total +
+        Number(
+          project.amount_paid ??
+            0
+        ),
       0
     );
 
-  const outstandingRevenue =
+  const outstanding =
     revenueProjects.reduce(
       (
         total,
         project
-      ) => {
-        const projectValue =
+      ) =>
+        total +
+        Math.max(
+          0,
           Number(
             project.total_value ??
               0
-          );
-
-        const amountPaid =
-          Number(
-            project.amount_paid ??
-              0
-          );
-
-        if (
-          !Number.isFinite(
-            projectValue
-          ) ||
-          !Number.isFinite(
-            amountPaid
-          )
-        ) {
-          return total;
-        }
-
-        return (
-          total +
-          Math.max(
-            0,
-            projectValue -
-              amountPaid
-          )
-        );
-      },
+          ) -
+            Number(
+              project.amount_paid ??
+                0
+            )
+        ),
       0
     );
 
-  const completedProjects =
-    revenueProjects.filter(
+  const pipelineValue =
+    openLeads.reduce(
       (
-        project
+        total,
+        lead
       ) =>
-        project.status ===
-        "COMPLETED"
-    ).length;
+        total +
+        Number(
+          lead.estimated_project_value ??
+            0
+        ),
+      0
+    );
 
   const recentProjects =
     [
@@ -870,64 +2052,17 @@ export default async function DashboardPage() {
         (
           a,
           b
-        ) => {
-          const priority = (
-            status: string
-          ) => {
-            switch (
-              status
-            ) {
-              case "IN_PROGRESS":
-                return 0;
-
-              case "PLANNED":
-                return 1;
-
-              case "COMPLETED":
-                return 2;
-
-              case "CANCELLED":
-                return 3;
-
-              default:
-                return 4;
-            }
-          };
-
-          const statusDifference =
-            priority(
-              a.status
-            ) -
-            priority(
-              b.status
-            );
-
-          if (
-            statusDifference !==
-            0
-          ) {
-            return statusDifference;
-          }
-
-          const aDate =
-            a.completed_at ??
-            a.started_at ??
-            a.created_at;
-
-          const bDate =
+        ) =>
+          timestamp(
             b.completed_at ??
             b.started_at ??
-            b.created_at;
-
-          return (
-            new Date(
-              bDate
-            ).getTime() -
-            new Date(
-              aDate
-            ).getTime()
-          );
-        }
+            b.created_at
+          ) -
+          timestamp(
+            a.completed_at ??
+            a.started_at ??
+            a.created_at
+          )
       )
       .slice(
         0,
@@ -935,211 +2070,319 @@ export default async function DashboardPage() {
       );
 
   /* =======================================================
-     STATS
+     COPY
   ======================================================= */
 
-  const stats = [
+  const copy =
+    de
+      ? {
+          eyebrow:
+            "Daily Command Center",
+
+          title:
+            "Heute",
+
+          description:
+            "Das Wichtigste aus Inbox, Follow-ups, Preview-Signalen und Projekten – priorisiert an einem Ort.",
+
+          unreadReplies:
+            "Neue Antworten",
+
+          hotLeads:
+            "HOT Leads",
+
+          followUps:
+            "Follow-ups fällig",
+
+          emailIssues:
+            "E-Mail prüfen",
+
+          drafts:
+            "Entwürfe bereit",
+
+          ooo:
+            "Heute wieder da",
+
+          focus:
+            "Dein Fokus",
+
+          focusDescription:
+            "Leadbase sortiert die wichtigsten Aktionen nach Dringlichkeit und Kaufsignal.",
+
+          nothingUrgent:
+            "Aktuell nichts Dringendes.",
+
+          nothingUrgentDescription:
+            "Neue Antworten, Follow-ups und starke Preview-Signale erscheinen automatisch hier.",
+
+          hotNow:
+            "Hot Leads",
+
+          hotNowDescription:
+            "Die stärksten aktuell offenen Kauf- und Engagement-Signale.",
+
+          noHot:
+            "Noch keine HOT Leads.",
+
+          overview:
+            "Business-Übersicht",
+
+          pipelineValue:
+            "Pipeline",
+
+          booked:
+            "Gebuchter Wert",
+
+          paid:
+            "Bezahlt",
+
+          outstanding:
+            "Offen",
+
+          sent:
+            "E-Mails gesendet",
+
+          pipeline:
+            "Sales Pipeline",
+
+          pipelineDescription:
+            "Aktuelle Verteilung deiner Leads über die Vertriebsstufen.",
+
+          projects:
+            "Aktuelle Projekte",
+
+          projectsDescription:
+            "Letzte Kundenprojekte und ihr finanzieller Stand.",
+
+          allProjects:
+            "Alle Projekte",
+
+          viewAllLeads:
+            "Alle Leads",
+
+          viewInbox:
+            "Inbox öffnen",
+
+          analytics:
+            "Analytics",
+        }
+      : {
+          eyebrow:
+            "Daily Command Center",
+
+          title:
+            "Today",
+
+          description:
+            "The most important inbox, follow-up, preview and project signals — prioritized in one place.",
+
+          unreadReplies:
+            "New replies",
+
+          hotLeads:
+            "HOT leads",
+
+          followUps:
+            "Follow-ups due",
+
+          emailIssues:
+            "Email issues",
+
+          drafts:
+            "Drafts ready",
+
+          ooo:
+            "Back today",
+
+          focus:
+            "Your focus",
+
+          focusDescription:
+            "Leadbase ranks the most important actions by urgency and buying signal.",
+
+          nothingUrgent:
+            "Nothing urgent right now.",
+
+          nothingUrgentDescription:
+            "New replies, due follow-ups and strong preview signals will automatically appear here.",
+
+          hotNow:
+            "Hot leads",
+
+          hotNowDescription:
+            "The strongest current buying and engagement signals.",
+
+          noHot:
+            "No HOT leads yet.",
+
+          overview:
+            "Business overview",
+
+          pipelineValue:
+            "Pipeline",
+
+          booked:
+            "Booked value",
+
+          paid:
+            "Paid",
+
+          outstanding:
+            "Outstanding",
+
+          sent:
+            "Emails sent",
+
+          pipeline:
+            "Sales pipeline",
+
+          pipelineDescription:
+            "Current distribution of leads across your sales stages.",
+
+          projects:
+            "Current projects",
+
+          projectsDescription:
+            "Recent client projects and their financial status.",
+
+          allProjects:
+            "All projects",
+
+          viewAllLeads:
+            "View all leads",
+
+          viewInbox:
+            "Open inbox",
+
+          analytics:
+            "Analytics",
+        };
+
+  const summaryCards = [
     {
       label:
-        text.newLeads,
+        copy.unreadReplies,
 
       value:
-        String(
-          statusCounts.get(
-            "NEW"
-          ) ??
-            0
-        ),
-
-      icon:
-        UserPlus,
-    },
-
-    {
-      label:
-        text.qualified,
-
-      value:
-        String(
-          statusCounts.get(
-            "QUALIFIED"
-          ) ??
-            0
-        ),
-
-      icon:
-        CircleCheck,
-    },
-
-    {
-      label:
-        text.draftsReady,
-
-      value:
-        String(
-          draftReadyLeadIds.size
-        ),
-
-      icon:
-        Clock3,
-    },
-
-    {
-      label:
-        text.emailsSent,
-
-      value:
-        String(
-          sentEmailsResult.count ??
-            0
-        ),
-
-      icon:
-        Mail,
-    },
-
-    {
-      label:
-        text.replies,
-
-      value:
-        String(
-          repliedLeadIds.size
-        ),
+        unreadHumanReplyByLead.size,
 
       icon:
         MessageSquareReply,
+
+      href:
+        "/inbox",
+
+      accent:
+        unreadHumanReplyByLead.size >
+        0
+          ? "text-emerald-600 dark:text-emerald-400"
+          : "text-muted-foreground",
     },
 
     {
       label:
-        text.callsBooked,
+        copy.hotLeads,
 
       value:
-        String(
-          statusCounts.get(
-            "CALL_BOOKED"
-          ) ??
-            0
-        ),
+        hotLeads.length,
 
       icon:
-        CalendarCheck,
+        Flame,
+
+      href:
+        "/leads",
+
+      accent:
+        hotLeads.length >
+        0
+          ? "text-orange-600 dark:text-orange-400"
+          : "text-muted-foreground",
     },
 
     {
       label:
-        text.wonClients,
+        copy.followUps,
 
       value:
-        String(
-          statusCounts.get(
-            "WON"
-          ) ??
-            0
-        ),
+        followUpsDue.length,
 
       icon:
-        Trophy,
+        CalendarClock,
+
+      href:
+        "/leads",
+
+      accent:
+        followUpsDue.length >
+        0
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-muted-foreground",
     },
 
     {
       label:
-        text.pipelineValue,
+        copy.emailIssues,
 
       value:
-        formatCurrency(
-          pipelineValue,
-          language
-        ),
+        emailIssueLeads.length,
 
       icon:
-        ArrowUpRight,
+        ShieldAlert,
+
+      href:
+        "/leads",
+
+      accent:
+        emailIssueLeads.length >
+        0
+          ? "text-red-600 dark:text-red-400"
+          : "text-muted-foreground",
+    },
+
+    {
+      label:
+        copy.drafts,
+
+      value:
+        readyDraftLeads.length,
+
+      icon:
+        Mail,
+
+      href:
+        "/leads",
+
+      accent:
+        readyDraftLeads.length >
+        0
+          ? "text-blue-600 dark:text-blue-400"
+          : "text-muted-foreground",
+    },
+
+    {
+      label:
+        copy.ooo,
+
+      value:
+        oooReturningToday.length,
+
+      icon:
+        BellRing,
+
+      href:
+        "/inbox",
+
+      accent:
+        oooReturningToday.length >
+        0
+          ? "text-violet-600 dark:text-violet-400"
+          : "text-muted-foreground",
     },
   ];
 
-  const businessStats = [
-    {
-      label:
-        text.bookedValue,
-
-      value:
-        formatCurrency(
-          bookedProjectValue,
-          language
-        ),
-
-      description:
-        text.bookedValueDescription,
-
-      icon:
-        BriefcaseBusiness,
-    },
-
-    {
-      label:
-        text.paidRevenue,
-
-      value:
-        formatCurrency(
-          paidRevenue,
-          language
-        ),
-
-      description:
-        text.paidRevenueDescription,
-
-      icon:
-        Banknote,
-    },
-
-    {
-      label:
-        text.outstanding,
-
-      value:
-        formatCurrency(
-          outstandingRevenue,
-          language
-        ),
-
-      description:
-        text.outstandingDescription,
-
-      icon:
-        WalletCards,
-    },
-
-    {
-      label:
-        text.completedProjects,
-
-      value:
-        String(
-          completedProjects
-        ),
-
-      description:
-        text.completedProjectsDescription,
-
-      icon:
-        ReceiptText,
-    },
-  ];
-
-  const draftDescription =
-    draftReadyLeadIds.size ===
-    0
-      ? text.noDraftsWaiting
-      : draftReadyLeadIds.size ===
-          1
-        ? text.oneDraftWaiting
-        : text.manyDraftsWaiting.replace(
-            "{count}",
-            String(
-              draftReadyLeadIds.size
-            )
-          );
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
@@ -1147,195 +2390,134 @@ export default async function DashboardPage() {
           HEADER
       =================================================== */}
 
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
             {
-              text.eyebrow
+              copy.eyebrow
             }
           </p>
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {
-              text.title
+              copy.title
             }
           </h1>
 
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             {
-              text.description
+              copy.description
             }
           </p>
         </div>
 
-        <Badge
-          variant="outline"
-          className="h-8 w-fit shrink-0 rounded-lg px-3 font-normal"
-        >
-          {
-            text.privateWorkspace
-          }
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant="outline"
+            className="h-8 rounded-lg px-3 font-normal"
+          >
+            {
+              formatToday(
+                language
+              )
+            }
+          </Badge>
+
+          <Link
+            href="/analytics"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted"
+          >
+            <BarChart3 className="size-3.5" />
+
+            {
+              copy.analytics
+            }
+          </Link>
+
+          <Link
+            href="/inbox"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted"
+          >
+            <Inbox className="size-3.5" />
+
+            {
+              copy.viewInbox
+            }
+          </Link>
+        </div>
       </header>
 
       {/* ===================================================
-          SALES PIPELINE
+          TODAY SUMMARY
       =================================================== */}
 
-      <section className="mt-6 md:mt-8">
-        <div>
-          <h2 className="text-sm font-semibold">
-            {
-              text.salesPipeline
-            }
-          </h2>
+      <section className="mt-6 grid grid-cols-2 gap-3 md:mt-8 md:grid-cols-3 xl:grid-cols-6">
+        {summaryCards.map(
+          (
+            card
+          ) => {
+            const Icon =
+              card.icon;
 
-          <p className="mt-1 text-xs text-muted-foreground">
-            {
-              text.salesPipelineDescription
-            }
-          </p>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {stats.map(
-            (
-              stat
-            ) => {
-              const Icon =
-                stat.icon;
-
-              return (
-                <Card
-                  key={
-                    stat.label
-                  }
-                  className="min-w-0 shadow-none"
-                >
-                  <CardContent className="p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 text-xs leading-5 text-muted-foreground sm:text-sm">
+            return (
+              <Link
+                key={
+                  card.label
+                }
+                href={
+                  card.href
+                }
+                className="group min-w-0"
+              >
+                <Card className="h-full min-w-0 shadow-none transition-colors group-hover:border-foreground/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs text-muted-foreground">
                         {
-                          stat.label
+                          card.label
                         }
                       </p>
 
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border">
-                        <Icon className="size-4 text-muted-foreground" />
-                      </div>
+                      <Icon
+                        className={`size-4 shrink-0 ${card.accent}`}
+                      />
                     </div>
 
-                    <p className="mt-4 break-words text-xl font-semibold tracking-tight sm:mt-5 sm:text-2xl">
+                    <p className="mt-4 text-2xl font-semibold tracking-tight">
                       {
-                        stat.value
+                        card.value
                       }
                     </p>
                   </CardContent>
                 </Card>
-              );
-            }
-          )}
-        </div>
+              </Link>
+            );
+          }
+        )}
       </section>
 
       {/* ===================================================
-          REVENUE
+          FOCUS + HOT LEADS
       =================================================== */}
 
-      <section className="mt-8">
-        <div className="flex items-end justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">
-              {
-                text.revenueProjects
-              }
-            </h2>
-
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {
-                text.revenueProjectsDescription
-              }
-            </p>
-          </div>
-
-          <Link
-            href="/projects"
-            className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {
-              text.viewProjects
-            }
-          </Link>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {businessStats.map(
-            (
-              stat
-            ) => {
-              const Icon =
-                stat.icon;
-
-              return (
-                <Link
-                  key={
-                    stat.label
-                  }
-                  href="/projects"
-                  className="group min-w-0"
-                >
-                  <Card className="h-full min-w-0 shadow-none transition-colors group-hover:border-foreground/30">
-                    <CardContent className="p-4 sm:p-5">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 text-xs leading-5 text-muted-foreground sm:text-sm">
-                          {
-                            stat.label
-                          }
-                        </p>
-
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border">
-                          <Icon className="size-4 text-muted-foreground" />
-                        </div>
-                      </div>
-
-                      <p className="mt-4 break-words text-xl font-semibold tracking-tight sm:mt-5 sm:text-2xl">
-                        {
-                          stat.value
-                        }
-                      </p>
-
-                      <p className="mt-2 hidden text-xs leading-5 text-muted-foreground sm:block">
-                        {
-                          stat.description
-                        }
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            }
-          )}
-        </div>
-      </section>
-
-      {/* ===================================================
-          ACTIVITY + PIPELINE
-      =================================================== */}
-
-      <section className="mt-6 grid gap-4 md:mt-8 xl:grid-cols-[1.4fr_0.6fr]">
+      <section className="mt-4 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
         <Card className="min-w-0 shadow-none">
           <CardContent className="p-0">
             <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
               <div className="min-w-0">
-                <h2 className="text-sm font-semibold">
-                  {
-                    text.recentActivity
-                  }
-                </h2>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-muted-foreground" />
 
-                <p className="mt-1 text-xs text-muted-foreground">
+                  <h2 className="text-sm font-semibold">
+                    {
+                      copy.focus
+                    }
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   {
-                    text.recentActivityDescription
+                    copy.focusDescription
                   }
                 </p>
               </div>
@@ -1345,114 +2527,79 @@ export default async function DashboardPage() {
                 className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 {
-                  text.viewLeads
+                  copy.viewAllLeads
                 }
               </Link>
             </div>
 
-            {activities.length ===
+            {commandItems.length ===
             0 ? (
-              <div className="flex min-h-60 items-center justify-center px-5 py-10 sm:min-h-72">
-                <div className="max-w-xs text-center">
-                  <div className="mx-auto flex size-9 items-center justify-center rounded-lg border">
-                    <Users className="size-4 text-muted-foreground" />
+              <div className="flex min-h-64 items-center justify-center p-6 text-center">
+                <div className="max-w-sm">
+                  <div className="mx-auto flex size-10 items-center justify-center rounded-xl border">
+                    <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
                   </div>
 
                   <p className="mt-4 text-sm font-medium">
                     {
-                      text.noActivity
+                      copy.nothingUrgent
                     }
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
                     {
-                      text.noActivityDescription
+                      copy.nothingUrgentDescription
                     }
                   </p>
                 </div>
               </div>
             ) : (
-              <div>
-                {activities.map(
+              <div className="divide-y">
+                {commandItems.map(
                   (
-                    activity,
-                    index
-                  ) => {
-                    const companyName =
-                      activity.lead_id
-                        ? companyNamesByLeadId.get(
-                            activity.lead_id
-                          ) ??
-                          text.unknownCompany
-                        : text.unknownCompany;
+                    item
+                  ) => (
+                    <Link
+                      key={
+                        item.key
+                      }
+                      href={
+                        item.href
+                      }
+                      className="group flex items-start gap-3 px-4 py-4 transition-colors hover:bg-muted/30 sm:items-center sm:px-5"
+                    >
+                      <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background sm:mt-0">
+                        <CircleDot className="size-3.5 text-muted-foreground" />
+                      </div>
 
-                    const content = (
-                      <>
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                            <Users className="size-4 text-muted-foreground" />
-                          </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 truncate text-sm font-semibold">
+                            {
+                              item.title
+                            }
+                          </p>
 
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {
-                                companyName
-                              }
-                            </p>
-
-                            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground sm:truncate">
-                              {activity.title ??
-                                text.activityFallback}
-                            </p>
-                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`shrink-0 rounded-full text-[10px] ${item.badgeClass}`}
+                          >
+                            {
+                              item.badge
+                            }
+                          </Badge>
                         </div>
 
-                        <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground sm:text-xs">
-                          {formatRelativeTime(
-                            activity.created_at,
-                            language
-                          )}
-                        </span>
-                      </>
-                    );
-
-                    return activity.lead_id ? (
-                      <Link
-                        key={
-                          activity.id
-                        }
-                        href={`/leads/${activity.lead_id}`}
-                        className={`flex items-start justify-between gap-3 px-4 py-4 transition-colors hover:bg-muted/40 sm:items-center sm:gap-4 sm:px-5 ${
-                          index !==
-                          activities.length -
-                            1
-                            ? "border-b"
-                            : ""
-                        }`}
-                      >
-                        {
-                          content
-                        }
-                      </Link>
-                    ) : (
-                      <div
-                        key={
-                          activity.id
-                        }
-                        className={`flex items-start justify-between gap-3 px-4 py-4 sm:items-center sm:gap-4 sm:px-5 ${
-                          index !==
-                          activities.length -
-                            1
-                            ? "border-b"
-                            : ""
-                        }`}
-                      >
-                        {
-                          content
-                        }
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground sm:truncate">
+                          {
+                            item.description
+                          }
+                        </p>
                       </div>
-                    );
-                  }
+
+                      <ArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:mt-0" />
+                    </Link>
+                  )
                 )}
               </div>
             )}
@@ -1460,87 +2607,293 @@ export default async function DashboardPage() {
         </Card>
 
         <Card className="min-w-0 shadow-none">
-          <CardContent className="p-4 sm:p-5">
-            <div>
-              <h2 className="text-sm font-semibold">
-                {
-                  text.pipeline
-                }
-              </h2>
+          <CardContent className="p-0">
+            <div className="border-b px-4 py-4 sm:px-5">
+              <div className="flex items-center gap-2">
+                <Flame className="size-4 text-orange-600 dark:text-orange-400" />
 
-              <p className="mt-1 text-xs text-muted-foreground">
+                <h2 className="text-sm font-semibold">
+                  {
+                    copy.hotNow
+                  }
+                </h2>
+              </div>
+
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {
-                  text.pipelineDescription
+                  copy.hotNowDescription
                 }
               </p>
             </div>
 
-            <div className="mt-5 space-y-4 sm:mt-6">
-              {PIPELINE_STATUSES.map(
-                (
-                  pipelineStatus
-                ) => (
-                  <PipelineRow
-                    key={
-                      pipelineStatus.status
-                    }
-                    label={
-                      language ===
-                      "de"
-                        ? pipelineStatus.de
-                        : pipelineStatus.en
-                    }
-                    value={
-                      statusCounts.get(
-                        pipelineStatus.status
-                      ) ??
-                      0
-                    }
-                    total={
-                      leads.length
-                    }
-                  />
-                )
-              )}
-            </div>
+            {hotLeads.length ===
+            0 ? (
+              <div className="flex min-h-64 items-center justify-center px-5 py-8 text-center">
+                <div>
+                  <Flame className="mx-auto size-5 text-muted-foreground" />
 
-            <div className="mt-6 border-t pt-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {
-                    text.totalLeads
-                  }
-                </span>
-
-                <span className="font-medium">
-                  {
-                    leads.length
-                  }
-                </span>
+                  <p className="mt-3 text-sm font-medium">
+                    {
+                      copy.noHot
+                    }
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="divide-y">
+                {hotLeads
+                  .slice(
+                    0,
+                    5
+                  )
+                  .map(
+                    (
+                      lead
+                    ) => {
+                      const score =
+                        Number(
+                          lead.hot_lead_score ??
+                            0
+                        );
+
+                      const preview =
+                        previewByLead.get(
+                          lead.id
+                        );
+
+                      return (
+                        <Link
+                          key={
+                            lead.id
+                          }
+                          href={`/leads/${lead.id}`}
+                          className="group block px-4 py-4 transition-colors hover:bg-muted/30 sm:px-5"
+                        >
+                          <div className="flex min-w-0 items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">
+                                {companyNameByLeadId.get(
+                                  lead.id
+                                )}
+                              </p>
+
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {preview?.sessions.size
+                                  ? de
+                                    ? `${preview.sessions.size} externe Preview-Session${preview.sessions.size === 1 ? "" : "s"}`
+                                    : `${preview.sessions.size} external preview session${preview.sessions.size === 1 ? "" : "s"}`
+                                  : statusLabel(
+                                      lead.status,
+                                      language
+                                    )}
+                              </p>
+                            </div>
+
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 rounded-full border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-300"
+                            >
+                              🔥{" "}
+                              {
+                                score
+                              }{" "}
+                              HOT
+                            </Badge>
+                          </div>
+                        </Link>
+                      );
+                    }
+                  )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
 
       {/* ===================================================
-          RECENT PROJECTS
+          BUSINESS OVERVIEW
       =================================================== */}
 
       <section className="mt-4">
+        <div>
+          <h2 className="text-sm font-semibold">
+            {
+              copy.overview
+            }
+          </h2>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-5">
+          <MetricCard
+            label={
+              copy.pipelineValue
+            }
+            value={
+              formatCurrency(
+                pipelineValue,
+                language
+              )
+            }
+            icon={
+              Users
+            }
+          />
+
+          <MetricCard
+            label={
+              copy.booked
+            }
+            value={
+              formatCurrency(
+                bookedValue,
+                language
+              )
+            }
+            icon={
+              BriefcaseBusiness
+            }
+          />
+
+          <MetricCard
+            label={
+              copy.paid
+            }
+            value={
+              formatCurrency(
+                paidRevenue,
+                language
+              )
+            }
+            icon={
+              Banknote
+            }
+          />
+
+          <MetricCard
+            label={
+              copy.outstanding
+            }
+            value={
+              formatCurrency(
+                outstanding,
+                language
+              )
+            }
+            icon={
+              WalletCards
+            }
+          />
+
+          <MetricCard
+            label={
+              copy.sent
+            }
+            value={
+              String(
+                sentEmailsResult.count ??
+                  0
+              )
+            }
+            icon={
+              Mail
+            }
+          />
+        </div>
+      </section>
+
+      {/* ===================================================
+          PIPELINE + PROJECTS
+      =================================================== */}
+
+      <section className="mt-4 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
+        <Card className="min-w-0 shadow-none">
+          <CardContent className="p-4 sm:p-5">
+            <h2 className="text-sm font-semibold">
+              {
+                copy.pipeline
+              }
+            </h2>
+
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {
+                copy.pipelineDescription
+              }
+            </p>
+
+            <div className="mt-5 space-y-4">
+              {pipelineStatuses.map(
+                (
+                  status
+                ) => {
+                  const value =
+                    statusCounts.get(
+                      status
+                    ) ??
+                    0;
+
+                  const percentage =
+                    leads.length >
+                    0
+                      ? Math.round(
+                          value /
+                            leads.length *
+                            100
+                        )
+                      : 0;
+
+                  return (
+                    <div
+                      key={
+                        status
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="truncate text-muted-foreground">
+                          {statusLabel(
+                            status,
+                            language
+                          )}
+                        </span>
+
+                        <span className="font-medium">
+                          {
+                            value
+                          }
+                        </span>
+                      </div>
+
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full ${pipelineBarClass(
+                            status
+                          )}`}
+                          style={{
+                            width:
+                              `${percentage}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="min-w-0 shadow-none">
           <CardContent className="p-0">
-            <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:items-center sm:px-5">
-              <div className="min-w-0">
+            <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
+              <div>
                 <h2 className="text-sm font-semibold">
                   {
-                    text.recentProjects
+                    copy.projects
                   }
                 </h2>
 
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   {
-                    text.recentProjectsDescription
+                    copy.projectsDescription
                   }
                 </p>
               </div>
@@ -1550,27 +2903,21 @@ export default async function DashboardPage() {
                 className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 {
-                  text.allProjects
+                  copy.allProjects
                 }
               </Link>
             </div>
 
             {recentProjects.length ===
             0 ? (
-              <div className="flex min-h-40 items-center justify-center px-5 py-8 text-center">
-                <div className="max-w-sm">
+              <div className="flex min-h-64 items-center justify-center p-6 text-center">
+                <div>
                   <BriefcaseBusiness className="mx-auto size-5 text-muted-foreground" />
 
                   <p className="mt-3 text-sm font-medium">
-                    {
-                      text.noProjects
-                    }
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {
-                      text.noProjectsDescription
-                    }
+                    {de
+                      ? "Noch keine Projekte"
+                      : "No projects yet"}
                   </p>
                 </div>
               </div>
@@ -1580,51 +2927,17 @@ export default async function DashboardPage() {
                   (
                     project
                   ) => {
-                    const projectValue =
+                    const total =
                       Number(
                         project.total_value ??
                           0
                       );
 
-                    const amountPaid =
+                    const paid =
                       Number(
                         project.amount_paid ??
                           0
                       );
-
-                    const outstanding =
-                      Math.max(
-                        0,
-                        projectValue -
-                          amountPaid
-                      );
-
-                    let statusLabel =
-                      project.status;
-
-                    switch (
-                      project.status
-                    ) {
-                      case "PLANNED":
-                        statusLabel =
-                          projectText.statusPlanned;
-                        break;
-
-                      case "IN_PROGRESS":
-                        statusLabel =
-                          projectText.statusInProgress;
-                        break;
-
-                      case "COMPLETED":
-                        statusLabel =
-                          projectText.statusCompleted;
-                        break;
-
-                      case "CANCELLED":
-                        statusLabel =
-                          projectText.statusCancelled;
-                        break;
-                    }
 
                     return (
                       <Link
@@ -1634,10 +2947,10 @@ export default async function DashboardPage() {
                         href={`/projects/${project.id}/edit`}
                         className="group block px-4 py-4 transition-colors hover:bg-muted/30 sm:px-5"
                       >
-                        <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <p className="min-w-0 break-words text-sm font-medium">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="min-w-0 truncate text-sm font-semibold">
                                 {
                                   project.project_name
                                 }
@@ -1645,78 +2958,51 @@ export default async function DashboardPage() {
 
                               <Badge
                                 variant="outline"
-                                className={`shrink-0 ${projectStatusClass(
-                                  project.status
-                                )}`}
+                                className="shrink-0 rounded-full text-[10px]"
                               >
-                                {
-                                  statusLabel
-                                }
+                                {projectStatusLabel(
+                                  project.status,
+                                  language
+                                )}
                               </Badge>
                             </div>
 
-                            <p className="mt-1 break-words text-xs text-muted-foreground">
+                            <p className="mt-1 truncate text-xs text-muted-foreground">
                               {
                                 project.client_name
                               }
                             </p>
 
-                            <p className="mt-1 text-[11px] text-muted-foreground">
-                              {project.completed_at
-                                ? `${text.completed} ${formatShortDate(
-                                    project.completed_at,
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
+                              <span>
+                                {de
+                                  ? "Wert"
+                                  : "Value"}
+                                :{" "}
+                                <strong className="font-medium text-foreground">
+                                  {formatCurrency(
+                                    total,
                                     language
-                                  )}`
-                                : project.started_at
-                                  ? `${text.started} ${formatShortDate(
-                                      project.started_at,
-                                      language
-                                    )}`
-                                  : text.noProjectDate}
-                            </p>
+                                  )}
+                                </strong>
+                              </span>
+
+                              <span>
+                                {de
+                                  ? "Bezahlt"
+                                  : "Paid"}
+                                :{" "}
+                                <strong className="font-medium text-foreground">
+                                  {formatCurrency(
+                                    paid,
+                                    language
+                                  )}
+                                </strong>
+                              </span>
+                            </div>
                           </div>
 
                           <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-3 overflow-hidden rounded-lg border sm:max-w-md">
-                          <ProjectAmount
-                            label={
-                              text.value
-                            }
-                            value={
-                              formatCurrency(
-                                projectValue,
-                                language
-                              )
-                            }
-                          />
-
-                          <ProjectAmount
-                            label={
-                              text.paid
-                            }
-                            value={
-                              formatCurrency(
-                                amountPaid,
-                                language
-                              )
-                            }
-                            border
-                          />
-
-                          <ProjectAmount
-                            label={
-                              text.open
-                            }
-                            value={
-                              formatCurrency(
-                                outstanding,
-                                language
-                              )
-                            }
-                            border
-                          />
                         </div>
                       </Link>
                     );
@@ -1732,159 +3018,157 @@ export default async function DashboardPage() {
           QUICK ACTIONS
       =================================================== */}
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Link
+      <section className="mt-4 grid gap-3 sm:grid-cols-3">
+        <QuickAction
           href="/find-leads"
-          className="group min-w-0"
-        >
-          <Card className="h-full shadow-none transition-colors group-hover:border-foreground/30">
-            <CardContent className="flex min-h-36 items-start justify-between gap-4 p-4 sm:min-h-40 sm:items-center sm:p-5">
-              <div className="min-w-0 flex-1">
-                <div className="flex size-9 items-center justify-center rounded-lg border">
-                  <Search className="size-4" />
-                </div>
+          icon={
+            Search
+          }
+          title={
+            de
+              ? "Neue Leads finden"
+              : "Find new leads"
+          }
+          description={
+            de
+              ? "Neue Unternehmen recherchieren und direkt einer Kampagne zuordnen."
+              : "Research new companies and assign them directly to a campaign."
+          }
+        />
 
-                <h2 className="mt-4 text-sm font-semibold sm:mt-5">
-                  {
-                    text.findNewLeads
-                  }
-                </h2>
+        <QuickAction
+          href="/inbox"
+          icon={
+            Inbox
+          }
+          title={
+            de
+              ? "Inbox bearbeiten"
+              : "Work the inbox"
+          }
+          description={
+            de
+              ? "Echte Antworten, Rückfragen und OOO-Mails prüfen."
+              : "Review real replies, questions and out-of-office messages."
+          }
+        />
 
-                <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                  {
-                    text.findNewLeadsDescription
-                  }
-                </p>
-              </div>
-
-              <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 sm:mt-0" />
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link
+        <QuickAction
           href="/leads"
-          className="group min-w-0"
-        >
-          <Card className="h-full shadow-none transition-colors group-hover:border-foreground/30">
-            <CardContent className="flex min-h-36 items-start justify-between gap-4 p-4 sm:min-h-40 sm:items-center sm:p-5">
-              <div className="min-w-0 flex-1">
-                <div className="flex size-9 items-center justify-center rounded-lg border">
-                  <Mail className="size-4" />
-                </div>
-
-                <h2 className="mt-4 text-sm font-semibold sm:mt-5">
-                  {
-                    text.draftsWaiting
-                  }
-                </h2>
-
-                <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-                  {
-                    draftDescription
-                  }
-                </p>
-              </div>
-
-              <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 sm:mt-0" />
-            </CardContent>
-          </Card>
-        </Link>
+          icon={
+            UserRoundCheck
+          }
+          title={
+            de
+              ? "Leads priorisieren"
+              : "Prioritize leads"
+          }
+          description={
+            de
+              ? "HOT Scores, Preview-Signale und offene Drafts bearbeiten."
+              : "Work HOT scores, preview signals and pending drafts."
+          }
+        />
       </section>
     </div>
   );
 }
 
 /* =========================================================
-   PIPELINE ROW
+   METRIC CARD
 ========================================================= */
 
-function PipelineRow({
+function MetricCard({
   label,
   value,
-  total,
+  icon:
+    Icon,
 }: {
-  label: string;
+  label:
+    string;
 
-  value: number;
+  value:
+    string;
 
-  total: number;
+  icon:
+    typeof Users;
 }) {
-  const percentage =
-    total >
-    0
-      ? Math.round(
-          (
-            value /
-            total
-          ) *
-            100
-        )
-      : 0;
-
   return (
-    <div>
-      <div className="flex items-center justify-between gap-4 text-sm">
-        <span className="truncate">
-          {
-            label
-          }
-        </span>
+    <Card className="min-w-0 shadow-none">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-xs text-muted-foreground">
+            {
+              label
+            }
+          </p>
 
-        <span className="shrink-0 text-muted-foreground">
+          <Icon className="size-4 shrink-0 text-muted-foreground" />
+        </div>
+
+        <p className="mt-4 break-words text-xl font-semibold tracking-tight">
           {
             value
           }
-        </span>
-      </div>
-
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-foreground transition-all"
-          style={{
-            width:
-              `${percentage}%`,
-          }}
-        />
-      </div>
-    </div>
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
 /* =========================================================
-   PROJECT AMOUNT
+   QUICK ACTION
 ========================================================= */
 
-function ProjectAmount({
-  label,
-  value,
-  border = false,
+function QuickAction({
+  href,
+  icon:
+    Icon,
+  title,
+  description,
 }: {
-  label: string;
+  href:
+    string;
 
-  value: string;
+  icon:
+    typeof Users;
 
-  border?: boolean;
+  title:
+    string;
+
+  description:
+    string;
 }) {
   return (
-    <div
-      className={`min-w-0 px-3 py-2.5 ${
-        border
-          ? "border-l"
-          : ""
-      }`}
+    <Link
+      href={
+        href
+      }
+      className="group min-w-0"
     >
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {
-          label
-        }
-      </p>
+      <Card className="h-full shadow-none transition-colors group-hover:border-foreground/30">
+        <CardContent className="flex h-full items-start justify-between gap-4 p-4 sm:p-5">
+          <div className="min-w-0">
+            <div className="flex size-9 items-center justify-center rounded-lg border">
+              <Icon className="size-4" />
+            </div>
 
-      <p className="mt-1 truncate text-xs font-semibold sm:text-sm">
-        {
-          value
-        }
-      </p>
-    </div>
+            <p className="mt-4 text-sm font-semibold">
+              {
+                title
+              }
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {
+                description
+              }
+            </p>
+          </div>
+
+          <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

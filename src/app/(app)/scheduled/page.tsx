@@ -2,6 +2,7 @@ import {
     CalendarClock,
     CalendarX2,
     Clock3,
+    Film,
     Mail,
   } from "lucide-react";
   
@@ -23,6 +24,14 @@ import {
     Card,
     CardContent,
   } from "@/components/ui/card";
+  
+  import {
+    PendingSubmitButton,
+  } from "@/components/pending-submit-button";
+  
+  import {
+    getAppLanguage,
+  } from "@/lib/i18n-server";
   
   import {
     createClient,
@@ -58,10 +67,15 @@ import {
   
   function formatDateTime(
     value:
-      string
+      string,
+    language:
+      "de" | "en"
   ) {
     return new Intl.DateTimeFormat(
-      "de-DE",
+      language ===
+        "de"
+        ? "de-DE"
+        : "en-IE",
       {
         weekday:
           "short",
@@ -80,6 +94,9 @@ import {
   
         minute:
           "2-digit",
+  
+        timeZone:
+          "Europe/Berlin",
       }
     ).format(
       new Date(
@@ -93,8 +110,18 @@ import {
   ========================================================= */
   
   export default async function ScheduledEmailsPage() {
-    const supabase =
-      await createClient();
+    const [
+      supabase,
+      language,
+    ] =
+      await Promise.all([
+        createClient(),
+        getAppLanguage(),
+      ]);
+  
+    const de =
+      language ===
+        "de";
   
     const {
       data: {
@@ -129,6 +156,7 @@ import {
           outreach_draft_id,
           status,
           scheduled_for,
+          include_preview_gif,
           created_at,
   
           lead:leads (
@@ -197,12 +225,16 @@ import {
               <CalendarClock className="size-5" />
   
               <h1 className="text-xl font-semibold">
-                Geplante Mails
+                {de
+                  ? "Geplante Mails"
+                  : "Scheduled emails"}
               </h1>
             </div>
   
             <p className="mt-1 text-sm text-muted-foreground">
-              Alle ersten Outreach-Mails, die automatisch später gesendet werden.
+              {de
+                ? "Alle ersten Outreach-Mails, die automatisch später gesendet werden."
+                : "All initial outreach emails scheduled to be sent automatically later."}
             </p>
           </div>
   
@@ -210,7 +242,10 @@ import {
             variant="outline"
             className="w-fit"
           >
-            {rows.length} geplant
+            {rows.length}{" "}
+            {de
+              ? "geplant"
+              : "scheduled"}
           </Badge>
         </div>
   
@@ -221,19 +256,24 @@ import {
               <Mail className="size-7 text-muted-foreground" />
   
               <p className="mt-3 text-sm font-medium">
-                Keine Mails geplant
+                {de
+                  ? "Keine Mails geplant"
+                  : "No emails scheduled"}
               </p>
   
               <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                Markiere Leads auf der Leads-Seite und nutze „Später senden“,
-                damit sie hier erscheinen.
+                {de
+                  ? "Markiere Leads auf der Leads-Seite und nutze „Später senden“, damit sie hier erscheinen."
+                  : "Select leads on the Leads page and use Send later to see them here."}
               </p>
   
               <Link
                 href="/leads"
                 className="mt-4 inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
               >
-                Zu den Leads
+                {de
+                  ? "Zu den Leads"
+                  : "Go to Leads"}
               </Link>
             </CardContent>
           </Card>
@@ -279,7 +319,11 @@ import {
                               className="truncate text-sm font-semibold hover:underline"
                             >
                               {company?.name ??
-                                "Unbekanntes Unternehmen"}
+                                (
+                                  de
+                                    ? "Unbekanntes Unternehmen"
+                                    : "Unknown company"
+                                )}
                             </Link>
   
                             <Badge
@@ -293,14 +337,32 @@ import {
                             >
                               {schedule.status ===
                               "PROCESSING"
-                                ? "Wird gesendet"
-                                : "Geplant"}
+                                ? de
+                                  ? "Wird gesendet"
+                                  : "Sending"
+                                : de
+                                  ? "Geplant"
+                                  : "Scheduled"}
                             </Badge>
+  
+                            {schedule.include_preview_gif ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1.5"
+                              >
+                                <Film className="size-3" />
+                                GIF
+                              </Badge>
+                            ) : null}
                           </div>
   
                           <p className="mt-1 truncate text-sm text-muted-foreground">
                             {draft?.subject ??
-                              "Ohne Betreff"}
+                              (
+                                de
+                                  ? "Ohne Betreff"
+                                  : "No subject"
+                              )}
                           </p>
   
                           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -308,7 +370,8 @@ import {
                               <Clock3 className="size-3.5" />
   
                               {formatDateTime(
-                                schedule.scheduled_for
+                                schedule.scheduled_for,
+                                language
                               )}
                             </span>
   
@@ -328,7 +391,9 @@ import {
                             href={`/leads/${schedule.lead_id}#outreach`}
                             className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted"
                           >
-                            Lead öffnen
+                            {de
+                              ? "Lead öffnen"
+                              : "Open lead"}
                           </Link>
   
                           {schedule.status ===
@@ -346,14 +411,20 @@ import {
                                 }
                               />
   
-                              <button
-                                type="submit"
+                              <PendingSubmitButton
+                                pendingText={
+                                  de
+                                    ? "Wird gestoppt..."
+                                    : "Cancelling..."
+                                }
                                 className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                               >
                                 <CalendarX2 className="size-3.5" />
   
-                                Versand stoppen
-                              </button>
+                                {de
+                                  ? "Versand stoppen"
+                                  : "Cancel send"}
+                              </PendingSubmitButton>
                             </form>
                           ) : null}
                         </div>

@@ -1,6 +1,7 @@
 import {
   Bot,
   CheckCircle2,
+  Clock3,
   Globe2,
   Mail,
   MapPin,
@@ -10,11 +11,17 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
+  Zap,
 } from "lucide-react";
 
 import {
   LanguageSelector,
 } from "@/components/language-selector";
+
+import {
+  sendDueFollowUpsNow,
+  updateAutomaticFollowUps,
+} from "./actions";
 
 import {
   LeadSearchReset,
@@ -23,6 +30,10 @@ import {
 import {
   ThemeSelector,
 } from "@/components/theme-selector";
+
+import {
+  PendingSubmitButton,
+} from "@/components/pending-submit-button";
 
 import {
   Badge,
@@ -40,6 +51,10 @@ import {
 import {
   Label,
 } from "@/components/ui/label";
+
+import {
+  countDueFollowUpsForUser,
+} from "@/lib/follow-up-worker";
 
 import {
   languageCopy,
@@ -60,6 +75,22 @@ import {
 type SettingsPageProps = {
   searchParams?: Promise<{
     gmail?:
+      | string
+      | string[];
+
+    followups?:
+      | string
+      | string[];
+
+    sent?:
+      | string
+      | string[];
+
+    skipped?:
+      | string
+      | string[];
+
+    failed?:
       | string
       | string[];
   }>;
@@ -103,6 +134,132 @@ export default async function SettingsPage({
             "Deletes your Find Leads search history and all discovered, saved or rejected search candidates. Existing CRM leads remain untouched and continue to be protected from duplicates.",
         };
 
+  const followUpText =
+    language ===
+    "de"
+      ? {
+          automationTitle:
+            "Follow-up-Automation",
+
+          automationDescription:
+            "Steuert, ob fällige Outreach-Follow-ups automatisch versendet werden sollen.",
+
+          automatic:
+            "Automatische Follow-ups",
+
+          enabled:
+            "Aktiv",
+
+          disabled:
+            "Aus",
+
+          enable:
+            "Automatik einschalten",
+
+          disable:
+            "Automatik ausschalten",
+
+          enabling:
+            "Wird aktiviert...",
+
+          disabling:
+            "Wird deaktiviert...",
+
+          automaticNote:
+            "Wenn aktiv, prüft der bestehende Cron regelmäßig fällige Follow-ups. OOO, echte Antworten, Bounce, Do Not Contact und unsichere E-Mail-Adressen bleiben geschützt.",
+
+          dueNow:
+            "Fällige Follow-ups jetzt senden",
+
+          dueDescription:
+            "Sendet nur Follow-ups, die jetzt wirklich fällig sind und alle Sicherheitschecks bestehen.",
+
+          sendNow:
+            "Jetzt senden",
+
+          sending:
+            "Wird gesendet...",
+
+          due:
+            "fällig",
+
+          noneDue:
+            "Aktuell sind keine Follow-ups fällig.",
+
+          resultSent:
+            "Follow-ups wurden verarbeitet.",
+
+          enabledMessage:
+            "Automatische Follow-ups sind jetzt aktiv.",
+
+          disabledMessage:
+            "Automatische Follow-ups sind jetzt ausgeschaltet.",
+
+          errorMessage:
+            "Die Follow-up-Aktion konnte nicht vollständig ausgeführt werden.",
+        }
+      : {
+          automationTitle:
+            "Follow-up automation",
+
+          automationDescription:
+            "Controls whether due outreach follow-ups should be sent automatically.",
+
+          automatic:
+            "Automatic follow-ups",
+
+          enabled:
+            "On",
+
+          disabled:
+            "Off",
+
+          enable:
+            "Turn automation on",
+
+          disable:
+            "Turn automation off",
+
+          enabling:
+            "Turning on...",
+
+          disabling:
+            "Turning off...",
+
+          automaticNote:
+            "When enabled, the existing cron regularly processes due follow-ups. OOO, real replies, bounces, Do Not Contact and unsafe email addresses remain protected.",
+
+          dueNow:
+            "Send due follow-ups now",
+
+          dueDescription:
+            "Only sends follow-ups that are actually due and pass all safety checks.",
+
+          sendNow:
+            "Send now",
+
+          sending:
+            "Sending...",
+
+          due:
+            "due",
+
+          noneDue:
+            "No follow-ups are currently due.",
+
+          resultSent:
+            "Follow-ups were processed.",
+
+          enabledMessage:
+            "Automatic follow-ups are now enabled.",
+
+          disabledMessage:
+            "Automatic follow-ups are now disabled.",
+
+          errorMessage:
+            "The follow-up action could not be completed.",
+        };
+
   const {
     data: {
       user,
@@ -116,6 +273,12 @@ export default async function SettingsPage({
     connected_at: string;
     updated_at: string;
   } | null = null;
+
+  let automaticFollowUps =
+    false;
+
+  let dueFollowUpCount =
+    0;
 
   if (
     user
@@ -151,6 +314,46 @@ export default async function SettingsPage({
 
     gmailConnection =
       data;
+
+    const [
+      preferenceResult,
+      dueCount,
+    ] =
+      await Promise.all([
+        supabase
+          .from(
+            "outreach_preferences"
+          )
+          .select(
+            "automatic_follow_ups"
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
+          .maybeSingle(),
+
+        countDueFollowUpsForUser(
+          user.id
+        ),
+      ]);
+
+    if (
+      preferenceResult.error
+    ) {
+      console.error(
+        "Could not load outreach preferences:",
+        preferenceResult.error
+      );
+    }
+
+    automaticFollowUps =
+      preferenceResult.data
+        ?.automatic_follow_ups ??
+      false;
+
+    dueFollowUpCount =
+      dueCount;
   }
 
   const resolvedSearchParams =
@@ -164,6 +367,43 @@ export default async function SettingsPage({
     )
       ? resolvedSearchParams.gmail[0]
       : resolvedSearchParams.gmail;
+
+  const followUpParam =
+    Array.isArray(
+      resolvedSearchParams.followups
+    )
+      ? resolvedSearchParams.followups[0]
+      : resolvedSearchParams.followups;
+
+  const sentCount =
+    Number(
+      Array.isArray(
+        resolvedSearchParams.sent
+      )
+        ? resolvedSearchParams.sent[0]
+        : resolvedSearchParams.sent ??
+          0
+    );
+
+  const skippedCount =
+    Number(
+      Array.isArray(
+        resolvedSearchParams.skipped
+      )
+        ? resolvedSearchParams.skipped[0]
+        : resolvedSearchParams.skipped ??
+          0
+    );
+
+  const failedCount =
+    Number(
+      Array.isArray(
+        resolvedSearchParams.failed
+      )
+        ? resolvedSearchParams.failed[0]
+        : resolvedSearchParams.failed ??
+          0
+    );
 
   const gmailConnected =
     Boolean(
@@ -237,6 +477,47 @@ export default async function SettingsPage({
               {
                 text.gmailConnectedDescription
               }
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {followUpParam ? (
+        <div
+          className={`mt-5 flex min-w-0 items-start gap-3 rounded-xl border px-4 py-3 sm:mt-6 ${
+            followUpParam ===
+              "send-error" ||
+            followUpParam ===
+              "preference-error" ||
+            failedCount >
+              0
+              ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+          }`}
+        >
+          {followUpParam ===
+            "send-error" ||
+          followUpParam ===
+            "preference-error" ||
+          failedCount >
+            0 ? (
+            <Clock3 className="mt-0.5 size-4 shrink-0" />
+          ) : (
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+          )}
+
+          <div className="min-w-0">
+            <p className="text-sm font-medium">
+              {followUpParam ===
+              "enabled"
+                ? followUpText.enabledMessage
+                : followUpParam ===
+                    "disabled"
+                  ? followUpText.disabledMessage
+                  : followUpParam ===
+                      "sent"
+                    ? `${followUpText.resultSent} ${sentCount} sent · ${skippedCount} skipped · ${failedCount} failed.`
+                    : followUpText.errorMessage}
             </p>
           </div>
         </div>
@@ -495,6 +776,151 @@ export default async function SettingsPage({
               text.languageNote
             }
           </p>
+        </SettingsSection>
+
+        {/* =================================================
+            FOLLOW-UP AUTOMATION
+        ================================================= */}
+
+        <SettingsSection
+          icon={
+            Zap
+          }
+          title={
+            followUpText.automationTitle
+          }
+          description={
+            followUpText.automationDescription
+          }
+        >
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="min-w-0 rounded-xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    {
+                      followUpText.automatic
+                    }
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {
+                      followUpText.automaticNote
+                    }
+                  </p>
+                </div>
+
+                <Badge
+                  variant="outline"
+                  className={
+                    automaticFollowUps
+                      ? "shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      : "shrink-0"
+                  }
+                >
+                  {automaticFollowUps
+                    ? followUpText.enabled
+                    : followUpText.disabled}
+                </Badge>
+              </div>
+
+              <form
+                action={
+                  updateAutomaticFollowUps
+                }
+                className="mt-4"
+              >
+                <input
+                  type="hidden"
+                  name="enabled"
+                  value={
+                    automaticFollowUps
+                      ? "false"
+                      : "true"
+                  }
+                />
+
+                <PendingSubmitButton
+                  pendingText={
+                    automaticFollowUps
+                      ? followUpText.disabling
+                      : followUpText.enabling
+                  }
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  {
+                    automaticFollowUps
+                      ? followUpText.disable
+                      : followUpText.enable
+                  }
+                </PendingSubmitButton>
+              </form>
+            </div>
+
+            <div className="min-w-0 rounded-xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    {
+                      followUpText.dueNow
+                    }
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {
+                      followUpText.dueDescription
+                    }
+                  </p>
+                </div>
+
+                <Badge
+                  variant="outline"
+                  className={
+                    dueFollowUpCount >
+                    0
+                      ? "shrink-0 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                      : "shrink-0"
+                  }
+                >
+                  {
+                    dueFollowUpCount
+                  }{" "}
+                  {
+                    followUpText.due
+                  }
+                </Badge>
+              </div>
+
+              {dueFollowUpCount >
+              0 ? (
+                <form
+                  action={
+                    sendDueFollowUpsNow
+                  }
+                  className="mt-4"
+                >
+                  <PendingSubmitButton
+                    pendingText={
+                      followUpText.sending
+                    }
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                  >
+                    <Send className="size-3.5" />
+
+                    {
+                      followUpText.sendNow
+                    }
+                  </PendingSubmitButton>
+                </form>
+              ) : (
+                <p className="mt-4 text-xs text-muted-foreground">
+                  {
+                    followUpText.noneDue
+                  }
+                </p>
+              )}
+            </div>
+          </div>
         </SettingsSection>
 
         {/* =================================================

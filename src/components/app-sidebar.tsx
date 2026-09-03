@@ -23,6 +23,7 @@ import {
   Settings,
   Users,
   X,
+  BarChart3,
 } from "lucide-react";
 
 import {
@@ -135,6 +136,12 @@ function SidebarContent({
 
       icon:
         Inbox,
+    },
+
+    {
+      name: "Analytics",
+      href: "/analytics",
+      icon: BarChart3,
     },
   ];
 

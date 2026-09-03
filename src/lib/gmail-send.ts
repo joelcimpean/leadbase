@@ -18,7 +18,19 @@ type SendGmailMessageInput = {
   toEmail: string;
   subject: string;
   body: string;
+  htmlBody?:
+    | string
+    | null;
+  inlineImages?:
+    GmailInlineImage[];
   encryptedRefreshToken: string;
+};
+
+export type GmailInlineImage = {
+  filename: string;
+  contentType: string;
+  content: Buffer;
+  contentId: string;
 };
 
 export type GmailAttachment = {
@@ -228,11 +240,18 @@ function createRawMessage({
   toEmail,
   subject,
   body,
+  htmlBody,
+  inlineImages = [],
 }: {
   fromEmail: string;
   toEmail: string;
   subject: string;
   body: string;
+  htmlBody?:
+    | string
+    | null;
+  inlineImages?:
+    GmailInlineImage[];
 }) {
   const safeFrom =
     sanitizeHeader(
@@ -249,23 +268,205 @@ function createRawMessage({
       subject
     );
 
-  const message = [
+  const headers = [
     `From: Joel Cimpean <${safeFrom}>`,
     `To: ${safeTo}`,
     `Subject: ${encodeSubject(
       safeSubject
     )}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
+  ];
+
+  if (
+    !htmlBody
+      ?.trim()
+  ) {
+    const message = [
+      ...headers,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      body,
+    ].join(
+      "\r\n"
+    );
+
+    return Buffer.from(
+      message,
+      "utf8"
+    ).toString(
+      "base64url"
+    );
+  }
+
+  const alternativeBoundary =
+    `joel-leados-alt-${randomBytes(
+      18
+    ).toString(
+      "hex"
+    )}`;
+
+  /*
+   * No inline images:
+   * keep the lightweight multipart/alternative message.
+   */
+  if (
+    inlineImages.length ===
+    0
+  ) {
+    const message = [
+      ...headers,
+      `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+      "",
+      `--${alternativeBoundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      body,
+      `--${alternativeBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      htmlBody,
+      `--${alternativeBoundary}--`,
+      "",
+    ].join(
+      "\r\n"
+    );
+
+    return Buffer.from(
+      message,
+      "utf8"
+    ).toString(
+      "base64url"
+    );
+  }
+
+  /*
+   * Inline images need multipart/related around the normal
+   * multipart/alternative body.
+   *
+   * HTML references the image with:
+   *   <img src="cid:leadbase-preview-gif">
+   *
+   * This is much more reliable in Gmail than depending on a
+   * remote Supabase image URL being fetched by the mail client.
+   */
+  const relatedBoundary =
+    `joel-leados-related-${randomBytes(
+      18
+    ).toString(
+      "hex"
+    )}`;
+
+  const messageParts: string[] = [
+    ...headers,
+
+    `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
+
     "",
+
+    `--${relatedBoundary}`,
+
+    `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+
+    "",
+
+    `--${alternativeBoundary}`,
+
+    'Content-Type: text/plain; charset="UTF-8"',
+
+    "Content-Transfer-Encoding: 8bit",
+
+    "",
+
     body,
-  ].join(
-    "\r\n"
+
+    `--${alternativeBoundary}`,
+
+    'Content-Type: text/html; charset="UTF-8"',
+
+    "Content-Transfer-Encoding: 8bit",
+
+    "",
+
+    htmlBody,
+
+    `--${alternativeBoundary}--`,
+
+    "",
+  ];
+
+  for (
+    const inlineImage of
+      inlineImages
+  ) {
+    const fallbackName =
+      safeAsciiFilename(
+        inlineImage.filename
+      );
+
+    const utf8Name =
+      encodeFilename(
+        inlineImage.filename
+      );
+
+    const contentType =
+      safeContentType(
+        inlineImage.contentType
+      );
+
+    const cleanContentId =
+      inlineImage.contentId
+        .replace(
+          /[^A-Za-z0-9._@+-]/g,
+          ""
+        )
+        .trim() ||
+      `inline-${randomBytes(
+        8
+      ).toString(
+        "hex"
+      )}@leadbase`;
+
+    const base64Content =
+      wrapBase64(
+        inlineImage.content.toString(
+          "base64"
+        )
+      );
+
+    messageParts.push(
+      `--${relatedBoundary}`,
+
+      `Content-Type: ${contentType}; name="${fallbackName}"`,
+
+      "Content-Transfer-Encoding: base64",
+
+      `Content-ID: <${cleanContentId}>`,
+
+      `X-Attachment-Id: ${cleanContentId}`,
+
+      `Content-Disposition: inline; filename="${fallbackName}"; filename*=UTF-8''${utf8Name}`,
+
+      "",
+
+      base64Content
+    );
+  }
+
+  messageParts.push(
+    `--${relatedBoundary}--`,
+    ""
   );
 
+  const rawMessage =
+    messageParts.join(
+      "\r\n"
+    );
+
   return Buffer.from(
-    message,
+    rawMessage,
     "utf8"
   ).toString(
     "base64url"
@@ -514,6 +715,8 @@ export async function sendGmailMessage({
   toEmail,
   subject,
   body,
+  htmlBody,
+  inlineImages = [],
   encryptedRefreshToken,
 }: SendGmailMessageInput) {
   const gmail =
@@ -527,6 +730,8 @@ export async function sendGmailMessage({
       toEmail,
       subject,
       body,
+      htmlBody,
+      inlineImages,
     });
 
   const response =

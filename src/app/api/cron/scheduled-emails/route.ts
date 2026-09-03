@@ -12,6 +12,24 @@ import {
 } from "@/lib/gmail-send";
 
 import {
+  buildOutreachHtmlEmail,
+} from "@/lib/outreach-email-html";
+
+import {
+  loadOutreachPreviewGifInlineImage,
+  OUTREACH_PREVIEW_GIF_CID,
+} from "@/lib/outreach-preview-gif";
+
+import {
+  getOutreachQualityBlockingMessage,
+  loadOutreachQuality,
+} from "@/lib/outreach-quality";
+
+import {
+  runAutomaticFollowUpWorker,
+} from "@/lib/follow-up-worker";
+
+import {
   createAdminClient,
 } from "@/lib/supabase/admin";
 
@@ -74,6 +92,8 @@ type ScheduledEmail = {
     | null;
   attachments: unknown;
   scheduled_for: string;
+  include_preview_gif:
+    boolean;
   attempt_count: number;
 };
 
@@ -1040,6 +1060,7 @@ async function processScheduledOutreach(
         status,
         subject,
         body,
+        language,
         follow_up_body,
         sent_at
       `)
@@ -1226,6 +1247,82 @@ async function processScheduledOutreach(
     contact?.email
       ?.trim()
       .toLowerCase();
+
+  let preSendQuality;
+
+  try {
+    preSendQuality =
+      await loadOutreachQuality({
+        supabase,
+
+        userId:
+          schedule.user_id,
+
+        leadId:
+          schedule.lead_id,
+
+        draftId:
+          draft.id,
+      });
+  } catch (
+    error
+  ) {
+    await markScheduleFailed({
+      scheduleId:
+        schedule.id,
+
+      error:
+        new Error(
+          `Pre-send quality check failed: ${
+            error instanceof
+              Error
+              ? error.message
+              : "Unknown quality check error."
+          }`
+        ),
+    });
+
+    return {
+      id:
+        schedule.id,
+
+      type:
+        "OUTREACH",
+
+      result:
+        "FAILED_QUALITY_CHECK",
+    };
+  }
+
+  const qualityError =
+    getOutreachQualityBlockingMessage(
+      preSendQuality
+    );
+
+  if (
+    qualityError
+  ) {
+    await markScheduleFailed({
+      scheduleId:
+        schedule.id,
+
+      error:
+        new Error(
+          `Pre-send quality gate blocked scheduled outreach: ${qualityError}`
+        ),
+    });
+
+    return {
+      id:
+        schedule.id,
+
+      type:
+        "OUTREACH",
+
+      result:
+        "FAILED_QUALITY_GATE",
+    };
+  }
 
   if (
     !recipientEmail ||
@@ -1415,6 +1512,119 @@ async function processScheduledOutreach(
     };
   }
 
+  let htmlBody:
+    | string
+    | null =
+      null;
+
+  let inlinePreviewGif:
+    Awaited<
+      ReturnType<
+        typeof loadOutreachPreviewGifInlineImage
+      >
+    > =
+      null;
+
+  if (
+    schedule.include_preview_gif
+  ) {
+    const {
+      data:
+        publicPreview,
+      error:
+        publicPreviewError,
+    } =
+      await supabase
+        .from(
+          "design_public_previews"
+        )
+        .select(`
+          public_slug,
+          preview_gif_status,
+          preview_gif_path,
+          revoked_at,
+          expires_at,
+          created_at
+        `)
+        .eq(
+          "user_id",
+          schedule.user_id
+        )
+        .eq(
+          "lead_id",
+          schedule.lead_id
+        )
+        .is(
+          "revoked_at",
+          null
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
+
+    if (
+      publicPreviewError
+    ) {
+      console.error(
+        `Could not load preview GIF for scheduled outreach ${schedule.id}. Falling back to plain text:`,
+        publicPreviewError
+      );
+    } else if (
+      publicPreview &&
+      publicPreview.preview_gif_status ===
+        "READY" &&
+      publicPreview.preview_gif_path &&
+      (
+        !publicPreview.expires_at ||
+        new Date(
+          publicPreview.expires_at
+        ).getTime() >
+          Date.now()
+      )
+    ) {
+      inlinePreviewGif =
+        await loadOutreachPreviewGifInlineImage(
+          publicPreview.preview_gif_path
+        );
+
+      if (
+        inlinePreviewGif
+      ) {
+        const publicBaseUrl =
+          process.env.LEADBASE_PUBLIC_APP_URL ??
+          "https://leadbase.joelcimpean.com";
+
+        const previewUrl =
+          `${publicBaseUrl.replace(
+            /\/$/,
+            ""
+          )}/concept/${encodeURIComponent(
+            publicPreview.public_slug
+          )}?src=outreach`;
+
+        htmlBody =
+          buildOutreachHtmlEmail({
+            textBody:
+              draft.body,
+
+            previewUrl,
+
+            gifContentId:
+              OUTREACH_PREVIEW_GIF_CID,
+
+            language:
+              draft.language,
+          });
+      }
+    }
+  }
+
   let gmailResult: {
     messageId: string;
     threadId:
@@ -1436,6 +1646,15 @@ async function processScheduledOutreach(
 
         body:
           draft.body,
+
+        htmlBody,
+
+        inlineImages:
+          inlinePreviewGif
+            ? [
+                inlinePreviewGif,
+              ]
+            : [],
 
         encryptedRefreshToken:
           gmailConnection.encrypted_refresh_token,
@@ -1630,6 +1849,16 @@ async function processScheduledOutreach(
 
         next_follow_up_at:
           nextFollowUp,
+
+        smart_follow_up_mode:
+          "STANDARD",
+
+        smart_follow_up_reason:
+          "No customer engagement signal yet; standard 5-day follow-up remains.",
+
+        smart_follow_up_updated_at:
+          new Date()
+            .toISOString(),
       })
       .eq(
         "id",
@@ -1899,6 +2128,7 @@ async function runWorker() {
         bcc_emails,
         attachments,
         scheduled_for,
+        include_preview_gif,
         attempt_count
       `)
       .eq(
@@ -1988,13 +2218,28 @@ async function handleWorkerRequest(
       );
     }
 
-    const result =
-      await runWorker();
+    const [
+      result,
+      automaticFollowUps,
+    ] =
+      await Promise.all([
+        runWorker(),
+        runAutomaticFollowUpWorker({
+          maxUsers:
+            10,
+
+          perUserLimit:
+            10,
+        }),
+      ]);
 
     return NextResponse.json({
       ok:
         true,
+
       ...result,
+
+      automaticFollowUps,
     });
   } catch (
     error

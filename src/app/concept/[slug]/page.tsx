@@ -36,6 +36,14 @@ import type {
       slug:
         string;
     }>;
+  
+    searchParams: Promise<{
+      capture?:
+        string;
+  
+      src?:
+        string;
+    }>;
   };
   
   type PublicPreviewRow = {
@@ -320,11 +328,18 @@ import type {
   
   export default async function ConceptPage({
     params,
+    searchParams,
   }: ConceptPageProps) {
-    const {
-      slug,
-    } =
-      await params;
+    const [
+      {
+        slug,
+      },
+      resolvedSearchParams,
+    ] =
+      await Promise.all([
+        params,
+        searchParams,
+      ]);
   
     const row =
       await loadPreview(
@@ -352,21 +367,9 @@ import type {
       notFound();
     }
   
-    /*
-     * IMPORTANT:
-     *
-     * Do NOT call track_public_design_preview_view here.
-     * The old server-side counter counted every page load,
-     * including Joel's own tests.
-     *
-     * PreviewVisitTracker below creates the detailed visit
-     * record from the real browser and separates OWNER from
-     * external traffic.
-     */
-  
-    /* =======================================================
-       BASIC DATA
-    ======================================================= */
+    const captureMode =
+      resolvedSearchParams.capture ===
+        "gif";
   
     const companyName =
       row
@@ -374,6 +377,35 @@ import type {
         ?.trim() ||
       snapshot.companyName ||
       "Unternehmen";
+  
+    /*
+     * Internal capture mode intentionally renders ONLY the
+     * generated website.
+     *
+     * - no customer bar
+     * - no visit tracker
+     * - no Leadbase visit / Hot Score pollution
+     *
+     * This URL is used only by the server-side GIF renderer.
+     */
+    if (
+      captureMode
+    ) {
+      return (
+        <main className="min-h-screen bg-white">
+          <CustomerDesignFrame
+            title={`GIF capture · ${companyName}`}
+            html={
+              snapshot.html
+            }
+          />
+        </main>
+      );
+    }
+  
+    /* =======================================================
+       NORMAL CUSTOMER PREVIEW
+    ======================================================= */
   
     const designerName =
       process.env
@@ -399,10 +431,6 @@ import type {
         ?.trim() ||
       "https://cal.com/joel-cimpean-ag9kpu/30min";
   
-    /* =======================================================
-       MAIL CTA
-    ======================================================= */
-  
     const mailSubject =
       `Designvorschau für ${companyName}`;
   
@@ -426,32 +454,16 @@ import type {
           )}`
         : null;
   
-    /* =======================================================
-       RENDER
-    ======================================================= */
-  
     return (
       <main className="min-h-screen bg-white text-neutral-950">
-        {/*
-         * Invisible tracker.
-         * Customers see nothing from it.
-         */}
         <PreviewVisitTracker
           slug={
             slug
           }
         />
   
-        {/* ===================================================
-            CUSTOMER BAR
-        =================================================== */}
-  
         <div className="sticky top-0 z-[100] border-b border-neutral-200 bg-white/95 text-neutral-950 shadow-[0_1px_0_rgba(0,0,0,.04)] backdrop-blur-xl">
           <div className="mx-auto flex min-h-[64px] max-w-[1440px] items-center justify-between gap-2 px-3 py-2.5 sm:min-h-[76px] sm:gap-4 sm:px-6 sm:py-3 lg:px-8">
-            {/* ===============================================
-                COMPANY
-            =============================================== */}
-  
             <div className="min-w-0 flex-1 pr-1 sm:pr-3">
               <p className="line-clamp-2 text-[8px] font-semibold uppercase leading-[1.3] tracking-[0.13em] text-neutral-500 min-[390px]:text-[9px] sm:text-[10px] sm:tracking-[0.15em]">
                 Persönliches Designkonzept für
@@ -463,10 +475,6 @@ import type {
                 }
               </p>
             </div>
-  
-            {/* ===============================================
-                DESKTOP DESIGNER
-            =============================================== */}
   
             <div className="hidden shrink-0 text-right md:block">
               <p className="text-[11px] text-neutral-500">
@@ -493,10 +501,6 @@ import type {
               </p>
             </div>
   
-            {/* ===============================================
-                CONTACT CTA
-            =============================================== */}
-  
             <CustomerContactChoice
               companyName={
                 companyName
@@ -509,10 +513,6 @@ import type {
               }
             />
           </div>
-  
-          {/* ===============================================
-              SMALL MOBILE TRUST STRIP
-          =============================================== */}
   
           <div className="border-t border-neutral-100 px-3 py-1.5 md:hidden">
             <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3">
@@ -542,10 +542,6 @@ import type {
             </div>
           </div>
         </div>
-  
-        {/* ===================================================
-            GENERATED DESIGN
-        =================================================== */}
   
         <CustomerDesignFrame
           title={`Designkonzept für ${companyName}`}

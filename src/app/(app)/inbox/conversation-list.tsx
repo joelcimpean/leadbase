@@ -22,6 +22,7 @@ import {
 
 import {
   archiveLeadConversation,
+  markLeadConversationRead,
   moveLeadConversationToTrash,
   permanentlyDeleteLeadConversation,
   restoreLeadConversation,
@@ -39,6 +40,10 @@ import {
   getInboxMessageStatusLabel,
   inboxCopy,
 } from "@/lib/inbox-i18n";
+
+import type {
+  ReplyClassification,
+} from "@/lib/reply-intelligence";
 
 /* =========================================================
    TYPES
@@ -66,6 +71,10 @@ export type InboxConversationListItem = {
   status:
     | "Replied"
     | "Sent";
+
+  replyClassification:
+    ReplyClassification
+    | null;
 
   initials: string;
 };
@@ -119,6 +128,89 @@ function messageStatusClass(
   return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
 }
 
+function replyClassificationMeta(
+  value:
+    ReplyClassification,
+  language:
+    string
+) {
+  const de =
+    language ===
+    "de";
+
+  switch (
+    value
+  ) {
+    case "INTERESTED":
+      return {
+        label:
+          de
+            ? "Interessiert"
+            : "Interested",
+        className:
+          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300",
+      };
+
+    case "QUESTION":
+      return {
+        label:
+          de
+            ? "Rückfrage"
+            : "Question",
+        className:
+          "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300",
+      };
+
+    case "NOT_INTERESTED":
+      return {
+        label:
+          de
+            ? "Absage"
+            : "Not interested",
+        className:
+          "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300",
+      };
+
+    case "OUT_OF_OFFICE":
+      return {
+        label:
+          de
+            ? "Abwesend"
+            : "Out of office",
+        className:
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300",
+      };
+
+    case "FOLLOW_UP_LATER":
+      return {
+        label:
+          de
+            ? "Später melden"
+            : "Follow up later",
+        className:
+          "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-300",
+      };
+
+    case "BOUNCE":
+      return {
+        label:
+          "Bounce",
+        className:
+          "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300",
+      };
+
+    default:
+      return {
+        label:
+          de
+            ? "Neutral"
+            : "Neutral",
+        className:
+          "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
+      };
+  }
+}
+
 /* =========================================================
    COMPONENT
 ========================================================= */
@@ -163,6 +255,17 @@ export function ConversationList({
   const [
     hiddenIds,
     setHiddenIds,
+  ] =
+    useState<
+      Set<string>
+    >(
+      () =>
+        new Set()
+    );
+
+  const [
+    locallyReadIds,
+    setLocallyReadIds,
   ] =
     useState<
       Set<string>
@@ -257,17 +360,72 @@ export function ConversationList({
   const visibleConversations =
     useMemo(
       () =>
-        conversations.filter(
-          (
-            conversation
-          ) =>
-            !hiddenIds.has(
-              conversation.leadId
-            )
-        ),
+        [
+          ...conversations,
+        ]
+          .filter(
+            (
+              conversation
+            ) =>
+              !hiddenIds.has(
+                conversation.leadId
+              )
+          )
+          .map(
+            (
+              conversation
+            ) =>
+              locallyReadIds.has(
+                conversation.leadId
+              )
+                ? {
+                    ...conversation,
+
+                    unread:
+                      false,
+
+                    unreadCount:
+                      0,
+                  }
+                : conversation
+          )
+          .sort(
+            (
+              a,
+              b
+            ) => {
+              /*
+               * Gmail-like priority:
+               * 1) unread/new replies
+               * 2) replied threads
+               * 3) preserve incoming newest-first order
+               */
+              if (
+                a.unread !==
+                  b.unread
+              ) {
+                return a.unread
+                  ? -1
+                  : 1;
+              }
+
+              if (
+                a.status !==
+                  b.status
+              ) {
+                return a.status ===
+                  "Replied"
+                  ? -1
+                  : 1;
+              }
+
+              return 0;
+            }
+          ),
       [
         conversations,
         hiddenIds,
+        locallyReadIds,
       ]
     );
 
@@ -416,13 +574,10 @@ export function ConversationList({
               )
             );
 
-      const confirmed =
-        window.confirm(
-          confirmMessage
-        );
-
       if (
-        !confirmed
+        !window.confirm(
+          confirmMessage
+        )
       ) {
         return;
       }
@@ -473,67 +628,80 @@ export function ConversationList({
               )
     );
 
-    try {
-      for (
-        const leadId of
-        ids
-      ) {
-        if (
-          action ===
-          "archive"
-        ) {
-          await archiveLeadConversation(
-            leadId
+    /*
+     * OPTIMISTIC UI:
+     * remove the rows immediately instead of waiting for
+     * Supabase + revalidation. This makes the inbox feel
+     * Gmail-fast even while the server finishes the update.
+     */
+    setHiddenIds(
+      (
+        current
+      ) => {
+        const next =
+          new Set(
+            current
           );
-        } else if (
-          action ===
-          "restore"
+
+        for (
+          const id of
+          ids
         ) {
-          await restoreLeadConversation(
-            leadId
-          );
-        } else if (
-          action ===
-          "delete"
-        ) {
-          await permanentlyDeleteLeadConversation(
-            leadId
-          );
-        } else {
-          await moveLeadConversationToTrash(
-            leadId
+          next.add(
+            id
           );
         }
+
+        return next;
       }
+    );
 
-      setHiddenIds(
-        (
-          current
-        ) => {
-          const next =
-            new Set(
-              current
+    setSelectedIds(
+      new Set()
+    );
+
+    setSelectionMode(
+      false
+    );
+
+    try {
+      await Promise.all(
+        ids.map(
+          (
+            leadId
+          ) => {
+            if (
+              action ===
+              "archive"
+            ) {
+              return archiveLeadConversation(
+                leadId
+              );
+            }
+
+            if (
+              action ===
+              "restore"
+            ) {
+              return restoreLeadConversation(
+                leadId
+              );
+            }
+
+            if (
+              action ===
+              "delete"
+            ) {
+              return permanentlyDeleteLeadConversation(
+                leadId
+              );
+            }
+
+            return moveLeadConversationToTrash(
+              leadId
             );
-
-          ids.forEach(
-            (
-              id
-            ) =>
-              next.add(
-                id
-              )
-          );
-
-          return next;
-        }
-      );
-
-      setSelectedIds(
-        new Set()
-      );
-
-      setSelectionMode(
-        false
+          }
+        )
       );
 
       if (
@@ -595,13 +763,43 @@ export function ConversationList({
         );
       }
 
-      router.refresh();
+      /*
+       * No router.refresh() here.
+       * The optimistic state already reflects the action and
+       * the next navigation/server render reads fresh data.
+       */
     } catch (
       error
     ) {
       console.error(
         "Inbox bulk action failed:",
         error
+      );
+
+      /*
+       * Roll back the optimistic hide if the server call
+       * itself throws.
+       */
+      setHiddenIds(
+        (
+          current
+        ) => {
+          const next =
+            new Set(
+              current
+            );
+
+          for (
+            const id of
+            ids
+          ) {
+            next.delete(
+              id
+            );
+          }
+
+          return next;
+        }
       );
 
       setMessage(
@@ -757,7 +955,8 @@ export function ConversationList({
   }
 
   async function finishSwipe(
-    leadId: string
+    leadId:
+      string
   ) {
     const finalOffset =
       swipeOffsetRef.current;
@@ -814,6 +1013,26 @@ export function ConversationList({
       text.archivingSingle
     );
 
+    /*
+     * Hide immediately. Server work happens in the background.
+     */
+    setHiddenIds(
+      (
+        current
+      ) => {
+        const next =
+          new Set(
+            current
+          );
+
+        next.add(
+          leadId
+        );
+
+        return next;
+      }
+    );
+
     setSwipe({
       leadId,
 
@@ -826,6 +1045,17 @@ export function ConversationList({
         leadId
       );
 
+      setMessage(
+        text.threadArchived
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "Swipe archive failed:",
+        error
+      );
+
       setHiddenIds(
         (
           current
@@ -835,25 +1065,12 @@ export function ConversationList({
               current
             );
 
-          next.add(
+          next.delete(
             leadId
           );
 
           return next;
         }
-      );
-
-      setMessage(
-        text.threadArchived
-      );
-
-      router.refresh();
-    } catch (
-      error
-    ) {
-      console.error(
-        "Swipe archive failed:",
-        error
       );
 
       setMessage(
@@ -927,6 +1144,66 @@ export function ConversationList({
       8
     ) {
       return;
+    }
+
+    /*
+     * Gmail behavior:
+     * opening an unread thread marks it read immediately in
+     * the UI. The database update runs without blocking the
+     * navigation.
+     */
+    if (
+      conversation.unread &&
+      !locallyReadIds.has(
+        conversation.leadId
+      )
+    ) {
+      setLocallyReadIds(
+        (
+          current
+        ) => {
+          const next =
+            new Set(
+              current
+            );
+
+          next.add(
+            conversation.leadId
+          );
+
+          return next;
+        }
+      );
+
+      void markLeadConversationRead(
+        conversation.leadId
+      ).catch(
+        (
+          error
+        ) => {
+          console.error(
+            "Could not auto-mark conversation as read:",
+            error
+          );
+
+          setLocallyReadIds(
+            (
+              current
+            ) => {
+              const next =
+                new Set(
+                  current
+                );
+
+              next.delete(
+                conversation.leadId
+              );
+
+              return next;
+            }
+          );
+        }
+      );
     }
 
     router.push(
@@ -1160,6 +1437,177 @@ export function ConversationList({
       </div>
 
       {/* ===================================================
+          DESKTOP BULK ACTION BAR
+      =================================================== */}
+
+      <div className="hidden min-h-11 items-center gap-2 border-b bg-background px-3 py-2 md:flex">
+        {!selectionMode ? (
+          <>
+            <button
+              type="button"
+              onClick={
+                startSelectionMode
+              }
+              className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            >
+              <Check className="size-3.5" />
+
+              {
+                text.select
+              }
+            </button>
+
+            <span className="text-[11px] text-muted-foreground">
+              {visibleConversations.length}{" "}
+              {visibleConversations.length ===
+              1
+                ? "Konversation"
+                : "Konversationen"}
+            </span>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={
+                busy
+              }
+              onClick={
+                closeSelectionMode
+              }
+              className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-muted disabled:opacity-50"
+              aria-label={
+                text.cancelSelection
+              }
+            >
+              <X className="size-4" />
+            </button>
+
+            <p className="min-w-0 text-xs font-medium">
+              {
+                selectedIds.size
+              }{" "}
+              {
+                text.selected
+              }
+            </p>
+
+            <button
+              type="button"
+              disabled={
+                busy
+              }
+              onClick={
+                toggleSelectAll
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              <Check className="size-3.5" />
+
+              {allSelected
+                ? text.clear
+                : text.all}
+            </button>
+
+            <div className="ml-auto flex items-center gap-1">
+              {view ===
+              "inbox" ? (
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    selectedIds.size ===
+                      0
+                  }
+                  onClick={() =>
+                    void runBulkAction(
+                      "archive"
+                    )
+                  }
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
+                >
+                  {busy &&
+                  busyAction ===
+                    "archive" ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Archive className="size-3.5" />
+                  )}
+
+                  {
+                    text.archive
+                  }
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    selectedIds.size ===
+                      0
+                  }
+                  onClick={() =>
+                    void runBulkAction(
+                      "restore"
+                    )
+                  }
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
+                >
+                  {busy &&
+                  busyAction ===
+                    "restore" ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="size-3.5" />
+                  )}
+
+                  {language ===
+                  "de"
+                    ? "Wiederherstellen"
+                    : "Restore"}
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  selectedIds.size ===
+                    0
+                }
+                onClick={() =>
+                  void runBulkAction(
+                    view ===
+                    "trash"
+                      ? "delete"
+                      : "trash"
+                  )
+                }
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-red-600 disabled:opacity-40"
+              >
+                {busy &&
+                (
+                  busyAction ===
+                    "trash" ||
+                  busyAction ===
+                    "delete"
+                ) ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
+
+                {view ===
+                "trash"
+                  ? text.deleteSelectedPermanently
+                  : text.deleteSelected}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ===================================================
           THREADS
       =================================================== */}
 
@@ -1274,7 +1722,7 @@ export function ConversationList({
                 }`}
               >
                 {selectionMode ? (
-                  <div className="flex size-9 shrink-0 items-center justify-center md:hidden">
+                  <div className="flex size-9 shrink-0 items-center justify-center">
                     <div
                       className={`flex size-5 items-center justify-center rounded-full border ${
                         selected
@@ -1354,6 +1802,25 @@ export function ConversationList({
                         language
                       )}
                     </Badge>
+
+                    {conversation.replyClassification ? (
+                      <Badge
+                        variant="outline"
+                        className={
+                          replyClassificationMeta(
+                            conversation.replyClassification,
+                            language
+                          ).className
+                        }
+                      >
+                        {
+                          replyClassificationMeta(
+                            conversation.replyClassification,
+                            language
+                          ).label
+                        }
+                      </Badge>
+                    ) : null}
 
                     {conversation.unread ? (
                       <>

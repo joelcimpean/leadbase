@@ -6,6 +6,10 @@ import { redirect } from "next/navigation";
 import { analyzeWebsite } from "@/lib/website-analysis";
 import { captureWebsiteScreenshots } from "@/lib/website-screenshot";
 import { analyzeWebsiteVisuals } from "@/lib/visual-website-analysis";
+import {
+  assessEmailQuality,
+} from "@/lib/email-quality";
+
 import { createClient } from "@/lib/supabase/server";
 
 /* =========================================================
@@ -340,6 +344,92 @@ export async function analyzeLeadWebsite(
   }
 
   /* =========================================================
+     EMAIL QUALITY
+
+     Compare the stored recipient with:
+     - the real company website domain
+     - the email discovered during this crawl
+
+     Obvious placeholders / invalid addresses are replaced
+     automatically ONLY when the website gave us a safe public
+     replacement. Plausible personal emails are never silently
+     overwritten.
+  ========================================================= */
+
+  const initialEmailAssessment =
+    assessEmailQuality({
+      currentEmail:
+        currentContact?.email ??
+        null,
+
+      websiteUrl:
+        company.website_url,
+
+      discoveredEmail:
+        structuralResult.discoveredEmail,
+
+      discoveredEmailSourceUrl:
+        structuralResult.emailSourceUrl,
+    });
+
+  const emailAutoReplacement =
+    initialEmailAssessment
+      .shouldAutoReplace
+      ? initialEmailAssessment
+          .replacementEmail
+      : null;
+
+  const emailAssessment =
+    emailAutoReplacement
+      ? assessEmailQuality({
+          currentEmail:
+            emailAutoReplacement,
+
+          websiteUrl:
+            company.website_url,
+
+          discoveredEmail:
+            structuralResult.discoveredEmail,
+
+          discoveredEmailSourceUrl:
+            structuralResult.emailSourceUrl,
+        })
+      : initialEmailAssessment;
+
+  /*
+   * Store this in website_findings as well, so the normal
+   * structural-analysis UI immediately shows whether the
+   * recipient is safe / suspicious.
+   */
+  structuralResult.findings =
+    [
+      ...structuralResult.findings.filter(
+        (
+          finding
+        ) =>
+          finding.key !==
+          "email_quality"
+      ),
+
+      {
+        key:
+          "email_quality",
+
+        label:
+          "Email confidence",
+
+        passed:
+          emailAssessment.level ===
+          "good",
+
+        detail:
+          emailAutoReplacement
+            ? `Auto-corrected recipient to ${emailAutoReplacement}. ${emailAssessment.detail}`
+            : emailAssessment.detail,
+      },
+    ];
+
+  /* =========================================================
      ENRICH COMPANY
   ========================================================= */
 
@@ -437,6 +527,13 @@ export async function analyzeLeadWebsite(
       email?: string;
       phone?: string;
       source_url?: string;
+
+      email_quality_status?: string;
+      email_quality_detail?: string;
+      email_source_url?: string | null;
+      email_candidate?: string | null;
+      email_candidate_source_url?: string | null;
+      email_checked_at?: string;
     } = {};
 
     /* -------------------------------------------------------
@@ -491,16 +588,48 @@ export async function analyzeLeadWebsite(
     }
 
     /* -------------------------------------------------------
-       EMAIL
+       EMAIL + EMAIL QUALITY
     ------------------------------------------------------- */
 
     if (
+      emailAutoReplacement
+    ) {
+      contactUpdates.email =
+        emailAutoReplacement;
+    } else if (
       structuralResult.discoveredEmail &&
       !currentContact.email
     ) {
       contactUpdates.email =
         structuralResult.discoveredEmail;
     }
+
+    contactUpdates.email_quality_status =
+      emailAssessment.status;
+
+    contactUpdates.email_quality_detail =
+      emailAutoReplacement
+        ? `Automatisch auf ${emailAutoReplacement} korrigiert. ${emailAssessment.detail}`
+        : emailAssessment.detail;
+
+    contactUpdates.email_source_url =
+      (
+        emailAutoReplacement ||
+        emailAssessment.status ===
+          "VERIFIED_WEBSITE"
+      )
+        ? structuralResult.emailSourceUrl
+        : null;
+
+    contactUpdates.email_candidate =
+      emailAssessment.candidateEmail;
+
+    contactUpdates.email_candidate_source_url =
+      emailAssessment.candidateSourceUrl;
+
+    contactUpdates.email_checked_at =
+      new Date()
+        .toISOString();
 
     /* -------------------------------------------------------
        PHONE
@@ -615,6 +744,25 @@ export async function analyzeLeadWebsite(
 
         source_url:
           discoveredContactSource,
+
+        email_quality_status:
+          emailAssessment.status,
+
+        email_quality_detail:
+          emailAssessment.detail,
+
+        email_source_url:
+          structuralResult.emailSourceUrl,
+
+        email_candidate:
+          null,
+
+        email_candidate_source_url:
+          null,
+
+        email_checked_at:
+          new Date()
+            .toISOString(),
 
         is_primary:
           true,

@@ -1785,6 +1785,88 @@ export function CustomerDesignFrame({
           const body =
             document.body;
 
+          /*
+           * Customer previews are visual concepts, not live
+           * websites. Generated links/buttons must never
+           * navigate away from Leadbase or submit anything.
+           *
+           * The real Leadbase contact CTA lives outside this
+           * iframe and remains fully interactive.
+           */
+          const blockGeneratedInteraction = (
+            event:
+              Event
+          ) => {
+            const target =
+              event.target;
+
+            if (
+              !(target instanceof
+                Element)
+            ) {
+              return;
+            }
+
+            const interactive =
+              target.closest(
+                "a, button, input, select, textarea, form, [role='button'], [onclick]"
+              );
+
+            if (
+              !interactive
+            ) {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+          };
+
+          const blockGeneratedSubmit = (
+            event:
+              Event
+          ) => {
+            event.preventDefault();
+            event.stopPropagation();
+          };
+
+          document.addEventListener(
+            "click",
+            blockGeneratedInteraction,
+            true
+          );
+
+          document.addEventListener(
+            "submit",
+            blockGeneratedSubmit,
+            true
+          );
+
+          /*
+           * Keep the visual design unchanged while making it
+           * clear to assistive technology that these controls
+           * are only part of a static concept.
+           */
+          document
+            .querySelectorAll(
+              "a, button, input, select, textarea, [role='button']"
+            )
+            .forEach(
+              (
+                element
+              ) => {
+                element.setAttribute(
+                  "aria-disabled",
+                  "true"
+                );
+
+                element.setAttribute(
+                  "tabindex",
+                  "-1"
+                );
+              }
+            );
+
           measure();
 
           const images =
@@ -1903,6 +1985,18 @@ export function CustomerDesignFrame({
                   timeout
                 );
               }
+
+              document.removeEventListener(
+                "click",
+                blockGeneratedInteraction,
+                true
+              );
+
+              document.removeEventListener(
+                "submit",
+                blockGeneratedSubmit,
+                true
+              );
             };
         } catch (
           error

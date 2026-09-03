@@ -21,6 +21,24 @@ import {
 } from "@/lib/gmail-send";
 
 import {
+  buildOutreachHtmlEmail,
+} from "@/lib/outreach-email-html";
+
+import {
+  loadOutreachPreviewGifInlineImage,
+  OUTREACH_PREVIEW_GIF_CID,
+} from "@/lib/outreach-preview-gif";
+
+import {
+  assessEmailQuality,
+} from "@/lib/email-quality";
+
+import {
+  getOutreachQualityBlockingMessage,
+  loadOutreachQuality,
+} from "@/lib/outreach-quality";
+
+import {
   createClient,
 } from "@/lib/supabase/server";
 
@@ -398,6 +416,244 @@ function revalidateLead(
   revalidatePath(
     "/campaigns"
   );
+}
+
+/* =========================================================
+   EMAIL SAFETY
+========================================================= */
+
+async function loadLeadEmailSafety({
+  supabase,
+  userId,
+  leadId,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  leadId:
+    string;
+}) {
+  const {
+    data:
+      lead,
+    error,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .select(`
+        id,
+        status,
+
+        company:companies (
+          id,
+          website_url
+        ),
+
+        primary_contact:contacts (
+          id,
+          email,
+          email_quality_status,
+          email_quality_detail,
+          email_source_url,
+          email_candidate,
+          email_candidate_source_url
+        )
+      `)
+      .eq(
+        "id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        userId
+      )
+      .maybeSingle();
+
+  if (
+    error ||
+    !lead
+  ) {
+    return {
+      ok:
+        false as const,
+
+      error:
+        error?.message ??
+        "Lead not found.",
+    };
+  }
+
+  const company =
+    getSingleRelation(
+      lead.company
+    );
+
+  const contact =
+    getSingleRelation(
+      lead.primary_contact
+    );
+
+  const assessment =
+    assessEmailQuality({
+      currentEmail:
+        contact?.email ??
+        null,
+
+      websiteUrl:
+        company?.website_url ??
+        null,
+
+      /*
+       * When the analyzer found a different public address,
+       * keep using it as the comparison candidate.
+       *
+       * When the current email itself was verified on the
+       * website, pass it back as discovered evidence.
+       */
+      discoveredEmail:
+        contact?.email_candidate ??
+        (
+          contact?.email_quality_status ===
+            "VERIFIED_WEBSITE"
+            ? contact.email
+            : null
+        ),
+
+      discoveredEmailSourceUrl:
+        contact?.email_candidate_source_url ??
+        contact?.email_source_url ??
+        null,
+    });
+
+  return {
+    ok:
+      true as const,
+
+    lead,
+
+    company,
+
+    contact,
+
+    assessment,
+  };
+}
+
+async function setDraftEmailSafetyError({
+  supabase,
+  userId,
+  leadId,
+  draftId,
+  message,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  leadId:
+    string;
+
+  draftId:
+    string;
+
+  message:
+    string;
+}) {
+  const {
+    error,
+  } =
+    await supabase
+      .from(
+        "outreach_drafts"
+      )
+      .update({
+        send_error:
+          message,
+      })
+      .eq(
+        "id",
+        draftId
+      )
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        userId
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not save email safety error:",
+      error
+    );
+  }
+}
+
+/* =========================================================
+   FULL PRE-SEND QUALITY GATE
+========================================================= */
+
+async function getPreSendQualityOrError({
+  supabase,
+  userId,
+  leadId,
+  draftId,
+}: {
+  supabase:
+    ServerSupabaseClient;
+
+  userId:
+    string;
+
+  leadId:
+    string;
+
+  draftId:
+    string;
+}) {
+  try {
+    const quality =
+      await loadOutreachQuality({
+        supabase,
+
+        userId,
+
+        leadId,
+
+        draftId,
+      });
+
+    return {
+      ok:
+        true as const,
+
+      quality,
+    };
+  } catch (
+    error
+  ) {
+    return {
+      ok:
+        false as const,
+
+      error:
+        error instanceof
+          Error
+          ? error.message
+          : "Pre-send quality check failed.",
+    };
+  }
 }
 
 /* =========================================================
@@ -2506,6 +2762,204 @@ export async function updateLeadContactSalutation(
 }
 
 /* =========================================================
+   USE WEBSITE EMAIL CANDIDATE
+========================================================= */
+
+export async function applyDiscoveredEmailCandidate(
+  formData:
+    FormData
+) {
+  const leadId =
+    formData.get(
+      "leadId"
+    );
+
+  const contactId =
+    formData.get(
+      "contactId"
+    );
+
+  if (
+    typeof leadId !==
+      "string" ||
+    !leadId ||
+    typeof contactId !==
+      "string" ||
+    !contactId
+  ) {
+    return;
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
+  }
+
+  const {
+    data:
+      contact,
+    error:
+      loadError,
+  } =
+    await supabase
+      .from(
+        "contacts"
+      )
+      .select(`
+        id,
+        email_candidate,
+        email_candidate_source_url
+      `)
+      .eq(
+        "id",
+        contactId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+  if (
+    loadError ||
+    !contact?.email_candidate
+  ) {
+    console.error(
+      "Could not load discovered email candidate:",
+      loadError
+    );
+
+    return;
+  }
+
+  const candidate =
+    contact.email_candidate
+      .trim()
+      .toLowerCase();
+
+  const {
+    error:
+      updateError,
+  } =
+    await supabase
+      .from(
+        "contacts"
+      )
+      .update({
+        email:
+          candidate,
+
+        email_quality_status:
+          "VERIFIED_WEBSITE",
+
+        email_quality_detail:
+          "Öffentliche Adresse von der Firmenwebsite übernommen.",
+
+        email_source_url:
+          contact
+            .email_candidate_source_url,
+
+        email_candidate:
+          null,
+
+        email_candidate_source_url:
+          null,
+
+        email_checked_at:
+          new Date()
+            .toISOString(),
+      })
+      .eq(
+        "id",
+        contactId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+  if (
+    updateError
+  ) {
+    console.error(
+      "Could not apply discovered email candidate:",
+      updateError
+    );
+
+    return;
+  }
+
+  /*
+   * Recipient changed: force any unsent approved draft back
+   * to DRAFT so the final recipient is reviewed once more.
+   */
+  const {
+    error:
+      draftResetError,
+  } =
+    await supabase
+      .from(
+        "outreach_drafts"
+      )
+      .update({
+        status:
+          "DRAFT",
+
+        send_error:
+          null,
+      })
+      .eq(
+        "lead_id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .is(
+        "sent_at",
+        null
+      )
+      .in(
+        "status",
+        [
+          "DRAFT",
+          "APPROVED",
+        ]
+      );
+
+  if (
+    draftResetError
+  ) {
+    console.error(
+      "Could not reset draft after recipient correction:",
+      draftResetError
+    );
+  }
+
+  revalidateLead(
+    leadId
+  );
+
+  redirect(
+    `/leads/${leadId}#outreach`
+  );
+}
+
+/* =========================================================
    APPROVE DRAFT
 ========================================================= */
 
@@ -2549,6 +3003,75 @@ export async function approveOutreachDraft(
   ) {
     redirect(
       "/login"
+    );
+  }
+
+  const preSendQuality =
+    await getPreSendQualityOrError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+
+      draftId,
+    });
+
+  if (
+    !preSendQuality.ok
+  ) {
+    await setDraftEmailSafetyError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+
+      draftId,
+
+      message:
+        `Versandprüfung fehlgeschlagen: ${preSendQuality.error}`,
+    });
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
+    );
+  }
+
+  const qualityError =
+    getOutreachQualityBlockingMessage(
+      preSendQuality.quality
+    );
+
+  if (
+    qualityError
+  ) {
+    await setDraftEmailSafetyError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+
+      draftId,
+
+      message:
+        `Freigabe blockiert: ${qualityError}`,
+    });
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
     );
   }
 
@@ -2662,6 +3185,75 @@ export async function sendApprovedOutreachDraft(
     );
   }
 
+  const preSendQuality =
+    await getPreSendQualityOrError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+
+      draftId,
+    });
+
+  if (
+    !preSendQuality.ok
+  ) {
+    await setDraftEmailSafetyError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+
+      draftId,
+
+      message:
+        `Versandprüfung fehlgeschlagen: ${preSendQuality.error}`,
+    });
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
+    );
+  }
+
+  const qualityError =
+    getOutreachQualityBlockingMessage(
+      preSendQuality.quality
+    );
+
+  if (
+    qualityError
+  ) {
+    await setDraftEmailSafetyError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+
+      draftId,
+
+      message:
+        `Versand blockiert: ${qualityError}`,
+    });
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
+    );
+  }
+
   const {
     data:
       draft,
@@ -2680,6 +3272,7 @@ export async function sendApprovedOutreachDraft(
         status,
         subject,
         body,
+        language,
         sent_at
       `)
       .eq(
@@ -2775,6 +3368,7 @@ export async function sendApprovedOutreachDraft(
       .select(`
         id,
         status,
+        outreach_gif_enabled,
 
         primary_contact:contacts (
           id,
@@ -2965,6 +3559,120 @@ export async function sendApprovedOutreachDraft(
     );
   }
 
+  let htmlBody:
+    | string
+    | null =
+      null;
+
+  let inlinePreviewGif:
+    Awaited<
+      ReturnType<
+        typeof loadOutreachPreviewGifInlineImage
+      >
+    > =
+      null;
+
+  if (
+    lead.outreach_gif_enabled !==
+      false
+  ) {
+    const {
+      data:
+        publicPreview,
+      error:
+        publicPreviewError,
+    } =
+      await supabase
+        .from(
+          "design_public_previews"
+        )
+        .select(`
+          public_slug,
+          preview_gif_status,
+          preview_gif_path,
+          revoked_at,
+          expires_at,
+          created_at
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .is(
+          "revoked_at",
+          null
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
+
+    if (
+      publicPreviewError
+    ) {
+      console.error(
+        "Could not load preview GIF for outreach. Falling back to plain text:",
+        publicPreviewError
+      );
+    } else if (
+      publicPreview &&
+      publicPreview.preview_gif_status ===
+        "READY" &&
+      publicPreview.preview_gif_path &&
+      (
+        !publicPreview.expires_at ||
+        new Date(
+          publicPreview.expires_at
+        ).getTime() >
+          Date.now()
+      )
+    ) {
+      inlinePreviewGif =
+        await loadOutreachPreviewGifInlineImage(
+          publicPreview.preview_gif_path
+        );
+
+      if (
+        inlinePreviewGif
+      ) {
+        const publicBaseUrl =
+          process.env.LEADBASE_PUBLIC_APP_URL ??
+          "https://leadbase.joelcimpean.com";
+
+        const previewUrl =
+          `${publicBaseUrl.replace(
+            /\/$/,
+            ""
+          )}/concept/${encodeURIComponent(
+            publicPreview.public_slug
+          )}?src=outreach`;
+
+        htmlBody =
+          buildOutreachHtmlEmail({
+            textBody:
+              draft.body,
+
+            previewUrl,
+
+            gifContentId:
+              OUTREACH_PREVIEW_GIF_CID,
+
+            language:
+              draft.language,
+          });
+      }
+    }
+  }
+
   let gmailResult: {
     messageId:
       string;
@@ -2988,6 +3696,15 @@ export async function sendApprovedOutreachDraft(
 
         body:
           draft.body,
+
+        htmlBody,
+
+        inlineImages:
+          inlinePreviewGif
+            ? [
+                inlinePreviewGif,
+              ]
+            : [],
 
         encryptedRefreshToken:
           gmailConnection.encrypted_refresh_token,
@@ -3145,6 +3862,16 @@ export async function sendApprovedOutreachDraft(
 
         next_follow_up_at:
           nextFollowUp,
+
+        smart_follow_up_mode:
+          "STANDARD",
+
+        smart_follow_up_reason:
+          "No customer engagement signal yet; standard 5-day follow-up remains.",
+
+        smart_follow_up_updated_at:
+          new Date()
+            .toISOString(),
       })
       .eq(
         "id",
@@ -3255,6 +3982,71 @@ export async function sendFollowUpOutreachDraft(
   ) {
     redirect(
       "/login"
+    );
+  }
+
+  const emailSafety =
+    await loadLeadEmailSafety({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId,
+    });
+
+  if (
+    !emailSafety.ok ||
+    emailSafety.assessment
+      .blocksSending
+  ) {
+    const reason =
+      emailSafety.ok
+        ? emailSafety
+            .assessment
+            .detail
+        : emailSafety.error;
+
+    const {
+      error:
+        safetyError,
+    } =
+      await supabase
+        .from(
+          "outreach_drafts"
+        )
+        .update({
+          follow_up_send_error:
+            `Follow-up blockiert: ${reason}`,
+        })
+        .eq(
+          "id",
+          draftId
+        )
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+    if (
+      safetyError
+    ) {
+      console.error(
+        "Could not save follow-up safety error:",
+        safetyError
+      );
+    }
+
+    revalidateLead(
+      leadId
+    );
+
+    redirect(
+      `/leads/${leadId}#outreach`
     );
   }
 
@@ -3775,6 +4567,215 @@ export async function sendFollowUpOutreachDraft(
   );
 }
 /* =========================================================
+   LOAD BULK GIF PREFERENCES
+========================================================= */
+
+export async function getBulkOutreachGifPreferences(
+  leadIds: string[]
+): Promise<
+  | {
+      ok: true;
+      leads: Record<
+        string,
+        {
+          enabled: boolean;
+          gifReady: boolean;
+        }
+      >;
+    }
+  | {
+      ok: false;
+      error: string;
+    }
+> {
+  const ids =
+    Array.from(
+      new Set(
+        leadIds
+          .map((id) => id.trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 200);
+
+  if (ids.length === 0) {
+    return {
+      ok: true,
+      leads: {},
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    return {
+      ok: false,
+      error:
+        "Unauthorized.",
+    };
+  }
+
+  const [
+    leadResult,
+    previewResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from("leads")
+        .select(`
+          id,
+          outreach_gif_enabled
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .in(
+          "id",
+          ids
+        ),
+
+      supabase
+        .from(
+          "design_public_previews"
+        )
+        .select(`
+          lead_id,
+          preview_gif_status,
+          preview_gif_url,
+          revoked_at,
+          expires_at,
+          created_at
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .in(
+          "lead_id",
+          ids
+        )
+        .is(
+          "revoked_at",
+          null
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        ),
+    ]);
+
+  if (leadResult.error) {
+    return {
+      ok: false,
+      error:
+        leadResult.error.message,
+    };
+  }
+
+  if (previewResult.error) {
+    return {
+      ok: false,
+      error:
+        previewResult.error.message,
+    };
+  }
+
+  const latestPreviewByLead =
+    new Map<
+      string,
+      {
+        preview_gif_status:
+          | string
+          | null;
+        preview_gif_url:
+          | string
+          | null;
+        expires_at:
+          | string
+          | null;
+      }
+    >();
+
+  for (
+    const preview of
+      previewResult.data ?? []
+  ) {
+    if (
+      latestPreviewByLead.has(
+        preview.lead_id
+      )
+    ) {
+      continue;
+    }
+
+    latestPreviewByLead.set(
+      preview.lead_id,
+      preview
+    );
+  }
+
+  const result: Record<
+    string,
+    {
+      enabled: boolean;
+      gifReady: boolean;
+    }
+  > = {};
+
+  for (
+    const lead of
+      leadResult.data ?? []
+  ) {
+    const preview =
+      latestPreviewByLead.get(
+        lead.id
+      );
+
+    const notExpired =
+      !preview?.expires_at ||
+      new Date(
+        preview.expires_at
+      ).getTime() >
+        Date.now();
+
+    result[lead.id] = {
+      enabled:
+        lead.outreach_gif_enabled ??
+        true,
+      gifReady:
+        Boolean(
+          preview &&
+          notExpired &&
+          preview.preview_gif_status ===
+            "READY" &&
+          preview.preview_gif_url
+        ),
+    };
+  }
+
+  return {
+    ok: true,
+    leads: result,
+  };
+}
+
+/* =========================================================
    SCHEDULE INITIAL OUTREACH — BULK
 ========================================================= */
 
@@ -3800,7 +4801,8 @@ export type BulkScheduleOutreachResult =
 
 export async function scheduleLeadOutreachForBulk(
   leadId: string,
-  scheduledForIso: string
+  scheduledForIso: string,
+  includePreviewGif: boolean
 ): Promise<BulkScheduleOutreachResult> {
   const cleanLeadId =
     leadId.trim();
@@ -4054,6 +5056,51 @@ export async function scheduleLeadOutreachForBulk(
     };
   }
 
+  const preSendQuality =
+    await getPreSendQualityOrError({
+      supabase,
+
+      userId:
+        user.id,
+
+      leadId:
+        cleanLeadId,
+
+      draftId:
+        draft.id,
+    });
+
+  if (
+    !preSendQuality.ok
+  ) {
+    return {
+      success:
+        false,
+      status:
+        "failed",
+      error:
+        preSendQuality.error,
+    };
+  }
+
+  const qualityError =
+    getOutreachQualityBlockingMessage(
+      preSendQuality.quality
+    );
+
+  if (
+    qualityError
+  ) {
+    return {
+      success:
+        true,
+      status:
+        "skipped",
+      reason:
+        `Quality gate: ${qualityError}`,
+    };
+  }
+
   const {
     data:
       existingSchedule,
@@ -4160,6 +5207,9 @@ export async function scheduleLeadOutreachForBulk(
 
         attachments:
           [],
+
+        include_preview_gif:
+          includePreviewGif,
 
         scheduled_for:
           scheduledFor.toISOString(),
@@ -4502,4 +5552,114 @@ export async function cancelScheduledOutreach(
   redirect(
     `/leads/${leadId.trim()}#outreach`
   );
+}
+
+
+/* =========================================================
+   UPDATE OUTREACH GIF PREFERENCE
+========================================================= */
+
+export async function updateLeadOutreachGifPreference(
+  leadId:
+    string,
+  enabled:
+    boolean
+): Promise<
+  | {
+      ok:
+        true;
+    }
+  | {
+      ok:
+        false;
+
+      error:
+        string;
+    }
+> {
+  const cleanLeadId =
+    leadId.trim();
+
+  if (
+    !cleanLeadId
+  ) {
+    return {
+      ok:
+        false,
+
+      error:
+        "Invalid lead ID.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    return {
+      ok:
+        false,
+
+      error:
+        "Unauthorized.",
+    };
+  }
+
+  const {
+    error,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .update({
+        outreach_gif_enabled:
+          enabled,
+      })
+      .eq(
+        "id",
+        cleanLeadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+  if (
+    error
+  ) {
+    return {
+      ok:
+        false,
+
+      error:
+        error.message,
+    };
+  }
+
+  revalidatePath(
+    `/leads/${cleanLeadId}`
+  );
+
+  revalidatePath(
+    "/leads"
+  );
+
+  return {
+    ok:
+      true,
+  };
 }

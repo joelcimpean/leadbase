@@ -5,11 +5,13 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Film,
   Mail,
   MailCheck,
   PencilLine,
   RotateCcw,
   Save,
+  ShieldCheck,
   Sparkles,
   User,
 } from "lucide-react";
@@ -17,6 +19,14 @@ import {
 import {
   GenerateOutreachButton,
 } from "./generate-outreach-button";
+
+import {
+  LeadEmailHistory,
+} from "./lead-email-history";
+
+import {
+  OutreachGifPreference,
+} from "./outreach-gif-preference";
 
 import {
   SendEmailButton,
@@ -27,6 +37,7 @@ import {
 } from "./send-follow-up-button";
 
 import {
+  applyDiscoveredEmailCandidate,
   approveOutreachDraft,
   cancelScheduledOutreach,
   resetSentOutreachDraft,
@@ -42,6 +53,18 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+
+import {
+  PendingSubmitButton,
+} from "@/components/pending-submit-button";
+
+import {
+  getEmailQualityLabel,
+} from "@/lib/email-quality";
+
+import {
+  evaluateOutreachQuality,
+} from "@/lib/outreach-quality";
 
 import {
   type AppLanguage,
@@ -310,6 +333,9 @@ function formatDateTime(
 
       minute:
         "2-digit",
+
+      timeZone:
+        "Europe/Berlin",
     }
   ).format(
     new Date(
@@ -454,6 +480,59 @@ function EmailBody({
   );
 }
 
+function smartFollowUpLabel(
+  mode:
+    string
+    | null
+    | undefined,
+  language:
+    "de"
+    | "en"
+) {
+  const de =
+    language ===
+    "de";
+
+  switch (
+    mode
+  ) {
+    case "VIEWED":
+      return de
+        ? "Smart · Vorschau gesehen"
+        : "Smart · Preview viewed";
+
+    case "ENGAGED":
+      return de
+        ? "Smart · Vorschau aktiv angesehen"
+        : "Smart · Preview engaged";
+
+    case "REPEAT":
+      return de
+        ? "Smart · Starkes Interesse"
+        : "Smart · Strong engagement";
+
+    case "OOO":
+      return de
+        ? "Smart · Nach Abwesenheit"
+        : "Smart · After absence";
+
+    case "REQUESTED":
+      return de
+        ? "Smart · Vom Kunden gewünscht"
+        : "Smart · Customer requested";
+
+    case "STOPPED":
+      return de
+        ? "Smart · Gestoppt"
+        : "Smart · Stopped";
+
+    default:
+      return de
+        ? "Smart · Standard"
+        : "Smart · Standard";
+  }
+}
+
 /* =========================================================
    OUTREACH
 ========================================================= */
@@ -480,6 +559,8 @@ export async function OutreachSection({
     leadResult,
     gmailResult,
     scheduleResult,
+    selectedDesignResult,
+    publicPreviewsResult,
   ] =
     await Promise.all([
       supabase
@@ -536,11 +617,16 @@ export async function OutreachSection({
         .select(`
           id,
           status,
+          outreach_gif_enabled,
           next_follow_up_at,
+          smart_follow_up_mode,
+          smart_follow_up_reason,
+          smart_follow_up_updated_at,
 
           company:companies (
             id,
-            name
+            name,
+            website_url
           ),
 
           primary_contact:contacts (
@@ -548,7 +634,13 @@ export async function OutreachSection({
             full_name,
             job_title,
             email,
-            salutation
+            salutation,
+            email_quality_status,
+            email_quality_detail,
+            email_source_url,
+            email_candidate,
+            email_candidate_source_url,
+            email_checked_at
           )
         `)
         .eq(
@@ -575,7 +667,8 @@ export async function OutreachSection({
           id,
           outreach_draft_id,
           status,
-          scheduled_for
+          scheduled_for,
+          include_preview_gif
         `)
         .eq(
           "lead_id",
@@ -603,6 +696,53 @@ export async function OutreachSection({
           1
         )
         .maybeSingle(),
+
+      supabase
+        .from(
+          "design_mockup_variants"
+        )
+        .select(`
+          id,
+          source_snapshot,
+          selected,
+          selected_at
+        `)
+        .eq(
+          "lead_id",
+          leadId
+        )
+        .eq(
+          "selected",
+          true
+        )
+        .order(
+          "selected_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          1
+        )
+        .maybeSingle(),
+
+      supabase
+        .from(
+          "design_public_previews"
+        )
+        .select(`
+          design_mockup_variant_id,
+          public_slug,
+          expires_at,
+          revoked_at,
+          preview_gif_status,
+          preview_gif_url
+        `)
+        .eq(
+          "lead_id",
+          leadId
+        ),
     ]);
 
   if (
@@ -638,6 +778,24 @@ export async function OutreachSection({
     console.error(
       "Could not load scheduled outreach:",
       scheduleResult.error
+    );
+  }
+
+  if (
+    selectedDesignResult.error
+  ) {
+    console.error(
+      "Could not load selected outreach design:",
+      selectedDesignResult.error
+    );
+  }
+
+  if (
+    publicPreviewsResult.error
+  ) {
+    console.error(
+      "Could not load outreach previews:",
+      publicPreviewsResult.error
     );
   }
 
@@ -715,10 +873,165 @@ export async function OutreachSection({
         )
     );
 
+  const preSendQuality =
+    evaluateOutreachQuality({
+      leadStatus:
+        lead?.status ??
+        null,
+
+      companyName:
+        company?.name ??
+        null,
+
+      websiteUrl:
+        company?.website_url ??
+        null,
+
+      contact:
+        contact
+          ? {
+              email:
+                contact.email,
+
+              full_name:
+                contact.full_name,
+
+              salutation:
+                contact.salutation,
+
+              email_quality_status:
+                contact.email_quality_status,
+
+              email_source_url:
+                contact.email_source_url,
+
+              email_candidate:
+                contact.email_candidate,
+
+              email_candidate_source_url:
+                contact.email_candidate_source_url,
+            }
+          : null,
+
+      draft:
+        draft
+          ? {
+              subject:
+                draft.subject,
+
+              body:
+                draft.body,
+            }
+          : null,
+
+      selectedDesign:
+        selectedDesignResult.data
+          ? {
+              id:
+                selectedDesignResult.data.id,
+
+              source_snapshot:
+                selectedDesignResult.data.source_snapshot,
+            }
+          : null,
+
+      publicPreviews:
+        (
+          publicPreviewsResult.data ??
+          []
+        ).map(
+          (
+            preview
+          ) => ({
+            design_mockup_variant_id:
+              preview.design_mockup_variant_id,
+
+            public_slug:
+              preview.public_slug,
+
+            expires_at:
+              preview.expires_at,
+
+            revoked_at:
+              preview.revoked_at,
+          })
+        ),
+
+      gmailReady,
+    });
+
+  const activePublicPreview =
+    (
+      publicPreviewsResult.data ??
+      []
+    ).find(
+      (
+        preview
+      ) => {
+        if (
+          preview.revoked_at
+        ) {
+          return false;
+        }
+
+        if (
+          preview.expires_at &&
+          new Date(
+            preview.expires_at
+          ).getTime() <=
+            Date.now()
+        ) {
+          return false;
+        }
+
+        return Boolean(
+          preview.public_slug
+        );
+      }
+    ) ??
+    null;
+
+  const outreachGifReady =
+    activePublicPreview
+      ?.preview_gif_status ===
+      "READY" &&
+    Boolean(
+      activePublicPreview
+        .preview_gif_url
+    );
+
   const recipientEmail =
     contact?.email
       ?.trim() ??
     null;
+
+  const emailQualityStatus =
+    contact?.email_quality_status ??
+    "UNCHECKED";
+
+  const emailQualityBlocked =
+    emailQualityStatus ===
+      "MISSING" ||
+    emailQualityStatus ===
+      "INVALID" ||
+    emailQualityStatus ===
+      "PLACEHOLDER";
+
+  const emailQualityWarning =
+    emailQualityStatus ===
+      "DOMAIN_MISMATCH" ||
+    emailQualityStatus ===
+      "SUSPICIOUS";
+
+  const emailQualityGood =
+    emailQualityStatus ===
+      "VERIFIED_WEBSITE" ||
+    emailQualityStatus ===
+      "DOMAIN_MATCH" ||
+    emailQualityStatus ===
+      "GENERIC_VALID" ||
+    emailQualityStatus ===
+      "PERSONAL_VALID";
 
   const followUpDueAt =
     lead?.next_follow_up_at
@@ -756,8 +1069,9 @@ export async function OutreachSection({
       : "en-IE";
 
   return (
-    <Card
-      id="outreach"
+    <>
+      <Card
+        id="outreach"
       className="min-w-0 overflow-hidden shadow-none"
     >
       <CardContent className="p-0">
@@ -846,6 +1160,21 @@ export async function OutreachSection({
           </div>
         ) : (
           <>
+            <div className="border-t px-4 py-3 sm:px-5">
+              <OutreachGifPreference
+                leadId={
+                  leadId
+                }
+                initialEnabled={
+                  lead?.outreach_gif_enabled ??
+                  true
+                }
+                gifReady={
+                  outreachGifReady
+                }
+              />
+            </div>
+
             <div className="border-t bg-muted/20 px-4 py-4 sm:px-5">
               <div className="grid gap-4">
                 <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
@@ -880,6 +1209,170 @@ export async function OutreachSection({
                     </div>
                   </div>
                 </div>
+
+                {contact ? (
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-[110px_minmax(0,1fr)] sm:items-start">
+                    <p className="pt-0.5 text-xs font-medium text-muted-foreground">
+                      {language ===
+                      "de"
+                        ? "E-Mail-Prüfung"
+                        : "Email check"}
+                    </p>
+
+                    <div
+                      className={`min-w-0 rounded-lg border px-3 py-2.5 ${
+                        emailQualityBlocked
+                          ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                          : emailQualityWarning
+                            ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
+                            : emailQualityGood
+                              ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
+                              : "bg-background"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                            emailQualityBlocked
+                              ? "text-red-700 dark:text-red-300"
+                              : emailQualityWarning
+                                ? "text-amber-700 dark:text-amber-300"
+                                : emailQualityGood
+                                  ? "text-emerald-700 dark:text-emerald-300"
+                                  : "text-muted-foreground"
+                          }`}
+                        >
+                          {emailQualityBlocked ||
+                          emailQualityWarning ? (
+                            <AlertCircle className="size-3.5" />
+                          ) : (
+                            <CheckCircle2 className="size-3.5" />
+                          )}
+
+                          {getEmailQualityLabel(
+                            emailQualityStatus,
+                            language
+                          )}
+                        </span>
+
+                        {contact.email_source_url ? (
+                          <a
+                            href={
+                              contact.email_source_url
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          >
+                            {language ===
+                            "de"
+                              ? "Quelle öffnen"
+                              : "Open source"}
+                          </a>
+                        ) : null}
+                      </div>
+
+                      {contact.email_quality_detail ? (
+                        <p className="mt-1.5 break-words text-[11px] leading-5 text-muted-foreground">
+                          {
+                            contact.email_quality_detail
+                          }
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
+                          {language ===
+                          "de"
+                            ? "Wird bei der nächsten Website-Analyse geprüft."
+                            : "Will be checked during the next website analysis."}
+                        </p>
+                      )}
+
+                      {contact.email_candidate ? (
+                        <div className="mt-2.5 flex flex-col gap-2 rounded-md border bg-background/80 p-2.5 min-[500px]:flex-row min-[500px]:items-center min-[500px]:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {language ===
+                              "de"
+                                ? "Auf Website gefunden"
+                                : "Found on website"}
+                            </p>
+
+                            <p className="mt-0.5 break-all text-xs font-semibold">
+                              {
+                                contact.email_candidate
+                              }
+                            </p>
+
+                            {contact.email_candidate_source_url ? (
+                              <a
+                                href={
+                                  contact.email_candidate_source_url
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 inline-block text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                              >
+                                {language ===
+                                "de"
+                                  ? "Fundstelle ansehen"
+                                  : "View source"}
+                              </a>
+                            ) : null}
+                          </div>
+
+                          {contact.id ? (
+                            <form
+                              action={
+                                applyDiscoveredEmailCandidate
+                              }
+                              className="shrink-0"
+                            >
+                              <input
+                                type="hidden"
+                                name="leadId"
+                                value={
+                                  leadId
+                                }
+                              />
+
+                              <input
+                                type="hidden"
+                                name="contactId"
+                                value={
+                                  contact.id
+                                }
+                              />
+
+                              <PendingSubmitButton
+                                pendingText={
+                                  language ===
+                                    "de"
+                                    ? "Übernimmt..."
+                                    : "Applying..."
+                                }
+                                className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-foreground px-2.5 text-[11px] font-medium text-background transition-opacity hover:opacity-90 min-[500px]:w-auto"
+                              >
+                                {language ===
+                                "de"
+                                  ? "Adresse übernehmen"
+                                  : "Use this address"}
+                              </PendingSubmitButton>
+                            </form>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {emailQualityBlocked ? (
+                        <p className="mt-2 text-[10px] font-semibold text-red-700 dark:text-red-300">
+                          {language ===
+                          "de"
+                            ? "Leadbase blockiert Freigabe, geplanten Versand und direkten Versand, bis die Adresse korrigiert ist."
+                            : "Leadbase blocks approval, scheduling and sending until the address is corrected."}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
                 {contact?.id &&
                 contact.full_name &&
@@ -937,14 +1430,19 @@ export async function OutreachSection({
                           </option>
                         </select>
 
-                        <button
-                          type="submit"
-                          className="h-10 rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted sm:h-8"
+                        <PendingSubmitButton
+                          pendingText={
+                            language ===
+                              "de"
+                              ? "Speichert..."
+                              : "Saving..."
+                          }
+                          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted sm:h-8"
                         >
                           {
                             text.save
                           }
-                        </button>
+                        </PendingSubmitButton>
                       </form>
 
                       <p className="mt-2 break-words text-xs text-muted-foreground">
@@ -1006,6 +1504,22 @@ export async function OutreachSection({
                             ? "Wird automatisch zu diesem Zeitpunkt gesendet."
                             : "Will be sent automatically at this time."}
                       </p>
+
+                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Film className="size-3.5" />
+                        {language ===
+                          "de"
+                          ? `Animierte Vorschau: ${
+                              activeSchedule.include_preview_gif
+                                ? "AN"
+                                : "AUS"
+                            }`
+                          : `Animated preview: ${
+                              activeSchedule.include_preview_gif
+                                ? "ON"
+                                : "OFF"
+                            }`}
+                      </p>
                     </div>
                   </div>
                 ) : null}
@@ -1041,6 +1555,140 @@ export async function OutreachSection({
                 ) : null}
               </div>
             </div>
+
+            {draft.status !==
+            "SENT" ? (
+              <div className="border-t bg-background">
+                <details
+                  open={
+                    !preSendQuality.ready
+                  }
+                  className="group"
+                >
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30 sm:px-5 [&::-webkit-details-marker]:hidden">
+                    <div
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-lg border ${
+                        preSendQuality.ready
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                          : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+                      }`}
+                    >
+                      <ShieldCheck className="size-3.5" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold">
+                          {language ===
+                          "de"
+                            ? "Versand-Check"
+                            : "Pre-send check"}
+                        </p>
+
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${
+                            preSendQuality.ready
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : "bg-red-500/10 text-red-700 dark:text-red-300"
+                          }`}
+                        >
+                          {preSendQuality.ready
+                            ? language ===
+                                "de"
+                              ? "Bereit"
+                              : "Ready"
+                            : language ===
+                                "de"
+                              ? `${preSendQuality.blockers.length} Problem${preSendQuality.blockers.length === 1 ? "" : "e"}`
+                              : `${preSendQuality.blockers.length} blocker${preSendQuality.blockers.length === 1 ? "" : "s"}`}
+                        </span>
+
+                        {preSendQuality.warnings.length >
+                        0 ? (
+                          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+                            {preSendQuality.warnings.length}{" "}
+                            {language ===
+                            "de"
+                              ? "Hinweis"
+                              : "warning"}
+                            {preSendQuality.warnings.length ===
+                            1
+                              ? ""
+                              : language ===
+                                  "de"
+                                ? "e"
+                                : "s"}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {preSendQuality.ready
+                          ? language ===
+                              "de"
+                            ? "Alle kritischen Voraussetzungen für den Versand sind erfüllt."
+                            : "All critical send requirements are satisfied."
+                          : language ===
+                              "de"
+                            ? "Leadbase blockiert den Versand, bis die roten Punkte behoben sind."
+                            : "Leadbase blocks sending until all red items are fixed."}
+                      </p>
+                    </div>
+
+                    <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </summary>
+
+                  <div className="border-t px-4 py-3 sm:px-5">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {preSendQuality.items.map(
+                        (
+                          item
+                        ) => (
+                          <div
+                            key={
+                              item.key
+                            }
+                            className={`rounded-lg border px-3 py-2.5 ${
+                              item.severity ===
+                              "blocker"
+                                ? "border-red-200 bg-red-50/70 dark:border-red-900 dark:bg-red-950/20"
+                                : item.severity ===
+                                    "warning"
+                                  ? "border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20"
+                                  : "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/15"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {item.severity ===
+                              "blocker" ? (
+                                <AlertCircle className="size-3.5 shrink-0 text-red-600 dark:text-red-400" />
+                              ) : item.severity ===
+                                  "warning" ? (
+                                <AlertCircle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                              ) : (
+                                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                              )}
+
+                              <p className="text-[11px] font-semibold">
+                                {
+                                  item.label
+                                }
+                              </p>
+                            </div>
+
+                            <p className="mt-1.5 break-words text-[10px] leading-4 text-muted-foreground">
+                              {
+                                item.detail
+                              }
+                            </p>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </details>
+              </div>
+            ) : null}
 
             <div className="min-w-0 border-t px-4 py-5 sm:px-5 sm:py-6">
               <div className="mx-auto min-w-0 max-w-[760px]">
@@ -1124,8 +1772,13 @@ export async function OutreachSection({
                           }
                         />
 
-                        <button
-                          type="submit"
+                        <PendingSubmitButton
+                          pendingText={
+                            language ===
+                              "de"
+                              ? "Wird gestoppt..."
+                              : "Cancelling..."
+                          }
                           className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground min-[420px]:w-auto sm:h-8"
                         >
                           <CalendarX2 className="size-3.5" />
@@ -1134,7 +1787,7 @@ export async function OutreachSection({
                           "de"
                             ? "Geplanten Versand stoppen"
                             : "Cancel scheduled send"}
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : null}
                   </>
@@ -1163,14 +1816,19 @@ export async function OutreachSection({
                           }
                         />
 
-                        <button
-                          type="submit"
-                          className="h-10 w-full rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:h-8 sm:w-auto"
+                        <PendingSubmitButton
+                          pendingText={
+                            language ===
+                              "de"
+                              ? "Wird freigegeben..."
+                              : "Approving..."
+                          }
+                          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:h-8 sm:w-auto"
                         >
                           {
                             text.approveDraft
                           }
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : null}
 
@@ -1250,13 +1908,12 @@ export async function OutreachSection({
                           }
                         />
 
-                        <button
-                          type="submit"
-                          title={
+                        <PendingSubmitButton
+                          pendingText={
                             language ===
-                            "de"
-                              ? "Versand zurücksetzen, Follow-up stoppen und erneut an die aktuelle E-Mail-Adresse senden"
-                              : "Reset sending, cancel the pending follow-up and resend to the current email address"
+                              "de"
+                              ? "Wird zurückgesetzt..."
+                              : "Resetting..."
                           }
                           className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground min-[420px]:w-auto sm:h-8"
                         >
@@ -1266,7 +1923,7 @@ export async function OutreachSection({
                           "de"
                             ? "Empfänger korrigieren"
                             : "Correct recipient"}
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : null}
                   </>
@@ -1325,6 +1982,16 @@ export async function OutreachSection({
                           }
                         </p>
                       )}
+
+                      {!draft.follow_up_sent_at &&
+                      lead?.smart_follow_up_mode ? (
+                        <span className="mt-2 inline-flex items-center rounded-full border bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {smartFollowUpLabel(
+                            lead.smart_follow_up_mode,
+                            language
+                          )}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1555,8 +2222,13 @@ export async function OutreachSection({
                         }
                       </p>
 
-                      <button
-                        type="submit"
+                      <PendingSubmitButton
+                        pendingText={
+                          language ===
+                            "de"
+                            ? "Speichert..."
+                            : "Saving..."
+                        }
                         className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9 sm:w-auto"
                       >
                         <Save className="size-3.5" />
@@ -1566,7 +2238,7 @@ export async function OutreachSection({
                             language
                           ].common.saveChanges
                         }
-                      </button>
+                      </PendingSubmitButton>
                     </div>
                   </div>
                 </form>
@@ -1731,6 +2403,13 @@ export async function OutreachSection({
           </>
         )}
       </CardContent>
-    </Card>
+      </Card>
+
+      <LeadEmailHistory
+        leadId={
+          leadId
+        }
+      />
+    </>
   );
 }

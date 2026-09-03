@@ -5,6 +5,7 @@ import {
   Archive,
   ArrowLeft,
   ArrowUpRight,
+  ChevronDown,
   Download,
   FileText,
   Inbox,
@@ -64,6 +65,10 @@ import {
 } from "@/components/ui/input";
 
 import {
+  PendingSubmitButton,
+} from "@/components/pending-submit-button";
+
+import {
   Separator,
 } from "@/components/ui/separator";
 
@@ -75,6 +80,10 @@ import {
 import {
   inboxCopy,
 } from "@/lib/inbox-i18n";
+
+import type {
+  ReplyClassification,
+} from "@/lib/reply-intelligence";
 
 import {
   createClient,
@@ -159,6 +168,37 @@ type TimelineMessage = {
 
   attachments:
     TimelineAttachment[];
+
+  classification:
+    ReplyClassification
+    | null;
+
+  classificationConfidence:
+    number
+    | null;
+
+  classificationReason:
+    string
+    | null;
+
+  followUpAt:
+    string
+    | null;
+
+  detectedDateText:
+    string
+    | null;
+
+  alternativeContactName:
+    string
+    | null;
+
+  alternativeContactEmail:
+    string
+    | null;
+
+  automaticReply:
+    boolean;
 };
 
 type Conversation = {
@@ -185,6 +225,10 @@ type Conversation = {
   status:
     | "Replied"
     | "Sent";
+
+  replyClassification:
+    ReplyClassification
+    | null;
 
   state:
     ConversationState;
@@ -623,6 +667,96 @@ function formatFullDate(
   );
 }
 
+function getReplyIntelligenceMeta(
+  classification:
+    ReplyClassification,
+  language:
+    AppLanguage
+) {
+  const de =
+    language ===
+    "de";
+
+  switch (
+    classification
+  ) {
+    case "INTERESTED":
+      return {
+        label:
+          de
+            ? "Interessiert"
+            : "Interested",
+
+        className:
+          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300",
+      };
+
+    case "QUESTION":
+      return {
+        label:
+          de
+            ? "Rückfrage"
+            : "Question",
+
+        className:
+          "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300",
+      };
+
+    case "NOT_INTERESTED":
+      return {
+        label:
+          de
+            ? "Absage"
+            : "Not interested",
+
+        className:
+          "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300",
+      };
+
+    case "OUT_OF_OFFICE":
+      return {
+        label:
+          de
+            ? "Abwesend"
+            : "Out of office",
+
+        className:
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300",
+      };
+
+    case "FOLLOW_UP_LATER":
+      return {
+        label:
+          de
+            ? "Später melden"
+            : "Follow up later",
+
+        className:
+          "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300",
+      };
+
+    case "BOUNCE":
+      return {
+        label:
+          "Bounce",
+
+        className:
+          "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300",
+      };
+
+    default:
+      return {
+        label:
+          de
+            ? "Neutral"
+            : "Neutral",
+
+        className:
+          "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
+      };
+  }
+}
+
 function formatFileSize(
   bytes: number
 ) {
@@ -959,7 +1093,15 @@ export default async function InboxPage({
           received_at,
           is_unread,
           read_at,
-          attachments
+          attachments,
+          is_automatic_reply,
+          reply_classification,
+          reply_classification_confidence,
+          reply_classification_reason,
+          reply_follow_up_at,
+          reply_detected_date_text,
+          reply_alternative_contact_name,
+          reply_alternative_contact_email
         `)
         .eq(
           "user_id",
@@ -1224,6 +1366,16 @@ export default async function InboxPage({
       ) ??
       null;
 
+    const humanIncoming =
+      incoming.filter(
+        (
+          message
+        ) =>
+          !message.is_automatic_reply &&
+          message.reply_classification !==
+            "BOUNCE"
+      );
+
     const timeline:
       TimelineMessage[] =
       [];
@@ -1259,6 +1411,30 @@ export default async function InboxPage({
 
         attachments:
           [],
+
+        classification:
+          null,
+
+        classificationConfidence:
+          null,
+
+        classificationReason:
+          null,
+
+        followUpAt:
+          null,
+
+        detectedDateText:
+          null,
+
+        alternativeContactName:
+          null,
+
+        alternativeContactEmail:
+          null,
+
+        automaticReply:
+          false,
       });
     }
 
@@ -1294,6 +1470,30 @@ export default async function InboxPage({
 
         attachments:
           [],
+
+        classification:
+          null,
+
+        classificationConfidence:
+          null,
+
+        classificationReason:
+          null,
+
+        followUpAt:
+          null,
+
+        detectedDateText:
+          null,
+
+        alternativeContactName:
+          null,
+
+        alternativeContactEmail:
+          null,
+
+        automaticReply:
+          false,
       });
     }
 
@@ -1335,6 +1535,43 @@ export default async function InboxPage({
             message.attachments,
             message.gmail_message_id
           ),
+
+        classification:
+          (
+            message.reply_classification as
+              | ReplyClassification
+              | null
+          ) ??
+          null,
+
+        classificationConfidence:
+          message.reply_classification_confidence ??
+          null,
+
+        classificationReason:
+          message.reply_classification_reason ??
+          null,
+
+        followUpAt:
+          message.reply_follow_up_at ??
+          null,
+
+        detectedDateText:
+          message.reply_detected_date_text ??
+          null,
+
+        alternativeContactName:
+          message.reply_alternative_contact_name ??
+          null,
+
+        alternativeContactEmail:
+          message.reply_alternative_contact_email ??
+          null,
+
+        automaticReply:
+          Boolean(
+            message.is_automatic_reply
+          ),
       });
     }
 
@@ -1374,6 +1611,30 @@ export default async function InboxPage({
             message.attachments,
             message.gmail_message_id
           ),
+
+        classification:
+          null,
+
+        classificationConfidence:
+          null,
+
+        classificationReason:
+          null,
+
+        followUpAt:
+          null,
+
+        detectedDateText:
+          null,
+
+        alternativeContactName:
+          null,
+
+        alternativeContactEmail:
+          null,
+
+        automaticReply:
+          false,
       });
     }
 
@@ -1456,10 +1717,31 @@ export default async function InboxPage({
         unreadCount,
 
         status:
-          incoming.length >
+          humanIncoming.length >
           0
             ? "Replied"
             : "Sent",
+
+        replyClassification:
+          (
+            latestIncoming?.reply_classification ===
+              "BOUNCE" &&
+            latestTimeline?.direction ===
+              "outgoing" &&
+            timestamp(
+              latestTimeline.date
+            ) >
+              timestamp(
+                latestIncoming.received_at
+              )
+              ? null
+              : (
+                  latestIncoming?.reply_classification as
+                    | ReplyClassification
+                    | null
+                ) ??
+                null
+          ),
 
         state:
           stateByLead.get(
@@ -1490,6 +1772,213 @@ export default async function InboxPage({
         timeline,
       }
     );
+  }
+
+  /* =======================================================
+     PRELOAD INBOUND-ONLY LEADS
+
+     Previously this section queried Supabase once PER inbound-
+     only lead. With more inbox history that becomes an N+1
+     slowdown. Load all required leads in one query instead.
+  ======================================================= */
+
+  const inboundOnlyLeadIds =
+    Array.from(
+      messagesByLead.entries()
+    )
+      .filter(
+        (
+          [
+            leadId,
+            leadMessages,
+          ]
+        ) =>
+          !conversations.has(
+            leadId
+          ) &&
+          leadMessages.some(
+            (
+              message
+            ) =>
+              message.direction ===
+              "INCOMING"
+          )
+      )
+      .map(
+        (
+          [
+            leadId,
+          ]
+        ) =>
+          leadId
+      );
+
+  const inboundOnlyLeadById =
+    new Map<
+      string,
+      {
+        id:
+          string;
+
+        next_follow_up_at:
+          string
+          | null;
+
+        company:
+          | {
+              id:
+                string;
+
+              name:
+                string;
+            }
+          | {
+              id:
+                string;
+
+              name:
+                string;
+            }[]
+          | null;
+
+        primary_contact:
+          | {
+              id:
+                string;
+
+              full_name:
+                string
+                | null;
+
+              email:
+                string
+                | null;
+            }
+          | {
+              id:
+                string;
+
+              full_name:
+                string
+                | null;
+
+              email:
+                string
+                | null;
+            }[]
+          | null;
+      }
+    >();
+
+  if (
+    inboundOnlyLeadIds.length >
+      0
+  ) {
+    const {
+      data:
+        inboundOnlyLeads,
+
+      error:
+        inboundOnlyLeadsError,
+    } =
+      await supabase
+        .from(
+          "leads"
+        )
+        .select(`
+          id,
+          next_follow_up_at,
+
+          company:companies (
+            id,
+            name
+          ),
+
+          primary_contact:contacts (
+            id,
+            full_name,
+            email
+          )
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .in(
+          "id",
+          inboundOnlyLeadIds
+        );
+
+    if (
+      inboundOnlyLeadsError
+    ) {
+      console.error(
+        "Could not preload inbound-only leads:",
+        inboundOnlyLeadsError
+      );
+    }
+
+    for (
+      const lead of
+        inboundOnlyLeads ??
+        []
+    ) {
+      inboundOnlyLeadById.set(
+        lead.id,
+        lead as {
+          id:
+            string;
+
+          next_follow_up_at:
+            string
+            | null;
+
+          company:
+            | {
+                id:
+                  string;
+
+                name:
+                  string;
+              }
+            | {
+                id:
+                  string;
+
+                name:
+                  string;
+              }[]
+            | null;
+
+          primary_contact:
+            | {
+                id:
+                  string;
+
+                full_name:
+                  string
+                  | null;
+
+                email:
+                  string
+                  | null;
+              }
+            | {
+                id:
+                  string;
+
+                full_name:
+                  string
+                  | null;
+
+                email:
+                  string
+                  | null;
+              }[]
+            | null;
+        }
+      );
+    }
   }
 
   /* =======================================================
@@ -1527,38 +2016,11 @@ export default async function InboxPage({
       continue;
     }
 
-    const {
-      data:
-        lead,
-    } =
-      await supabase
-        .from(
-          "leads"
-        )
-        .select(`
-          id,
-          next_follow_up_at,
-
-          company:companies (
-            id,
-            name
-          ),
-
-          primary_contact:contacts (
-            id,
-            full_name,
-            email
-          )
-        `)
-        .eq(
-          "id",
-          leadId
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .maybeSingle();
+    const lead =
+      inboundOnlyLeadById.get(
+        leadId
+      ) ??
+      null;
 
     if (
       !lead
@@ -1606,6 +2068,16 @@ export default async function InboxPage({
         -1
       )!;
 
+    const humanIncoming =
+      sortedIncoming.filter(
+        (
+          message
+        ) =>
+          !message.is_automatic_reply &&
+          message.reply_classification !==
+            "BOUNCE"
+      );
+
     const timeline:
       TimelineMessage[] =
       sorted.map(
@@ -1648,6 +2120,67 @@ export default async function InboxPage({
               message.attachments,
               message.gmail_message_id
             ),
+
+          classification:
+            message.direction ===
+              "INCOMING"
+              ? (
+                  message.reply_classification as
+                    | ReplyClassification
+                    | null
+                ) ??
+                null
+              : null,
+
+          classificationConfidence:
+            message.direction ===
+              "INCOMING"
+              ? message.reply_classification_confidence ??
+                null
+              : null,
+
+          classificationReason:
+            message.direction ===
+              "INCOMING"
+              ? message.reply_classification_reason ??
+                null
+              : null,
+
+          followUpAt:
+            message.direction ===
+              "INCOMING"
+              ? message.reply_follow_up_at ??
+                null
+              : null,
+
+          detectedDateText:
+            message.direction ===
+              "INCOMING"
+              ? message.reply_detected_date_text ??
+                null
+              : null,
+
+          alternativeContactName:
+            message.direction ===
+              "INCOMING"
+              ? message.reply_alternative_contact_name ??
+                null
+              : null,
+
+          alternativeContactEmail:
+            message.direction ===
+              "INCOMING"
+              ? message.reply_alternative_contact_email ??
+                null
+              : null,
+
+          automaticReply:
+            message.direction ===
+              "INCOMING"
+              ? Boolean(
+                  message.is_automatic_reply
+                )
+              : false,
         })
       );
 
@@ -1705,7 +2238,18 @@ export default async function InboxPage({
         unreadCount,
 
         status:
-          "Replied",
+          humanIncoming.length >
+          0
+            ? "Replied"
+            : "Sent",
+
+        replyClassification:
+          (
+            latestIncoming.reply_classification as
+              | ReplyClassification
+              | null
+          ) ??
+          null,
 
         state:
           stateByLead.get(
@@ -1910,6 +2454,26 @@ export default async function InboxPage({
         ? `/leads/${selected.leadId}`
         : "/leads";
 
+  const newestIncomingMessageId =
+    selected
+      ? [
+          ...selected.timeline,
+        ]
+          .reverse()
+          .find(
+            (
+              message
+            ) =>
+              message.direction ===
+              "incoming"
+          )
+          ?.id ??
+        selected.timeline.at(
+          -1
+        )?.id ??
+        null
+      : null;
+
   /* =======================================================
      CONVERSATION LIST
   ======================================================= */
@@ -1962,6 +2526,9 @@ export default async function InboxPage({
 
         status:
           conversation.status,
+
+        replyClassification:
+          conversation.replyClassification,
 
         initials:
           getInitials(
@@ -2026,8 +2593,13 @@ export default async function InboxPage({
                 emptyTrash
               }
             >
-              <button
-                type="submit"
+              <PendingSubmitButton
+                pendingText={
+                  language ===
+                    "de"
+                    ? "Leert..."
+                    : "Emptying..."
+                }
                 className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
               >
                 <Trash2 className="size-4" />
@@ -2037,7 +2609,7 @@ export default async function InboxPage({
                     text.emptyTrash
                   }
                 </span>
-              </button>
+              </PendingSubmitButton>
             </form>
           ) : null}
 
@@ -2352,9 +2924,12 @@ export default async function InboxPage({
                             )
                           }
                         >
-                          <button
-                            type="submit"
+                          <PendingSubmitButton
+                            pendingText=""
                             title={
+                              text.markAsRead
+                            }
+                            aria-label={
                               text.markAsRead
                             }
                             className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
@@ -2366,7 +2941,7 @@ export default async function InboxPage({
                                 text.read
                               }
                             </span>
-                          </button>
+                          </PendingSubmitButton>
                         </form>
                       ) : selected.replyToMessageId ? (
                         <form
@@ -2377,9 +2952,12 @@ export default async function InboxPage({
                             )
                           }
                         >
-                          <button
-                            type="submit"
+                          <PendingSubmitButton
+                            pendingText=""
                             title={
+                              text.markAsUnread
+                            }
+                            aria-label={
                               text.markAsUnread
                             }
                             className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
@@ -2391,7 +2969,7 @@ export default async function InboxPage({
                                 text.unread
                               }
                             </span>
-                          </button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null
                     ) : null}
@@ -2406,15 +2984,18 @@ export default async function InboxPage({
                           )
                         }
                       >
-                        <button
-                          type="submit"
+                        <PendingSubmitButton
+                          pendingText=""
                           title={
+                            text.archive
+                          }
+                          aria-label={
                             text.archive
                           }
                           className="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-muted"
                         >
                           <Archive className="size-4" />
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : null}
 
@@ -2428,8 +3009,8 @@ export default async function InboxPage({
                           )
                         }
                       >
-                        <button
-                          type="submit"
+                        <PendingSubmitButton
+                          pendingText=""
                           className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
                         >
                           <RotateCcw className="size-4" />
@@ -2439,7 +3020,7 @@ export default async function InboxPage({
                               text.restore
                             }
                           </span>
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : null}
 
@@ -2453,15 +3034,18 @@ export default async function InboxPage({
                           )
                         }
                       >
-                        <button
-                          type="submit"
+                        <PendingSubmitButton
+                          pendingText=""
                           title={
+                            text.moveToTrash
+                          }
+                          aria-label={
                             text.moveToTrash
                           }
                           className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-red-600"
                         >
                           <Trash2 className="size-4" />
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     ) : (
                       <>
@@ -2473,8 +3057,8 @@ export default async function InboxPage({
                             )
                           }
                         >
-                          <button
-                            type="submit"
+                          <PendingSubmitButton
+                            pendingText=""
                             className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
                           >
                             <RotateCcw className="size-4" />
@@ -2484,7 +3068,7 @@ export default async function InboxPage({
                                 text.restore
                               }
                             </span>
-                          </button>
+                          </PendingSubmitButton>
                         </form>
 
                         <form
@@ -2495,9 +3079,12 @@ export default async function InboxPage({
                             )
                           }
                         >
-                          <button
-                            type="submit"
+                          <PendingSubmitButton
+                            pendingText=""
                             title={
+                              text.deletePermanently
+                            }
+                            aria-label={
                               text.deletePermanently
                             }
                             className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-background px-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/40"
@@ -2509,7 +3096,7 @@ export default async function InboxPage({
                                 text.deletePermanently
                               }
                             </span>
-                          </button>
+                          </PendingSubmitButton>
                         </form>
                       </>
                     )}
@@ -2555,6 +3142,27 @@ export default async function InboxPage({
                       }
                       language={
                         language
+                      }
+                      defaultOpen={
+                        message.id ===
+                        newestIncomingMessageId
+                      }
+                      bounceResolved={
+                        message.classification ===
+                          "BOUNCE" &&
+                        selected.timeline.some(
+                          (
+                            laterMessage
+                          ) =>
+                            laterMessage.direction ===
+                              "outgoing" &&
+                            timestamp(
+                              laterMessage.date
+                            ) >
+                              timestamp(
+                                message.date
+                              )
+                        )
                       }
                     />
                   )
@@ -2665,6 +3273,8 @@ function MessageCard({
   message,
   conversationSubject,
   language,
+  defaultOpen,
+  bounceResolved,
 }: {
   message:
     TimelineMessage;
@@ -2674,6 +3284,12 @@ function MessageCard({
 
   language:
     AppLanguage;
+
+  defaultOpen:
+    boolean;
+
+  bounceResolved:
+    boolean;
 }) {
   const text =
     inboxCopy[
@@ -2695,93 +3311,305 @@ function MessageCard({
         )
     );
 
-  return (
-    <article className="overflow-hidden rounded-xl border bg-card">
-      <div className="flex items-start justify-between gap-3 border-b px-4 py-4 sm:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
-            {outgoing ? (
-              <MailCheck className="size-4" />
-            ) : (
-              <Inbox className="size-4" />
-            )}
-          </div>
+  const preview =
+    compactPreview(
+      message.body
+    );
 
-          <div className="min-w-0">
+  const intelligenceMeta =
+    message.classification
+      ? getReplyIntelligenceMeta(
+          message.classification,
+          language
+        )
+      : null;
+
+  const confidencePercent =
+    message.classificationConfidence !==
+      null
+      ? Math.round(
+          message.classificationConfidence *
+            100
+        )
+      : null;
+
+  return (
+    <details
+      open={
+        defaultOpen
+      }
+      className="group overflow-hidden rounded-xl border bg-card"
+    >
+      <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/35 sm:px-5 [&::-webkit-details-marker]:hidden">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+          {outgoing ? (
+            <MailCheck className="size-3.5" />
+          ) : (
+            <Inbox className="size-3.5" />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="truncate text-sm font-medium">
               {
                 message.sender
               }
             </p>
 
-            <p className="truncate text-xs text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground">
+              {outgoing
+                ? language ===
+                    "de"
+                  ? "Du"
+                  : "You"
+                : language ===
+                    "de"
+                  ? "Kunde"
+                  : "Customer"}
+            </span>
+
+            {!outgoing &&
+            intelligenceMeta ? (
+              <Badge
+                variant="outline"
+                className={`h-5 rounded-full px-2 text-[9px] font-semibold ${intelligenceMeta.className}`}
+              >
+                {
+                  intelligenceMeta.label
+                }
+              </Badge>
+            ) : null}
+
+            {!outgoing &&
+            message.automaticReply ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+                {language ===
+                "de"
+                  ? "Automatisch"
+                  : "Automatic"}
+              </span>
+            ) : null}
+
+            {bounceResolved ? (
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
+                {language ===
+                "de"
+                  ? "Behoben"
+                  : "Resolved"}
+              </span>
+            ) : null}
+
+            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+              {formatFullDate(
+                message.date,
+                language
+              )}
+            </span>
+          </div>
+
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {
+              message.email
+            }
+          </p>
+
+          {differentSubject ? (
+            <p className="mt-2 truncate text-xs font-medium">
               {
-                message.email
+                message.subject
               }
             </p>
-          </div>
-        </div>
+          ) : null}
 
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {formatFullDate(
-            message.date,
-            language
-          )}
-        </span>
-      </div>
-
-      {differentSubject ? (
-        <div className="border-b bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground sm:px-5">
-          {
-            text.subject
-          }
-          :{" "}
-
-          <span className="font-medium text-foreground">
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground group-open:hidden">
             {
-              message.subject
+              preview
             }
-          </span>
-        </div>
-      ) : null}
-
-      <div className="break-words whitespace-pre-wrap px-4 py-4 text-sm leading-7 sm:px-5 sm:py-5">
-        {
-          message.body
-        }
-      </div>
-
-      {message.attachments.length >
-      0 ? (
-        <div className="border-t px-4 py-4 sm:px-5">
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium">
-            <Paperclip className="size-3.5" />
-
-            {
-              text.attachments
-            }
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {message.attachments.map(
-              (
-                attachment
-              ) => (
-                <AttachmentCard
-                  key={`${message.id}-${attachment.name}`}
-                  attachment={
-                    attachment
-                  }
-                  downloadLabel={
-                    text.downloadAttachment
-                  }
-                />
+            {message.body
+              .replace(
+                /\s+/g,
+                " "
               )
-            )}
-          </div>
+              .trim()
+              .length >
+            preview.length
+              ? "…"
+              : ""}
+          </p>
         </div>
-      ) : null}
-    </article>
+
+        <ChevronDown className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="border-t">
+        {differentSubject ? (
+          <div className="border-b bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground sm:px-5">
+            {
+              text.subject
+            }
+            :{" "}
+
+            <span className="font-medium text-foreground">
+              {
+                message.subject
+              }
+            </span>
+          </div>
+        ) : null}
+
+        {!outgoing &&
+        intelligenceMeta ? (
+          <div className="border-b bg-muted/15 px-4 py-3 sm:px-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className={`rounded-full text-[10px] ${intelligenceMeta.className}`}
+              >
+                {
+                  intelligenceMeta.label
+                }
+              </Badge>
+
+              {confidencePercent !==
+              null ? (
+                <span className="text-[10px] text-muted-foreground">
+                  {language ===
+                  "de"
+                    ? "Sicherheit"
+                    : "Confidence"}
+                  :{" "}
+                  {
+                    confidencePercent
+                  }
+                  %
+                </span>
+              ) : null}
+
+              {message.automaticReply ? (
+                <span className="text-[10px] text-muted-foreground">
+                  ·{" "}
+                  {language ===
+                  "de"
+                    ? "automatische Nachricht"
+                    : "automatic message"}
+                </span>
+              ) : null}
+            </div>
+
+            {message.classificationReason ? (
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {
+                  message.classificationReason
+                }
+              </p>
+            ) : null}
+
+            {bounceResolved ? (
+              <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                {language ===
+                "de"
+                  ? "Der Empfänger wurde danach korrigiert und eine neuere E-Mail wurde erneut gesendet. Dieser Bounce bleibt nur als Verlauf erhalten."
+                  : "The recipient was corrected afterwards and a newer email was sent. This bounce remains only as history."}
+              </p>
+            ) : null}
+
+            {message.followUpAt ||
+            message.detectedDateText ||
+            message.alternativeContactName ||
+            message.alternativeContactEmail ? (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                {message.followUpAt ? (
+                  <span>
+                    <span className="font-medium text-foreground">
+                      {language ===
+                      "de"
+                        ? "Nächster Kontakt:"
+                        : "Next contact:"}
+                    </span>{" "}
+                    {formatFullDate(
+                      message.followUpAt,
+                      language
+                    )}
+                  </span>
+                ) : message.detectedDateText ? (
+                  <span>
+                    <span className="font-medium text-foreground">
+                      {language ===
+                      "de"
+                        ? "Erkannter Zeitpunkt:"
+                        : "Detected timing:"}
+                    </span>{" "}
+                    {
+                      message.detectedDateText
+                    }
+                  </span>
+                ) : null}
+
+                {message.alternativeContactName ||
+                message.alternativeContactEmail ? (
+                  <span>
+                    <span className="font-medium text-foreground">
+                      {language ===
+                      "de"
+                        ? "Alternative Kontaktperson:"
+                        : "Alternative contact:"}
+                    </span>{" "}
+                    {[
+                      message.alternativeContactName,
+                      message.alternativeContactEmail,
+                    ]
+                      .filter(
+                        Boolean
+                      )
+                      .join(
+                        " · "
+                      )}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="break-words whitespace-pre-wrap px-4 py-4 text-sm leading-7 sm:px-5 sm:py-5">
+          {
+            message.body
+          }
+        </div>
+
+        {message.attachments.length >
+        0 ? (
+          <div className="border-t px-4 py-4 sm:px-5">
+            <div className="mb-3 flex items-center gap-2 text-xs font-medium">
+              <Paperclip className="size-3.5" />
+
+              {
+                text.attachments
+              }
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {message.attachments.map(
+                (
+                  attachment
+                ) => (
+                  <AttachmentCard
+                    key={`${message.id}-${attachment.name}`}
+                    attachment={
+                      attachment
+                    }
+                    downloadLabel={
+                      text.downloadAttachment
+                    }
+                  />
+                )
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </details>
   );
 }
 

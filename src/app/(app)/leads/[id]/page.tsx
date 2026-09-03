@@ -15,10 +15,16 @@ import {
   MapPin,
   Pencil,
   Phone,
+  PhoneCall,
   Sparkles,
   User,
   XCircle,
+  BriefcaseBusiness,
 } from "lucide-react";
+
+import {
+  PendingSubmitButton,
+} from "@/components/pending-submit-button";
 
 import {
   updateLeadStatus,
@@ -946,6 +952,46 @@ export default async function LeadDetailPage({
             />
           </div>
 
+          <Link
+            href={`/projects/new?leadId=${encodeURIComponent(
+              lead.id
+            )}`}
+            className={buttonVariants({
+              variant:
+                "outline",
+
+              className:
+                "h-10 w-full gap-2 sm:h-9 sm:w-auto",
+            })}
+          >
+            <BriefcaseBusiness className="size-4" />
+
+            {language ===
+            "de"
+              ? "Zu Projekten hinzufügen"
+              : "Add to projects"}
+          </Link>
+
+          <Link
+            href={`/leads/${encodeURIComponent(
+              lead.id
+            )}/call-prep`}
+            className={buttonVariants({
+              variant:
+                "outline",
+
+              className:
+                "h-10 w-full gap-2 sm:h-9 sm:w-auto",
+            })}
+          >
+            <PhoneCall className="size-4" />
+
+            {language ===
+            "de"
+              ? "Call vorbereiten"
+              : "Prepare call"}
+          </Link>
+
           {company?.website_url &&
           structuralStatus ===
             "COMPLETED" ? (
@@ -1038,15 +1084,20 @@ export default async function LeadDetailPage({
               )}
             </select>
 
-            <button
-              type="submit"
-              className="h-10 whitespace-nowrap rounded-lg bg-foreground px-3 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9"
+            <PendingSubmitButton
+              pendingText={
+                language ===
+                  "de"
+                  ? "Aktualisiert..."
+                  : "Updating..."
+              }
+              className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-foreground px-3 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9"
             >
               {
                 text.detail
                   .update
               }
-            </button>
+            </PendingSubmitButton>
           </form>
 
           {company?.website_url ? (

@@ -185,6 +185,15 @@ export function isAutomaticReply({
     /\bi will return on\b/i,
     /\bthis is an automatic reply\b/i,
     /\bthis message was generated automatically\b/i,
+
+    /*
+     * Common German automated acknowledgement wording.
+     * These providers often omit RFC auto-reply headers.
+     */
+    /\bbitte antworten sie nicht auf diese e-?mail\b/i,
+    /\bdies ist eine automatisch(?:e| generierte) (?:e-?mail|nachricht)\b/i,
+    /\bihre nachricht ist bei uns eingegangen\b/i,
+    /\bwir haben ihre (?:e-?mail|nachricht) erhalten\b/i,
   ];
 
   if (
@@ -210,7 +219,16 @@ export function isAutomaticReply({
         "vielen dank für ihre nachricht"
       ) ||
       normalizedBody.includes(
+        "vielen dank für ihre e-mail"
+      ) ||
+      normalizedBody.includes(
+        "vielen dank für ihre email"
+      ) ||
+      normalizedBody.includes(
         "thank you for your message"
+      ) ||
+      normalizedBody.includes(
+        "thank you for your email"
       )
     ) &&
     (
@@ -225,6 +243,24 @@ export function isAutomaticReply({
       ) ||
       normalizedBody.includes(
         "out of office"
+      ) ||
+      normalizedBody.includes(
+        "bitte antworten sie nicht"
+      ) ||
+      normalizedBody.includes(
+        "wir werden ihr anliegen"
+      ) ||
+      normalizedBody.includes(
+        "wir werden uns schnellstmöglich"
+      ) ||
+      normalizedBody.includes(
+        "wir werden uns baldmöglichst"
+      ) ||
+      normalizedBody.includes(
+        "wir bearbeiten ihr anliegen"
+      ) ||
+      normalizedBody.includes(
+        "ihre nachricht ist bei uns eingegangen"
       )
     );
 

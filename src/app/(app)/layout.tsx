@@ -1,4 +1,12 @@
 import {
+  AppBackgroundTasksProvider,
+} from "@/components/app-background-tasks";
+
+import {
+  AppNotificationProvider,
+} from "@/components/app-notifications";
+
+import {
   AppSidebar,
 } from "@/components/app-sidebar";
 
@@ -106,10 +114,6 @@ export default async function AppLayout({
           .maybeSingle(),
       ]);
 
-    /* =====================================================
-       UNREAD COUNT
-    ===================================================== */
-
     if (
       unreadResult.error
     ) {
@@ -122,10 +126,6 @@ export default async function AppLayout({
     unreadInboxCount =
       unreadResult.count ??
       0;
-
-    /* =====================================================
-       GMAIL AUTO SYNC
-    ===================================================== */
 
     if (
       gmailResult.error
@@ -161,42 +161,27 @@ export default async function AppLayout({
         language
       }
     >
-      <div className="flex h-dvh w-full overflow-hidden bg-background">
-        {/* =================================================
-            NAVIGATION
-        ================================================= */}
+      <AppNotificationProvider>
+        <AppBackgroundTasksProvider>
+          <div className="flex h-dvh w-full overflow-hidden bg-background">
+            <AppSidebar
+              unreadInboxCount={
+                unreadInboxCount
+              }
+            />
 
-        <AppSidebar
-          unreadInboxCount={
-            unreadInboxCount
-          }
-        />
+            <InboxAutoSync
+              enabled={
+                gmailAutoSyncEnabled
+              }
+            />
 
-        {/* =================================================
-            GMAIL SYNC
-        ================================================= */}
-
-        <InboxAutoSync
-          enabled={
-            gmailAutoSyncEnabled
-          }
-        />
-
-        {/* =================================================
-            CONTENT
-
-            Mobile:
-            pt-14 creates room for the fixed mobile header.
-
-            Desktop:
-            md:pt-0 removes that space because the sidebar
-            navigation is used instead.
-        ================================================= */}
-
-        <main className="min-w-0 flex-1 overflow-y-auto pt-14 md:pt-0">
-          {children}
-        </main>
-      </div>
+            <main className="min-w-0 flex-1 overflow-y-auto pt-14 md:pt-0">
+              {children}
+            </main>
+          </div>
+        </AppBackgroundTasksProvider>
+      </AppNotificationProvider>
     </LanguageProvider>
   );
 }

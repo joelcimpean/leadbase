@@ -41,22 +41,39 @@ import {
 
 
 import {
-  analyzeLeadWebsite,
-} from "./analysis-actions";
-
-import {
   cancelScheduledOutreachForBulk,
   generateLeadOutreachDraftForBulk,
-  scheduleLeadOutreachForBulk,
 } from "./outreach-actions";
+
+import {
+  BulkOutreachScheduleDialog,
+} from "./bulk-outreach-schedule-dialog";
 
 import {
   bulkDeleteLeads,
 } from "./bulk-actions";
 
 import {
+  LeadPreviewVisitsButton,
+  type LeadPreviewSummary,
+} from "./lead-preview-visits-button";
+
+import {
+  LeadHotScoreIndicator,
+  type HotLeadSummary,
+} from "./lead-hot-score-indicator";
+
+import {
   useLanguage,
 } from "@/components/language-provider";
+
+import {
+  useAppNotifications,
+} from "@/components/app-notifications";
+
+import {
+  useAppBackgroundTasks,
+} from "@/components/app-background-tasks";
 
 import {
   AlertDialog,
@@ -178,6 +195,34 @@ type Progress = {
 type ViewMode =
   | "compact"
   | "table";
+
+type ShareCreateResponse = {
+  ok?:
+    boolean;
+
+  shared?:
+    boolean;
+
+  shareUrl?:
+    string;
+
+  error?:
+    string;
+};
+
+type PreviewGifGenerationResponse = {
+  ok?:
+    boolean;
+
+  status?:
+    string;
+
+  gifUrl?:
+    string;
+
+  error?:
+    string;
+};
 
 type DesignResponse = {
   ok?:
@@ -310,43 +355,6 @@ function normalizeUrl(
     : `https://${value}`;
 }
 
-function getDefaultScheduledSendValue() {
-  const date =
-    new Date();
-
-  date.setDate(
-    date.getDate() +
-      1
-  );
-
-  date.setHours(
-    9,
-    0,
-    0,
-    0
-  );
-
-  const pad =
-    (value: number) =>
-      String(
-        value
-      ).padStart(
-        2,
-        "0"
-      );
-
-  return `${date.getFullYear()}-${pad(
-    date.getMonth() +
-      1
-  )}-${pad(
-    date.getDate()
-  )}T${pad(
-    date.getHours()
-  )}:${pad(
-    date.getMinutes()
-  )}`;
-}
-
 /* =========================================================
    CHECKBOX
 ========================================================= */
@@ -435,6 +443,17 @@ export function LeadsTable({
   } =
     useLanguage();
 
+  const {
+    notify,
+  } =
+    useAppNotifications();
+
+  const {
+    analysisTask,
+    startBulkAnalysis,
+  } =
+    useAppBackgroundTasks();
+
   const text =
     leadsCopy[
       language
@@ -497,6 +516,9 @@ export function LeadsTable({
 
           leads:
             "Leads",
+
+          previewViews:
+            "Vorschau",
         }
       : {
           compact:
@@ -552,7 +574,212 @@ export function LeadsTable({
 
           leads:
             "Leads",
+
+          previewViews:
+            "Preview",
         };
+
+  /* =======================================================
+     CUSTOMER PREVIEW SUMMARIES
+  ======================================================= */
+
+  const [
+    previewSummaries,
+    setPreviewSummaries,
+  ] =
+    useState<
+      Record<
+        string,
+        LeadPreviewSummary
+      >
+    >(
+      {}
+    );
+
+  useEffect(
+    () => {
+      const controller =
+        new AbortController();
+
+      async function loadPreviewSummaries() {
+        try {
+          const response =
+            await fetch(
+              "/api/leads/preview-visits-summary",
+              {
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              }
+            );
+
+          const contentType =
+            response.headers.get(
+              "content-type"
+            ) ??
+            "";
+
+          if (
+            !response.ok ||
+            !contentType.includes(
+              "application/json"
+            )
+          ) {
+            return;
+          }
+
+          const result =
+            (await response.json()) as {
+              ok?:
+                boolean;
+
+              previews?:
+                Record<
+                  string,
+                  LeadPreviewSummary
+                >;
+            };
+
+          if (
+            !result.ok
+          ) {
+            return;
+          }
+
+          setPreviewSummaries(
+            result.previews ??
+              {}
+          );
+        } catch (
+          loadError
+        ) {
+          if (
+            loadError instanceof
+              DOMException &&
+            loadError.name ===
+              "AbortError"
+          ) {
+            return;
+          }
+
+          console.error(
+            "Could not load preview summaries:",
+            loadError
+          );
+        }
+      }
+
+      void loadPreviewSummaries();
+
+      return () => {
+        controller.abort();
+      };
+    },
+    []
+  );
+
+  /* =======================================================
+     HOT LEAD SCORES
+  ======================================================= */
+
+  const [
+    hotLeadSummaries,
+    setHotLeadSummaries,
+  ] =
+    useState<
+      Record<
+        string,
+        HotLeadSummary
+      >
+    >(
+      {}
+    );
+
+  useEffect(
+    () => {
+      const controller =
+        new AbortController();
+
+      async function loadHotLeadScores() {
+        try {
+          const response =
+            await fetch(
+              "/api/leads/hot-scores",
+              {
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              }
+            );
+
+          const contentType =
+            response.headers.get(
+              "content-type"
+            ) ??
+            "";
+
+          if (
+            !response.ok ||
+            !contentType.includes(
+              "application/json"
+            )
+          ) {
+            return;
+          }
+
+          const result =
+            (await response.json()) as {
+              ok?:
+                boolean;
+
+              leads?:
+                Record<
+                  string,
+                  HotLeadSummary
+                >;
+            };
+
+          if (
+            !result.ok
+          ) {
+            return;
+          }
+
+          setHotLeadSummaries(
+            result.leads ??
+              {}
+          );
+        } catch (
+          loadError
+        ) {
+          if (
+            loadError instanceof
+              DOMException &&
+            loadError.name ===
+              "AbortError"
+          ) {
+            return;
+          }
+
+          console.error(
+            "Could not load hot lead scores:",
+            loadError
+          );
+        }
+      }
+
+      void loadHotLeadScores();
+
+      return () => {
+        controller.abort();
+      };
+    },
+    []
+  );
 
   /* =======================================================
      VIEW
@@ -1027,21 +1254,20 @@ export function LeadsTable({
      BULK STATE
   ======================================================= */
 
-  const [
-    analyzing,
-    setAnalyzing,
-  ] =
-    useState(
-      false
-    );
+  const analyzing =
+    analysisTask.running;
 
-  const [
-    analyzeProgress,
-    setAnalyzeProgress,
-  ] =
-    useState<Progress | null>(
-      null
-    );
+  const analyzeProgress:
+    Progress | null =
+    analysisTask.running
+      ? {
+          current:
+            analysisTask.current,
+
+          total:
+            analysisTask.total,
+        }
+      : null;
 
 
   const [
@@ -1078,27 +1304,11 @@ export function LeadsTable({
 
 
   const [
-    scheduling,
-    setScheduling,
+    scheduleDialogOpen,
+    setScheduleDialogOpen,
   ] =
     useState(
       false
-    );
-
-  const [
-    scheduleProgress,
-    setScheduleProgress,
-  ] =
-    useState<Progress | null>(
-      null
-    );
-
-  const [
-    scheduleValue,
-    setScheduleValue,
-  ] =
-    useState(
-      getDefaultScheduledSendValue
     );
 
   const [
@@ -1138,7 +1348,6 @@ export function LeadsTable({
     analyzing ||
     designing ||
     drafting ||
-    scheduling ||
     cancellingSchedules ||
     isDeleting;
 
@@ -1146,7 +1355,7 @@ export function LeadsTable({
      BULK ANALYZE
   ======================================================= */
 
-  async function handleBulkAnalyze() {
+  function handleBulkAnalyze() {
     if (
       busy ||
       selectedIds.size ===
@@ -1155,97 +1364,112 @@ export function LeadsTable({
       return;
     }
 
-    const ids =
-      Array.from(
-        selectedIds
+    const selectedLeads =
+      leads.filter(
+        (
+          lead
+        ) =>
+          selectedIds.has(
+            lead.id
+          )
       );
 
-    setAnalyzing(
-      true
-    );
+    const started =
+      startBulkAnalysis(
+        selectedLeads.map(
+          (
+            lead
+          ) => ({
+            id:
+              lead.id,
+
+            companyName:
+              lead.companyName,
+          })
+        )
+      );
+
+    if (
+      !started
+    ) {
+      return;
+    }
 
     setBulkMessage(
-      null
+      language ===
+        "de"
+        ? "Analyse läuft im Hintergrund. Du kannst Leadbase weiter benutzen."
+        : "Analysis is running in the background. You can keep using Leadbase."
     );
 
-    setAnalyzeProgress({
-      current:
-        0,
+    setSelectedIds(
+      new Set()
+    );
+  }
 
-      total:
-        ids.length,
-    });
+  async function ensurePublicPreviewAndGif(
+    leadId:
+      string
+  ) {
+    const shareResponse =
+      await fetch(
+        `/api/leads/${encodeURIComponent(
+          leadId
+        )}/redesign-preview/share`,
+        {
+          method:
+            "POST",
 
-    try {
-      for (
-        let index =
-          0;
-        index <
-          ids.length;
-        index +=
-          1
-      ) {
-        const formData =
-          new FormData();
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
 
-        formData.set(
-          "leadId",
-          ids[
-            index
-          ]
-        );
-
-        await analyzeLeadWebsite(
-          formData
-        );
-
-        setAnalyzeProgress({
-          current:
-            index +
-            1,
-
-          total:
-            ids.length,
-        });
-      }
-
-      setBulkMessage(
-        ids.length ===
-          1
-          ? text.table
-              .analysisOneFinished
-          : text.table.analysisManyFinished.replace(
-              "{count}",
-              String(
-                ids.length
-              )
-            )
+          body:
+            JSON.stringify({}),
+        }
       );
 
-      setSelectedIds(
-        new Set()
-      );
+    const shareResult =
+      (
+        await shareResponse.json()
+      ) as ShareCreateResponse;
 
-      router.refresh();
-    } catch (
-      error
+    if (
+      !shareResponse.ok ||
+      !shareResult.ok ||
+      !shareResult.shareUrl
     ) {
-      console.error(
-        "Bulk analysis failed:",
-        error
+      throw new Error(
+        shareResult.error ??
+        "Could not create customer preview."
+      );
+    }
+
+    const gifResponse =
+      await fetch(
+        `/api/leads/${encodeURIComponent(
+          leadId
+        )}/preview-gif`,
+        {
+          method:
+            "POST",
+        }
       );
 
-      setBulkMessage(
-        text.table
-          .analysisFailed
-      );
-    } finally {
-      setAnalyzing(
-        false
-      );
+    const gifResult =
+      (
+        await gifResponse.json()
+      ) as PreviewGifGenerationResponse;
 
-      setAnalyzeProgress(
-        null
+    if (
+      !gifResponse.ok ||
+      !gifResult.ok ||
+      !gifResult.gifUrl
+    ) {
+      throw new Error(
+        gifResult.error ??
+        "Could not create preview GIF."
       );
     }
   }
@@ -1325,6 +1549,12 @@ export function LeadsTable({
     let failedCount =
       0;
 
+    let gifReadyCount =
+      0;
+
+    let gifFailedCount =
+      0;
+
     try {
       for (
         let index =
@@ -1390,6 +1620,25 @@ export function LeadsTable({
             createdCount +=
               1;
           }
+
+          try {
+            await ensurePublicPreviewAndGif(
+              lead.id
+            );
+
+            gifReadyCount +=
+              1;
+          } catch (
+            gifError
+          ) {
+            gifFailedCount +=
+              1;
+
+            console.error(
+              `Preview/GIF preparation failed for ${lead.companyName}:`,
+              gifError
+            );
+          }
         } catch (
           error
         ) {
@@ -1430,6 +1679,22 @@ export function LeadsTable({
             0
             ? `${failedCount} ${ui.failed}`
             : null,
+
+          gifReadyCount >
+            0
+            ? language ===
+                "de"
+              ? `${gifReadyCount} GIF bereit`
+              : `${gifReadyCount} GIF ready`
+            : null,
+
+          gifFailedCount >
+            0
+            ? language ===
+                "de"
+              ? `${gifFailedCount} GIF fehlgeschlagen`
+              : `${gifFailedCount} GIF failed`
+            : null,
         ].filter(
           Boolean
         );
@@ -1439,6 +1704,28 @@ export function LeadsTable({
           " · "
         )}`
       );
+
+      notify({
+        variant:
+          failedCount >
+            0 ||
+          gifFailedCount >
+            0
+            ? "warning"
+            : "success",
+
+        title:
+          language ===
+            "de"
+            ? "Design-Generierung abgeschlossen"
+            : "Design generation complete",
+
+        description:
+          language ===
+            "de"
+            ? `${createdCount} erstellt · ${existingCount} vorhanden · ${gifReadyCount} GIF bereit · ${gifFailedCount} GIF fehlgeschlagen`
+            : `${createdCount} created · ${existingCount} existing · ${gifReadyCount} GIF ready · ${gifFailedCount} GIF failed`,
+      });
 
       setSelectedIds(
         new Set()
@@ -1579,6 +1866,26 @@ export function LeadsTable({
         )
       );
 
+      notify({
+        variant:
+          failedCount >
+          0
+            ? "warning"
+            : "success",
+
+        title:
+          language ===
+            "de"
+            ? "Draft-Generierung abgeschlossen"
+            : "Draft generation complete",
+
+        description:
+          language ===
+            "de"
+            ? `${createdCount} erstellt · ${skippedCount} übersprungen · ${failedCount} fehlgeschlagen`
+            : `${createdCount} created · ${skippedCount} skipped · ${failedCount} failed`,
+      });
+
       setSelectedIds(
         new Set()
       );
@@ -1598,203 +1905,6 @@ export function LeadsTable({
   /* =======================================================
      BULK SCHEDULE OUTREACH
   ======================================================= */
-
-  async function handleBulkScheduleOutreach() {
-    if (
-      busy ||
-      selectedIds.size ===
-        0
-    ) {
-      return;
-    }
-
-    const localDate =
-      new Date(
-        scheduleValue
-      );
-
-    if (
-      !scheduleValue ||
-      !Number.isFinite(
-        localDate.getTime()
-      ) ||
-      localDate.getTime() <=
-        Date.now() +
-          30_000
-    ) {
-      setBulkMessage(
-        language ===
-          "de"
-          ? "Bitte wähle eine zukünftige Sendezeit."
-          : "Please choose a future send time."
-      );
-
-      return;
-    }
-
-    const ids =
-      Array.from(
-        selectedIds
-      );
-
-    const scheduledForIso =
-      localDate.toISOString();
-
-    setScheduling(
-      true
-    );
-
-    setBulkMessage(
-      null
-    );
-
-    setScheduleProgress({
-      current:
-        0,
-      total:
-        ids.length,
-    });
-
-    let scheduledCount =
-      0;
-
-    let skippedCount =
-      0;
-
-    let failedCount =
-      0;
-
-    try {
-      for (
-        let index =
-          0;
-        index <
-          ids.length;
-        index +=
-          1
-      ) {
-        const leadId =
-          ids[
-            index
-          ];
-
-        try {
-          const result =
-            await scheduleLeadOutreachForBulk(
-              leadId,
-              scheduledForIso
-            );
-
-          if (
-            !result.success
-          ) {
-            failedCount +=
-              1;
-
-            console.error(
-              `Could not schedule outreach for ${leadId}:`,
-              result.error
-            );
-          } else if (
-            result.status ===
-              "scheduled"
-          ) {
-            scheduledCount +=
-              1;
-          } else {
-            skippedCount +=
-              1;
-          }
-        } catch (
-          error
-        ) {
-          failedCount +=
-            1;
-
-          console.error(
-            `Could not schedule outreach for ${leadId}:`,
-            error
-          );
-        }
-
-        setScheduleProgress({
-          current:
-            index +
-            1,
-          total:
-            ids.length,
-        });
-      }
-
-      const formattedTime =
-        new Intl.DateTimeFormat(
-          language ===
-            "de"
-            ? "de-DE"
-            : "en-IE",
-          {
-            weekday:
-              "short",
-            day:
-              "2-digit",
-            month:
-              "2-digit",
-            hour:
-              "2-digit",
-            minute:
-              "2-digit",
-          }
-        ).format(
-          localDate
-        );
-
-      const parts =
-        [
-          language ===
-            "de"
-            ? `${scheduledCount} geplant für ${formattedTime}`
-            : `${scheduledCount} scheduled for ${formattedTime}`,
-
-          skippedCount >
-            0
-            ? language ===
-                "de"
-              ? `${skippedCount} übersprungen`
-              : `${skippedCount} skipped`
-            : null,
-
-          failedCount >
-            0
-            ? language ===
-                "de"
-              ? `${failedCount} fehlgeschlagen`
-              : `${failedCount} failed`
-            : null,
-        ].filter(
-          Boolean
-        );
-
-      setBulkMessage(
-        parts.join(
-          " · "
-        )
-      );
-
-      setSelectedIds(
-        new Set()
-      );
-
-      router.refresh();
-    } finally {
-      setScheduling(
-        false
-      );
-
-      setScheduleProgress(
-        null
-      );
-    }
-  }
 
   async function handleBulkCancelScheduledOutreach() {
     if (
@@ -2455,30 +2565,6 @@ export function LeadsTable({
             </Button>
 
             <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-1.5">
-              <Input
-                type="datetime-local"
-                value={
-                  scheduleValue
-                }
-                onChange={(
-                  event
-                ) =>
-                  setScheduleValue(
-                    event.target.value
-                  )
-                }
-                disabled={
-                  busy
-                }
-                aria-label={
-                  language ===
-                    "de"
-                    ? "Sendezeit"
-                    : "Send time"
-                }
-                className="h-8 w-[190px] border-0 bg-transparent px-2 shadow-none focus-visible:ring-0"
-              />
-
               <Button
                 type="button"
                 size="sm"
@@ -2486,32 +2572,19 @@ export function LeadsTable({
                 disabled={
                   busy
                 }
-                onClick={
-                  handleBulkScheduleOutreach
+                onClick={() =>
+                  setScheduleDialogOpen(
+                    true
+                  )
                 }
                 className="gap-2"
               >
-                {scheduling ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
+                <CalendarClock className="size-4" />
 
-                    {scheduleProgress
-                      ? `${scheduleProgress.current}/${scheduleProgress.total}`
-                      : language ===
-                          "de"
-                        ? "Plane..."
-                        : "Scheduling..."}
-                  </>
-                ) : (
-                  <>
-                    <CalendarClock className="size-4" />
-
-                    {language ===
-                      "de"
-                      ? "Später senden"
-                      : "Send later"}
-                  </>
-                )}
+                {language ===
+                  "de"
+                  ? "Später senden"
+                  : "Send later"}
               </Button>
 
               <Button
@@ -2771,11 +2844,25 @@ export function LeadsTable({
   href={`/leads/${lead.id}`}
   className="min-w-0 text-left"
 >
-  <p className="truncate text-sm font-semibold hover:underline">
-    {
-      lead.companyName
-    }
-  </p>
+  <div className="flex min-w-0 items-center gap-2">
+    <p className="min-w-0 truncate text-sm font-semibold hover:underline">
+      {
+        lead.companyName
+      }
+    </p>
+
+    {hotLeadSummaries[
+      lead.id
+    ] ? (
+      <LeadHotScoreIndicator
+        summary={
+          hotLeadSummaries[
+            lead.id
+          ]
+        }
+      />
+    ) : null}
+  </div>
 
   <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
     {lead.location ? (
@@ -2904,6 +2991,22 @@ export function LeadsTable({
                                           .noEmailFound}
                                   </span>
                                 )}
+                              </div>
+
+                              {/* CUSTOMER PREVIEW VIEWS */}
+
+                              <div className="flex shrink-0 justify-start lg:w-[92px]">
+                                {previewSummaries[
+                                  lead.id
+                                ] ? (
+                                  <LeadPreviewVisitsButton
+                                    summary={
+                                      previewSummaries[
+                                        lead.id
+                                      ]
+                                    }
+                                  />
+                                ) : null}
                               </div>
 
                               {/* DATE */}
@@ -3042,6 +3145,12 @@ export function LeadsTable({
                   }
                 </TableHead>
 
+                <TableHead>
+                  {
+                    ui.previewViews
+                  }
+                </TableHead>
+
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
@@ -3083,14 +3192,28 @@ export function LeadsTable({
                     </TableCell>
 
                     <TableCell>
-                    <Link
-  href={`/leads/${lead.id}`}
-  className="text-left font-medium hover:underline"
->
-  {
-    lead.companyName
-  }
-</Link>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Link
+                          href={`/leads/${lead.id}`}
+                          className="min-w-0 truncate text-left font-medium hover:underline"
+                        >
+                          {
+                            lead.companyName
+                          }
+                        </Link>
+
+                        {hotLeadSummaries[
+                          lead.id
+                        ] ? (
+                          <LeadHotScoreIndicator
+                            summary={
+                              hotLeadSummaries[
+                                lead.id
+                              ]
+                            }
+                            />
+                        ) : null}
+                      </div>
 
                       <p className="mt-0.5 max-w-[260px] truncate text-xs text-muted-foreground">
                         {lead.location ??
@@ -3157,6 +3280,24 @@ export function LeadsTable({
                         )}
                     </TableCell>
 
+                    <TableCell className="whitespace-nowrap">
+                      {previewSummaries[
+                        lead.id
+                      ] ? (
+                        <LeadPreviewVisitsButton
+                          summary={
+                            previewSummaries[
+                              lead.id
+                            ]
+                          }
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          —
+                        </span>
+                      )}
+                    </TableCell>
+
                     <TableCell>
                       <LeadActions
                         lead={
@@ -3173,7 +3314,7 @@ export function LeadsTable({
                 <TableRow>
                   <TableCell
                     colSpan={
-                      8
+                      9
                     }
                     className="h-40 text-center text-sm text-muted-foreground"
                   >
@@ -3212,6 +3353,37 @@ export function LeadsTable({
           Supabase
         </span>
       </div>
+
+      <BulkOutreachScheduleDialog
+        open={
+          scheduleDialogOpen
+        }
+        leads={
+          leads
+            .filter((lead) =>
+              selectedIds.has(
+                lead.id
+              )
+            )
+            .map((lead) => ({
+              id:
+                lead.id,
+              companyName:
+                lead.companyName,
+              contactEmail:
+                lead.contactEmail,
+            }))
+        }
+        onOpenChange={
+          setScheduleDialogOpen
+        }
+        onScheduled={() => {
+          setSelectedIds(
+            new Set()
+          );
+          router.refresh();
+        }}
+      />
 
       {/* ===================================================
           DELETE DIALOG

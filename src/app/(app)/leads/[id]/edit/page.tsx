@@ -14,9 +14,12 @@ import {
 } from "../../actions";
 
 import {
-  Button,
   buttonVariants,
 } from "@/components/ui/button";
+
+import {
+  PendingSubmitButton,
+} from "@/components/pending-submit-button";
 
 import {
   Card,
@@ -684,15 +687,20 @@ export default async function EditLeadPage({
             }
           </Link>
 
-          <Button
-            type="submit"
-            className="h-11 w-full sm:h-9 sm:w-auto"
+          <PendingSubmitButton
+            pendingText={
+              language ===
+                "de"
+                ? "Speichert..."
+                : "Saving..."
+            }
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:h-9 sm:w-auto"
           >
             {
               text.common
                 .saveChanges
             }
-          </Button>
+          </PendingSubmitButton>
         </div>
       </form>
     </div>
