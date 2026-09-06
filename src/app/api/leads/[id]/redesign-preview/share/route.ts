@@ -9,6 +9,10 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    buildPublicDesignSnapshot,
+  } from "@/lib/public-preview-current-snapshot";
   
   /* =========================================================
      TYPES
@@ -889,6 +893,33 @@ import {
           }
         );
       }
+
+      /*
+       * Enrich the public snapshot with a stable 1440x900 capture of
+       * the lead's current website. Phase 7B4 added the capture helper,
+       * but the publish route still stored selected.source_snapshot
+       * unchanged. That left currentWebsiteSnapshotUrl empty, so the
+       * Aktuell/Vergleichen tabs were disabled.
+       *
+       * This also runs when an existing public link is reactivated, so
+       * users do not need a brand-new slug for the fix to take effect.
+       */
+      const publicSourceSnapshot =
+        await buildPublicDesignSnapshot({
+          sourceSnapshot:
+            selected.source_snapshot,
+
+          websiteUrl:
+            company.website_url,
+
+          userId:
+            user.id,
+
+          leadId,
+
+          variantId:
+            selected.id,
+        });
   
       /*
        * There should only be one current customer-preview
@@ -969,7 +1000,7 @@ import {
                 null,
   
               source_snapshot:
-                selected.source_snapshot,
+                publicSourceSnapshot,
   
               source_brand_name:
                 company.name,
@@ -1086,7 +1117,7 @@ import {
                 publicSlug,
   
               source_snapshot:
-                selected.source_snapshot,
+                publicSourceSnapshot,
   
               source_brand_name:
                 company.name,

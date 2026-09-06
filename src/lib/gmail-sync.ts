@@ -44,6 +44,15 @@ const SEARCH_TERM_CHUNK_SIZE =
 const MAX_SEARCH_PAGES =
   5;
 
+const AUTO_SEARCH_PAGES =
+  2;
+
+const AUTO_THREAD_INSPECTION_LIMIT =
+  6;
+
+const MANUAL_THREAD_INSPECTION_LIMIT =
+  24;
+
 const GENERIC_EMAIL_DOMAINS =
   new Set([
     "gmail.com",
@@ -73,6 +82,10 @@ const GENERIC_EMAIL_DOMAINS =
 /* =========================================================
    TYPES
 ========================================================= */
+
+export type GmailSyncMode =
+  | "auto"
+  | "manual";
 
 type GmailHeader = {
   name?:
@@ -154,6 +167,10 @@ type LeadContext = {
     | null;
 
   nextFollowUpAt:
+    string
+    | null;
+
+  manualFollowUpStoppedAt:
     string
     | null;
 };
@@ -1514,6 +1531,7 @@ async function repairRecentAutomaticReplies({
      */
     if (
       !hasHumanReply &&
+      !context.manualFollowUpStoppedAt &&
       latestAutomatic
         ?.classification ===
         "OUT_OF_OFFICE"
@@ -1617,10 +1635,83 @@ async function repairRecentAutomaticReplies({
 }
 
 /* =========================================================
+   SYNC GUARD
+========================================================= */
+
+export async function setGmailQuotaCooldownForCurrentUser() {
+  const supabase =
+    await createClient();
+
+  const {
+    data: {
+      user,
+    },
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    !user
+  ) {
+    return;
+  }
+
+  const now =
+    Date.now();
+
+  const {
+    error,
+  } =
+    await supabase
+      .from(
+        "gmail_sync_state"
+      )
+      .upsert(
+        {
+          user_id:
+            user.id,
+
+          cooldown_until:
+            new Date(
+              now +
+                180_000
+            ).toISOString(),
+
+          lease_until:
+            null,
+
+          last_error:
+            "GMAIL_QUOTA_COOLDOWN",
+
+          updated_at:
+            new Date(
+              now
+            ).toISOString(),
+        },
+        {
+          onConflict:
+            "user_id",
+        }
+      );
+
+  if (
+    error
+  ) {
+    console.warn(
+      "Could not persist Gmail quota cooldown:",
+      error.message
+    );
+  }
+}
+
+/* =========================================================
    SYNC
 ========================================================= */
 
-export async function syncGmailRepliesForCurrentUser() {
+export async function syncGmailRepliesForCurrentUser({
+  mode = "manual",
+}: {
+  mode?: GmailSyncMode;
+} = {}) {
   const supabase =
     await createClient();
 
@@ -1644,6 +1735,88 @@ export async function syncGmailRepliesForCurrentUser() {
     throw new Error(
       "NOT_AUTHENTICATED"
     );
+  }
+
+  /* =======================================================
+     SYNC CLAIM
+
+     Server-side guard prevents multiple tabs, focus events
+     and route reloads from starting expensive Gmail work at
+     the same time.
+  ======================================================= */
+
+  const {
+    data:
+      claimRows,
+    error:
+      claimError,
+  } =
+    await supabase.rpc(
+      "claim_gmail_sync",
+      {
+        p_force:
+          mode ===
+          "manual",
+      }
+    );
+
+  if (
+    claimError
+  ) {
+    throw new Error(
+      `Could not claim Gmail sync: ${claimError.message}`
+    );
+  }
+
+  const claim =
+    Array.isArray(
+      claimRows
+    )
+      ? claimRows[0]
+      : claimRows;
+
+  if (
+    claim &&
+    claim.allowed ===
+      false
+  ) {
+    return {
+      threadsChecked:
+        0,
+
+      messagesChecked:
+        0,
+
+      repliesFound:
+        0,
+
+      automaticReplies:
+        0,
+
+      newReplies:
+        0,
+
+      bounces:
+        0,
+
+      historicalClassified:
+        0,
+
+      repairedAutomaticReplies:
+        0,
+
+      reconciledAutomaticReplyLeads:
+        0,
+
+      skipped:
+        true,
+
+      skipReason:
+        typeof claim.reason ===
+        "string"
+          ? claim.reason
+          : "recent",
+    };
   }
 
   /* =======================================================
@@ -1707,6 +1880,16 @@ export async function syncGmailRepliesForCurrentUser() {
      SENT OUTREACH
   ======================================================= */
 
+  const outreachLookback =
+    new Date(
+      Date.now() -
+        MESSAGE_LOOKBACK_DAYS *
+          24 *
+          60 *
+          60 *
+          1000
+    ).toISOString();
+
   const {
     data:
       drafts,
@@ -1767,6 +1950,7 @@ export async function syncGmailRepliesForCurrentUser() {
         status,
         priority,
         next_follow_up_at,
+        manual_follow_up_stopped_at,
 
         company:companies (
           id,
@@ -1874,6 +2058,10 @@ export async function syncGmailRepliesForCurrentUser() {
         nextFollowUpAt:
           lead.next_follow_up_at ??
           null,
+
+        manualFollowUpStoppedAt:
+          lead.manual_follow_up_stopped_at ??
+          null,
       }
     );
 
@@ -1891,16 +2079,29 @@ export async function syncGmailRepliesForCurrentUser() {
       continue;
     }
 
+    const latestDraftId =
+      latestDraftByLead.get(
+        lead.id
+      );
+
+    /*
+     * Only query Gmail for contacts that actually received
+     * outreach inside the active lookback window. Searching
+     * every lead in the CRM burns query units for no benefit.
+     */
+    if (
+      !latestDraftId
+    ) {
+      continue;
+    }
+
     const reference:
       LeadReference = {
       leadId:
         lead.id,
 
       draftId:
-        latestDraftByLead.get(
-          lead.id
-        ) ??
-        null,
+        latestDraftId,
     };
 
     knownContactByEmail.set(
@@ -2090,25 +2291,44 @@ export async function syncGmailRepliesForCurrentUser() {
      EXISTING THREADS
   ======================================================= */
 
+  const threadReferences =
+    Array.from(
+      threadMap.values()
+    );
+
+  const threadInspectionLimit =
+    mode === "auto"
+      ? AUTO_THREAD_INSPECTION_LIMIT
+      : MANUAL_THREAD_INSPECTION_LIMIT;
+
   for (
     const reference of
-      threadMap.values()
+      threadReferences.slice(
+        0,
+        threadInspectionLimit
+      )
   ) {
     try {
       const response =
         await gmail
           .users
           .threads
-          .get({
-            userId:
-              "me",
+          .get(
+            {
+              userId:
+                "me",
 
-            id:
-              reference.threadId,
+              id:
+                reference.threadId,
 
-            format:
-              "minimal",
-          });
+              format:
+                "minimal",
+            },
+            {
+              retry:
+                false,
+            }
+          );
 
       for (
         const message of
@@ -2190,6 +2410,11 @@ export async function syncGmailRepliesForCurrentUser() {
       SEARCH_TERM_CHUNK_SIZE
     );
 
+  const searchPageLimit =
+    mode === "auto"
+      ? AUTO_SEARCH_PAGES
+      : MAX_SEARCH_PAGES;
+
   for (
     const searchChunk of
       searchChunks
@@ -2214,7 +2439,7 @@ export async function syncGmailRepliesForCurrentUser() {
       let page =
         0;
       page <
-        MAX_SEARCH_PAGES;
+        searchPageLimit;
       page +=
         1
     ) {
@@ -2234,18 +2459,24 @@ export async function syncGmailRepliesForCurrentUser() {
         await gmail
           .users
           .messages
-          .list({
-            userId:
-              "me",
+          .list(
+            {
+              userId:
+                "me",
 
-            q:
-              query,
+              q:
+                query,
 
-            maxResults:
-              100,
+              maxResults:
+                100,
 
-            pageToken,
-          })
+              pageToken,
+            },
+            {
+              retry:
+                false,
+            }
+          )
       ).data;
 
       for (
@@ -2411,16 +2642,22 @@ export async function syncGmailRepliesForCurrentUser() {
         await gmail
           .users
           .messages
-          .get({
-            userId:
-              "me",
+          .get(
+            {
+              userId:
+                "me",
 
-            id:
-              messageId,
+              id:
+                messageId,
 
-            format:
-              "full",
-          });
+              format:
+                "full",
+            },
+            {
+              retry:
+                false,
+            }
+          );
 
       message =
         response.data;
@@ -3094,7 +3331,8 @@ export async function syncGmailRepliesForCurrentUser() {
     ) {
       if (
         classification ===
-        "OUT_OF_OFFICE"
+        "OUT_OF_OFFICE" &&
+        !leadContext?.manualFollowUpStoppedAt
       ) {
         const fallbackDate =
           new Date(
@@ -3272,6 +3510,13 @@ export async function syncGmailRepliesForCurrentUser() {
           smart_follow_up_updated_at:
             new Date()
               .toISOString(),
+
+          ...(nextFollowUp
+            ? {
+                manual_follow_up_stopped_at:
+                  null,
+              }
+            : {}),
         })
         .eq(
           "user_id",

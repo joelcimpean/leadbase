@@ -3487,36 +3487,30 @@ ${clone.outerHTML}`;
   ======================================================= */
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[#111] text-white">
-      <header className="sticky top-0 z-50 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#151515]/95 px-4 py-2 backdrop-blur-xl">
+    <div className="flex min-h-dvh flex-col bg-[#0a0b0f] text-white">
+      <header className="sticky top-0 z-50 flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#0d0f15]/92 px-4 py-3 shadow-[0_8px_30px_rgba(0,0,0,.18)] backdrop-blur-xl sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <Link
             href={`/leads/${encodeURIComponent(
               leadId
             )}`}
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 transition-colors hover:bg-white/10"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.045] text-white/75 transition-all hover:border-[#4D6BFF]/40 hover:bg-[#4D6BFF]/10 hover:text-white"
             title="Zurück zum Lead"
           >
             <ArrowLeft className="size-4" />
           </Link>
 
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
-              {
-                companyName
-              }
-            </p>
-
-            <p className="text-[11px] text-white/45">
-              Variante{" "}
-              {
-                generationIndex
-              }
-            </p>
+            <div className="flex items-center gap-2">
+              <span className="size-1.5 rounded-full bg-[#4D6BFF] shadow-[0_0_0_4px_rgba(77,107,255,.10)]" />
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#8ea2ff]">Design Studio</p>
+            </div>
+            <p className="mt-1 truncate text-sm font-semibold tracking-tight">{companyName}</p>
+            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/35">Variante {generationIndex}</p>
           </div>
         </div>
 
-        <div className="flex rounded-lg border border-white/10 bg-black/20 p-1">
+        <div className="flex rounded-xl border border-white/10 bg-white/[0.035] p-1 shadow-inner">
           <DeviceButton
             active={
               device ===
@@ -3570,7 +3564,7 @@ ${clone.outerHTML}`;
               onClick={
                 resetChanges
               }
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.025] px-3.5 text-xs font-semibold text-white/70 transition-colors hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
             >
               <RotateCcw className="size-3.5" />
 
@@ -3584,7 +3578,7 @@ ${clone.outerHTML}`;
             )}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex size-9 items-center justify-center rounded-lg border border-white/10 transition-colors hover:bg-white/10"
+            className="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.025] text-white/70 transition-colors hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
             title="Vorschau öffnen"
           >
             <ExternalLink className="size-4" />
@@ -3599,7 +3593,7 @@ ${clone.outerHTML}`;
             onClick={() =>
               void saveDesign()
             }
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#4D6BFF] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(77,107,255,.22)] transition-all hover:bg-[#6480FF] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? (
               <Loader2 className="size-4 animate-spin" />
@@ -3619,9 +3613,9 @@ ${clone.outerHTML}`;
       </header>
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="min-h-0 overflow-auto bg-[#202124] p-5 lg:p-8">
+        <div className="min-h-0 overflow-auto bg-[radial-gradient(circle_at_50%_-10%,rgba(77,107,255,.12),transparent_28rem),#11131a] p-4 sm:p-5 lg:p-7">
           <div
-            className="mx-auto overflow-hidden bg-white shadow-2xl transition-[width] duration-300 ease-out"
+            className="mx-auto overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-[0_28px_90px_rgba(0,0,0,.42)] transition-[width] duration-300 ease-out"
             style={{
               width:
                 `${deviceWidth}px`,
@@ -3654,14 +3648,14 @@ ${clone.outerHTML}`;
           </div>
         </div>
 
-        <aside className="border-l border-white/10 bg-[#151515]">
-          <div className="sticky top-16 max-h-[calc(100dvh-64px)] overflow-y-auto p-4">
+        <aside className="border-l border-white/10 bg-[#0d0f15]">
+          <div className="sticky top-[72px] max-h-[calc(100dvh-72px)] overflow-y-auto p-4 sm:p-5">
             <div className="mb-5">
-              <p className="text-sm font-semibold">
+              <p className="text-sm font-semibold tracking-tight">
                 Design bearbeiten
               </p>
 
-              <p className="mt-1 text-xs leading-5 text-white/45">
+              <p className="mt-1.5 text-xs leading-5 text-white/45">
                 Klicke ein Bild oder einen Text direkt im Design an.
                 Du kannst Inhalte ändern, vergrößern, Ebenen anpassen,
                 Overflow freigeben, neue Bilder einfügen oder Elemente entfernen.
@@ -3670,7 +3664,7 @@ ${clone.outerHTML}`;
 
             {selectedTargetId ===
             null ? (
-              <div className="flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed border-white/15 px-6 text-center">
+              <div className="flex min-h-44 flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-6 text-center">
                 <Layers3 className="size-6 text-white/30" />
 
                 <p className="mt-3 text-sm font-medium text-white/70">
@@ -3684,7 +3678,7 @@ ${clone.outerHTML}`;
               </div>
             ) : (
               <>
-                <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3">
+                <div className="rounded-2xl border border-[#4D6BFF]/30 bg-[#4D6BFF]/10 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,.03)]">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-300">
                       Auswahl
@@ -3721,7 +3715,7 @@ ${clone.outerHTML}`;
                     onClick={
                       selectParentElement
                     }
-                    className="mt-3 inline-flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-blue-400/20 bg-black/10 px-3 text-[10px] font-semibold text-blue-100 transition-colors hover:bg-black/20"
+                    className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[#4D6BFF]/25 bg-[#4D6BFF]/10 px-3 text-[10px] font-semibold text-blue-100 transition-colors hover:bg-[#4D6BFF]/15"
                   >
                     <Layers3 className="size-3.5" />
                     Elternelement auswählen
@@ -4110,7 +4104,7 @@ ${clone.outerHTML}`;
                       fileInputRef.current
                         ?.click()
                     }
-                    className="mt-2 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-2 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#4D6BFF] px-3 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(77,107,255,.18)] transition-colors hover:bg-[#6480FF] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {uploading ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -4507,7 +4501,7 @@ function DeviceButton({
       }
       className={`flex size-8 items-center justify-center rounded-md transition-colors ${
         active
-          ? "bg-white text-black"
+          ? "bg-[#4D6BFF] text-white shadow-sm"
           : "text-white/50 hover:bg-white/10 hover:text-white"
       }`}
     >

@@ -39,6 +39,17 @@ export type GmailAttachment = {
   content: Buffer;
 };
 
+
+
+type SendGmailMessageWithAttachmentsInput = {
+  fromEmail: string;
+  toEmail: string;
+  subject: string;
+  body: string;
+  encryptedRefreshToken: string;
+  attachments?: GmailAttachment[];
+};
+
 type SendGmailReplyInput = {
   fromEmail: string;
   body: string;
@@ -678,6 +689,138 @@ function createRawReply({
 }
 
 /* =========================================================
+   NORMAL MESSAGE WITH ATTACHMENTS
+========================================================= */
+
+function createRawMessageWithAttachments({
+  fromEmail,
+  toEmail,
+  subject,
+  body,
+  attachments,
+}: {
+  fromEmail: string;
+  toEmail: string;
+  subject: string;
+  body: string;
+  attachments: GmailAttachment[];
+}) {
+  const safeFrom =
+    sanitizeHeader(
+      fromEmail
+    );
+
+  const safeTo =
+    sanitizeHeader(
+      toEmail
+    );
+
+  const safeSubject =
+    sanitizeHeader(
+      subject
+    );
+
+  const headers = [
+    `From: Joel Cimpean <${safeFrom}>`,
+    `To: ${safeTo}`,
+    `Subject: ${encodeSubject(
+      safeSubject
+    )}`,
+    "MIME-Version: 1.0",
+  ];
+
+  if (
+    attachments.length ===
+    0
+  ) {
+    const message = [
+      ...headers,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      body,
+    ].join(
+      "\r\n"
+    );
+
+    return Buffer.from(
+      message,
+      "utf8"
+    ).toString(
+      "base64url"
+    );
+  }
+
+  const boundary =
+    `joel-leados-message-${randomBytes(
+      18
+    ).toString(
+      "hex"
+    )}`;
+
+  const parts: string[] = [
+    ...headers,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    body,
+  ];
+
+  for (
+    const attachment of
+      attachments
+  ) {
+    const fallbackName =
+      safeAsciiFilename(
+        attachment.filename
+      );
+
+    const utf8Name =
+      encodeFilename(
+        attachment.filename
+      );
+
+    const contentType =
+      safeContentType(
+        attachment.contentType
+      );
+
+    const base64Content =
+      wrapBase64(
+        attachment.content.toString(
+          "base64"
+        )
+      );
+
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${contentType}; name="${fallbackName}"`,
+      `Content-Disposition: attachment; filename="${fallbackName}"; filename*=UTF-8''${utf8Name}`,
+      "Content-Transfer-Encoding: base64",
+      "",
+      base64Content
+    );
+  }
+
+  parts.push(
+    `--${boundary}--`,
+    ""
+  );
+
+  return Buffer.from(
+    parts.join(
+      "\r\n"
+    ),
+    "utf8"
+  ).toString(
+    "base64url"
+  );
+}
+
+/* =========================================================
    AUTHENTICATED CLIENT
 ========================================================= */
 
@@ -756,6 +899,57 @@ export async function sendGmailMessage({
     messageId:
       response.data.id,
 
+    threadId:
+      response.data.threadId ??
+      null,
+  };
+}
+
+/* =========================================================
+   SEND NORMAL MESSAGE WITH ATTACHMENTS
+========================================================= */
+
+export async function sendGmailMessageWithAttachments({
+  fromEmail,
+  toEmail,
+  subject,
+  body,
+  encryptedRefreshToken,
+  attachments = [],
+}: SendGmailMessageWithAttachmentsInput) {
+  const gmail =
+    createAuthenticatedGmailClient(
+      encryptedRefreshToken
+    );
+
+  const raw =
+    createRawMessageWithAttachments({
+      fromEmail,
+      toEmail,
+      subject,
+      body,
+      attachments,
+    });
+
+  const response =
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw,
+      },
+    });
+
+  if (
+    !response.data.id
+  ) {
+    throw new Error(
+      "Gmail did not return a message ID."
+    );
+  }
+
+  return {
+    messageId:
+      response.data.id,
     threadId:
       response.data.threadId ??
       null,

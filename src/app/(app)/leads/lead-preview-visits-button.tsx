@@ -521,7 +521,7 @@ export function LeadPreviewVisitsButton({
                 );
               }
             }}
-            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-black/45 p-0 backdrop-blur-[4px] sm:items-center sm:p-6"
+            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-background/65 p-0 backdrop-blur-[10px] sm:items-center sm:p-6"
           >
             <div
               role="dialog"
@@ -535,7 +535,7 @@ export function LeadPreviewVisitsButton({
                     false
                   )
                 }
-                className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:right-5 sm:top-5"
+                className="absolute right-4 top-4 z-20 flex size-10 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-all hover:border-primary/20 hover:bg-primary/[0.04] hover:text-foreground sm:right-5 sm:top-5"
                 aria-label={
                   de
                     ? "Schließen"
@@ -545,7 +545,7 @@ export function LeadPreviewVisitsButton({
                 <X className="size-4" />
               </button>
 
-              <div className="border-b px-5 pb-5 pt-6 pr-16 sm:px-7 sm:pb-6 sm:pt-7 sm:pr-20">
+              <div className="border-b bg-gradient-to-br from-primary/[0.055] via-card to-card px-5 pb-6 pt-7 pr-16 sm:px-7 sm:pb-7 sm:pt-8 sm:pr-20">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-emerald-600" />
 
@@ -588,7 +588,7 @@ export function LeadPreviewVisitsButton({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 border-b bg-muted/20 p-4 sm:grid-cols-4 sm:p-5">
+              <div className="grid grid-cols-2 gap-2.5 border-b bg-muted/10 p-4 sm:grid-cols-4 sm:p-5">
                 <Stat
                   label={
                     de
@@ -651,7 +651,7 @@ export function LeadPreviewVisitsButton({
                   </div>
                 ) : visits.length ===
                   0 ? (
-                  <div className="rounded-xl border border-dashed px-5 py-9 text-center">
+                  <div className="rounded-2xl border border-dashed bg-muted/10 px-5 py-10 text-center">
                     <Eye className="mx-auto size-5 text-muted-foreground" />
 
                     <p className="mt-2 text-sm font-medium">
@@ -695,7 +695,7 @@ export function LeadPreviewVisitsButton({
                             key={
                               visit.id
                             }
-                            className="rounded-xl border bg-background p-3.5 sm:p-4"
+                            className="rounded-2xl border bg-background p-4 transition-colors hover:border-primary/20 hover:bg-primary/[0.02] sm:p-5"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
@@ -783,7 +783,7 @@ export function LeadPreviewVisitsButton({
 
                 {summary.legacyViewCount >
                 0 ? (
-                  <div className="mt-4 rounded-xl border bg-muted/20 px-3.5 py-3">
+                  <div className="mt-4 rounded-2xl border bg-muted/15 px-4 py-3.5">
                     <p className="text-xs font-medium">
                       {de
                         ? "Frühere, nicht zuordenbare Aufrufe"
@@ -870,7 +870,7 @@ function Stat({
     number;
 }) {
   return (
-    <div className="rounded-xl border bg-background p-3">
+    <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {
           label

@@ -92,7 +92,7 @@ function redirectWithNotice(
   );
 
   redirect(
-    `${path}?${params.toString()}`
+    `${path}?${params.toString()}#follow-ups`
   );
 }
 
@@ -344,10 +344,41 @@ export async function updateAutomaticFollowUps(
 }
 
 /* =========================================================
-   SEND ALL DUE FOLLOW-UPS NOW
+   STOP SCHEDULED FOLLOW-UPS
 ========================================================= */
 
-export async function sendDueFollowUpsNow() {
+export async function stopSingleScheduledFollowUp(
+  leadId:
+    string,
+  _formData:
+    FormData
+) {
+  const normalizedLeadId =
+    leadId.trim();
+
+  if (
+    !normalizedLeadId
+  ) {
+    return;
+  }
+
+  const formData =
+    new FormData();
+
+  formData.set(
+    "stopLeadId",
+    normalizedLeadId
+  );
+
+  return stopScheduledFollowUps(
+    formData
+  );
+}
+
+export async function stopScheduledFollowUps(
+  formData:
+    FormData
+) {
   const [
     supabase,
     language,
@@ -376,6 +407,270 @@ export async function sendDueFollowUpsNow() {
     );
   }
 
+  const singleLeadId =
+    formData.get(
+      "stopLeadId"
+    );
+
+  const selectedLeadIds =
+    typeof singleLeadId ===
+      "string" &&
+    singleLeadId.trim()
+      ? [
+          singleLeadId.trim(),
+        ]
+      : Array.from(
+          new Set(
+            formData
+              .getAll(
+                "leadIds"
+              )
+              .filter(
+                (
+                  value
+                ): value is string =>
+                  typeof value ===
+                  "string"
+              )
+              .map(
+                (
+                  value
+                ) =>
+                  value.trim()
+              )
+              .filter(
+                Boolean
+              )
+          )
+        );
+
+  if (
+    selectedLeadIds.length ===
+    0
+  ) {
+    redirectWithNotice(
+      "/settings",
+      {
+        variant:
+          "warning",
+
+        title:
+          language ===
+          "de"
+            ? "Keine Follow-ups ausgewählt"
+            : "No follow-ups selected",
+
+        description:
+          language ===
+          "de"
+            ? "Wähle mindestens ein Follow-up aus, das nicht mehr gesendet werden soll."
+            : "Select at least one follow-up that should no longer be sent.",
+      }
+    );
+  }
+
+  const stoppedAt =
+    new Date()
+      .toISOString();
+
+  const {
+    data:
+      stopped,
+    error,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .update({
+        next_follow_up_at:
+          null,
+
+        smart_follow_up_mode:
+          "STOPPED",
+
+        smart_follow_up_reason:
+          "Manually stopped in Settings.",
+
+        smart_follow_up_updated_at:
+          stoppedAt,
+
+        manual_follow_up_stopped_at:
+          stoppedAt,
+      })
+      .eq(
+        "user_id",
+        user.id
+      )
+      .in(
+        "id",
+        selectedLeadIds
+      )
+      .not(
+        "next_follow_up_at",
+        "is",
+        null
+      )
+      .select(
+        "id"
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not stop scheduled follow-ups:",
+      error
+    );
+
+    redirectWithNotice(
+      "/settings",
+      {
+        variant:
+          "error",
+
+        title:
+          language ===
+          "de"
+            ? "Follow-up konnte nicht gestoppt werden"
+            : "Follow-up could not be stopped",
+
+        description:
+          error.message,
+      }
+    );
+  }
+
+  revalidatePath(
+    "/settings"
+  );
+
+  revalidatePath(
+    "/leads"
+  );
+
+  revalidatePath(
+    "/"
+  );
+
+  const stoppedCount =
+    stopped?.length ??
+    0;
+
+  redirectWithNotice(
+    "/settings",
+    {
+      variant:
+        "success",
+
+      title:
+        language ===
+        "de"
+          ? stoppedCount ===
+              1
+            ? "Follow-up gestoppt"
+            : `${stoppedCount} Follow-ups gestoppt`
+          : stoppedCount ===
+              1
+            ? "Follow-up stopped"
+            : `${stoppedCount} follow-ups stopped`,
+
+      description:
+        language ===
+        "de"
+          ? "Diese Leads werden in der Liste nicht mehr angezeigt und nicht automatisch nachgefasst."
+          : "These leads will no longer appear in the list and will not be followed up automatically.",
+    }
+  );
+}
+
+/* =========================================================
+   SEND ALL DUE FOLLOW-UPS NOW
+========================================================= */
+
+export async function sendScheduledFollowUpsNow(
+  formData:
+    FormData
+) {
+  const [
+    supabase,
+    language,
+  ] =
+    await Promise.all([
+      createClient(),
+      getAppLanguage(),
+    ]);
+
+  const {
+    data: {
+      user,
+    },
+
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
+  }
+
+  const selectedLeadIds =
+    Array.from(
+      new Set(
+        formData
+          .getAll(
+            "leadIds"
+          )
+          .filter(
+            (
+              value
+            ): value is string =>
+              typeof value ===
+              "string"
+          )
+          .map(
+            (
+              value
+            ) =>
+              value.trim()
+          )
+          .filter(
+            Boolean
+          )
+      )
+    );
+
+  if (
+    selectedLeadIds.length ===
+      0
+  ) {
+    redirectWithNotice(
+      "/settings",
+      {
+        variant:
+          "warning",
+
+        title:
+          language ===
+          "de"
+            ? "Keine Follow-ups ausgewählt"
+            : "No follow-ups selected",
+
+        description:
+          language ===
+          "de"
+            ? "Wähle mindestens ein geplantes Follow-up aus."
+            : "Select at least one scheduled follow-up.",
+      }
+    );
+  }
+
   try {
     const result =
       await sendDueFollowUpsForUser({
@@ -383,7 +678,16 @@ export async function sendDueFollowUpsNow() {
           user.id,
 
         limit:
-          25,
+          Math.min(
+            100,
+            selectedLeadIds.length
+          ),
+
+        allowEarlySend:
+          true,
+
+        leadIds:
+          selectedLeadIds,
       });
 
     revalidatePath(
@@ -419,13 +723,22 @@ export async function sendDueFollowUpsNow() {
               item.companyName,
 
             description:
-              item.reason ??
-              (
-                language ===
-                "de"
-                  ? "Follow-up wurde nicht versendet."
-                  : "Follow-up was not sent."
-              ),
+              item.reason
+                ?.toLowerCase()
+                .includes(
+                  "gmail api rate limit"
+                )
+                ? language ===
+                    "de"
+                  ? "Gmail-Limit erreicht. Diese Mail wurde nicht als gesendet markiert. Warte etwa eine Minute und versuche sie dann erneut; Leadbase hat den restlichen Batch vorsichtshalber gestoppt."
+                  : "Gmail rate limit reached. This email was not marked as sent. Wait about a minute and retry; Leadbase stopped the remaining batch as a precaution."
+                : item.reason ??
+                  (
+                    language ===
+                    "de"
+                      ? "Follow-up wurde nicht versendet."
+                      : "Follow-up was not sent."
+                  ),
 
             href:
               `/leads/${item.leadId}`,
@@ -462,8 +775,8 @@ export async function sendDueFollowUpsNow() {
               : "Follow-ups processed — some were not sent"
             : language ===
                 "de"
-              ? "Follow-ups erfolgreich gesendet"
-              : "Follow-ups sent successfully",
+              ? "Follow-ups jetzt gesendet"
+              : "Follow-ups sent now",
 
         description:
           language ===

@@ -1980,13 +1980,13 @@ export function RedesignPreviewActions({
                 );
               }
             }}
-            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-black/45 p-0 backdrop-blur-[4px] sm:items-center sm:p-6"
+            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-background/65 p-0 backdrop-blur-[10px] sm:items-center sm:p-6"
           >
             <div
               role="dialog"
               aria-modal="true"
               aria-labelledby="preview-visits-title"
-              className="relative my-0 w-full max-h-[calc(100dvh-24px)] overflow-y-auto rounded-t-[26px] border bg-background shadow-[0_24px_80px_rgba(0,0,0,.28)] sm:my-auto sm:max-w-[760px] sm:rounded-[26px]"
+              className="relative my-0 w-full max-h-[calc(100dvh-24px)] overflow-y-auto rounded-t-[30px] border bg-card shadow-[0_30px_100px_rgba(0,0,0,.24)] sm:my-auto sm:max-w-[880px] sm:rounded-[30px]"
             >
               <button
                 type="button"
@@ -1996,12 +1996,12 @@ export function RedesignPreviewActions({
                   )
                 }
                 aria-label="Dialog schließen"
-                className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:right-5 sm:top-5"
+                className="absolute right-4 top-4 z-20 flex size-10 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-all hover:border-primary/20 hover:bg-primary/[0.04] hover:text-foreground sm:right-5 sm:top-5"
               >
                 <X className="size-4" />
               </button>
 
-              <div className="border-b px-5 pb-5 pt-6 pr-16 sm:px-7 sm:pb-6 sm:pt-7 sm:pr-20">
+              <div className="border-b bg-gradient-to-br from-primary/[0.055] via-card to-card px-5 pb-6 pt-7 pr-16 sm:px-7 sm:pb-7 sm:pt-8 sm:pr-20">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-emerald-600" />
 
@@ -2053,8 +2053,8 @@ export function RedesignPreviewActions({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 border-b bg-muted/20 p-4 sm:grid-cols-4 sm:p-5">
-                <div className="rounded-xl border bg-background p-3">
+              <div className="grid grid-cols-2 gap-2.5 border-b bg-muted/10 p-4 sm:grid-cols-4 sm:p-5">
+                <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
                   <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                     {
                       text.externalVisitors
@@ -2068,7 +2068,7 @@ export function RedesignPreviewActions({
                   </p>
                 </div>
 
-                <div className="rounded-xl border bg-background p-3">
+                <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
                   <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                     {
                       text.outreachVisits
@@ -2082,7 +2082,7 @@ export function RedesignPreviewActions({
                   </p>
                 </div>
 
-                <div className="rounded-xl border bg-background p-3">
+                <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
                   <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                     {
                       text.engaged
@@ -2096,7 +2096,7 @@ export function RedesignPreviewActions({
                   </p>
                 </div>
 
-                <div className="rounded-xl border bg-background p-3">
+                <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
                   <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                     {
                       text.ownViews
@@ -2122,7 +2122,7 @@ export function RedesignPreviewActions({
 
                 {visits.length ===
                 0 ? (
-                  <div className="rounded-xl border border-dashed px-5 py-10 text-center">
+                  <div className="rounded-2xl border border-dashed bg-muted/10 px-5 py-12 text-center">
                     <Eye className="mx-auto size-5 text-muted-foreground" />
 
                     <p className="mt-2 text-sm font-medium">
@@ -2154,7 +2154,7 @@ export function RedesignPreviewActions({
                             key={
                               visit.id
                             }
-                            className="rounded-xl border bg-background p-3.5 sm:p-4"
+                            className="rounded-2xl border bg-background p-4 transition-colors hover:border-primary/20 hover:bg-primary/[0.02] sm:p-5"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
@@ -2259,7 +2259,7 @@ export function RedesignPreviewActions({
 
                 {viewCount >
                 0 ? (
-                  <div className="mt-4 rounded-xl border bg-muted/20 px-3.5 py-3">
+                  <div className="mt-4 rounded-2xl border bg-muted/15 px-4 py-3.5">
                     <p className="text-xs font-medium">
                       {text.legacyCounter}:{" "}
                       {
@@ -2289,8 +2289,8 @@ export function RedesignPreviewActions({
     loadingDesigns
   ) {
     return (
-      <div className="col-span-2 min-w-0 sm:col-auto">
-        <div className="inline-flex h-10 items-center gap-2 rounded-lg border bg-background px-4 text-sm text-muted-foreground sm:h-9">
+      <div className="leadbase-workspace-card min-w-0 rounded-[24px] border p-5 sm:p-6">
+        <div className="flex min-h-24 items-center justify-center gap-2 rounded-2xl border border-dashed bg-muted/20 px-4 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
 
           {
@@ -2307,8 +2307,40 @@ export function RedesignPreviewActions({
 
   return (
     <>
-      <div className="col-span-2 min-w-0 sm:col-auto">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <section className="leadbase-workspace-card min-w-0 overflow-visible rounded-[24px] border p-4 sm:p-5">
+        <div className="mb-4 flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-end">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex size-9 items-center justify-center rounded-xl border bg-primary/[0.08] text-primary">
+                <Sparkles className="size-4" />
+              </span>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Design Studio</p>
+                <h2 className="mt-0.5 text-lg font-semibold tracking-tight">Design & Kundenvorschau</h2>
+              </div>
+            </div>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Variante auswählen, Design bearbeiten und anschließend genau diese Version für den Kunden freigeben.
+            </p>
+          </div>
+
+          {shareUrl ? (
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              {text.active}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border bg-muted/15 p-3 sm:p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Designvariante</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Die ausgewählte Variante wird für Outreach und Vorschau verwendet.</p>
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
           {variants.length ===
           0 ? (
             <button
@@ -2353,7 +2385,7 @@ export function RedesignPreviewActions({
                         !current
                     )
                   }
-                  className="inline-flex h-10 min-w-[180px] items-center justify-between gap-3 rounded-lg border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted sm:h-9"
+                  className="inline-flex h-10 min-w-[200px] items-center justify-between gap-3 rounded-xl border bg-background px-3.5 text-sm font-medium shadow-sm transition-colors hover:border-primary/25 hover:bg-primary/[0.025]"
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {selectedVariant
@@ -2504,7 +2536,7 @@ export function RedesignPreviewActions({
                   href={`/design-preview/${encodeURIComponent(
                     selectedVariant.id
                   )}/edit`}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted sm:h-9"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-background px-3.5 text-sm font-semibold transition-colors hover:border-primary/25 hover:bg-primary/[0.035]"
                   title={
                     text.edit
                   }
@@ -2531,7 +2563,7 @@ export function RedesignPreviewActions({
                 onClick={() =>
                   void generate()
                 }
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-9"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-background px-3.5 text-sm font-semibold transition-colors hover:border-primary/25 hover:bg-primary/[0.035] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {generating ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -2560,10 +2592,10 @@ export function RedesignPreviewActions({
                     onClick={() =>
                       void createOrCopyCustomerPreview()
                     }
-                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:h-9 ${
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                       shareUrl
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
-                        : "bg-background hover:bg-muted"
+                        ? "border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                        : "border-primary/20 bg-primary/[0.08] text-primary hover:bg-primary/[0.12]"
                     }`}
                   >
                     {shareLoading ? (
@@ -2628,6 +2660,7 @@ export function RedesignPreviewActions({
               ) : null}
             </>
           )}
+          </div>
         </div>
 
         {/* ===================================================
@@ -2647,7 +2680,18 @@ export function RedesignPreviewActions({
         =================================================== */}
 
         {shareUrl ? (
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+          <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.035] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Kundenvorschau</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Link ist aktiv und Besuchssignale werden getrennt ausgewertet.</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                <ShieldCheck className="size-3.5" />
+                {text.active}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
               <ShieldCheck className="size-3.5" />
 
@@ -2719,6 +2763,7 @@ export function RedesignPreviewActions({
                 text.visitDetails
               }
             </button>
+            </div>
           </div>
         ) : null}
 
@@ -2757,7 +2802,7 @@ export function RedesignPreviewActions({
     shareUrl={shareUrl}
   />
 ) : null}
-      </div>
+      </section>
 
       {
         visitsModal

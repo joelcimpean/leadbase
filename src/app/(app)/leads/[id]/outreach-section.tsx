@@ -1350,7 +1350,7 @@ export async function OutreachSection({
                                     ? "Übernimmt..."
                                     : "Applying..."
                                 }
-                                className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-foreground px-2.5 text-[11px] font-medium text-background transition-opacity hover:opacity-90 min-[500px]:w-auto"
+                                className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-[11px] font-medium text-primary-foreground transition-opacity hover:opacity-90 min-[500px]:w-auto"
                               >
                                 {language ===
                                 "de"
@@ -1823,7 +1823,7 @@ export async function OutreachSection({
                               ? "Wird freigegeben..."
                               : "Approving..."
                           }
-                          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 sm:h-8 sm:w-auto"
+                          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:h-8 sm:w-auto"
                         >
                           {
                             text.approveDraft
@@ -2229,7 +2229,7 @@ export async function OutreachSection({
                             ? "Speichert..."
                             : "Saving..."
                         }
-                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9 sm:w-auto"
+                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:h-9 sm:w-auto"
                       >
                         <Save className="size-3.5" />
 

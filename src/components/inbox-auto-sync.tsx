@@ -19,7 +19,72 @@ import {
 ========================================================= */
 
 const AUTO_SYNC_INTERVAL_MS =
-  30_000;
+  180_000;
+
+const MIN_AUTO_SYNC_GAP_MS =
+  120_000;
+
+const QUOTA_COOLDOWN_MS =
+  180_000;
+
+const LAST_AUTO_SYNC_KEY =
+  "leadbase:last-auto-inbox-sync";
+
+const QUOTA_COOLDOWN_KEY =
+  "leadbase:gmail-sync-cooldown-until";
+
+function getStoredNumber(
+  key: string
+) {
+  if (
+    typeof window ===
+    "undefined"
+  ) {
+    return 0;
+  }
+
+  const value =
+    Number(
+      window.localStorage.getItem(
+        key
+      ) ??
+        0
+    );
+
+  return Number.isFinite(
+    value
+  )
+    ? value
+    : 0;
+}
+
+function canRunAutoSync() {
+  const now =
+    Date.now();
+
+  const cooldownUntil =
+    getStoredNumber(
+      QUOTA_COOLDOWN_KEY
+    );
+
+  if (
+    cooldownUntil >
+    now
+  ) {
+    return false;
+  }
+
+  const lastAttempt =
+    getStoredNumber(
+      LAST_AUTO_SYNC_KEY
+    );
+
+  return (
+    now -
+      lastAttempt >=
+    MIN_AUTO_SYNC_GAP_MS
+  );
+}
 
 /* =========================================================
    COMPONENT
@@ -43,7 +108,8 @@ export function InboxAutoSync({
       async () => {
         if (
           !enabled ||
-          syncingRef.current
+          syncingRef.current ||
+          !canRunAutoSync()
         ) {
           return;
         }
@@ -60,9 +126,40 @@ export function InboxAutoSync({
         syncingRef.current =
           true;
 
+        window.localStorage.setItem(
+          LAST_AUTO_SYNC_KEY,
+          String(
+            Date.now()
+          )
+        );
+
         try {
           const result =
             await syncInboxSilently();
+
+          if (
+            !result.ok &&
+            result.error ===
+              "GMAIL_QUOTA_COOLDOWN"
+          ) {
+            window.localStorage.setItem(
+              QUOTA_COOLDOWN_KEY,
+              String(
+                Date.now() +
+                  QUOTA_COOLDOWN_MS
+              )
+            );
+
+            return;
+          }
+
+          if (
+            result.ok
+          ) {
+            window.localStorage.removeItem(
+              QUOTA_COOLDOWN_KEY
+            );
+          }
 
           if (
             result.ok &&
@@ -108,7 +205,9 @@ export function InboxAutoSync({
         );
 
       /*
-       * Near-live sync while the app is open.
+       * Lightweight background sync while the app is open.
+       * A client-side gap prevents focus/visibility events from
+       * stacking Gmail API work on top of the interval.
        */
 
       const interval =

@@ -853,7 +853,7 @@ export function AiLeadSearchChat({
   ======================================================= */
 
   return (
-    <section className="mt-7 md:mt-10">
+    <section className="leadbase-subtle-panel mt-7 rounded-3xl border p-5 md:mt-10 md:p-7">
       <div className="mx-auto w-full max-w-4xl">
         {/* =================================================
             TITLE
@@ -861,7 +861,7 @@ export function AiLeadSearchChat({
 
         <div className="relative">
           <div className="text-center">
-            <div className="mx-auto flex size-9 items-center justify-center rounded-full border bg-muted/20">
+            <div className="mx-auto flex size-10 items-center justify-center rounded-2xl border border-primary/15 bg-primary/8 text-primary">
               <Sparkles className="size-4" />
             </div>
 
@@ -982,7 +982,7 @@ export function AiLeadSearchChat({
               : "mt-8"
           }`}
         >
-          <div className="rounded-[24px] border bg-card p-2 shadow-sm transition-shadow focus-within:shadow-md">
+          <div className="rounded-[24px] border border-primary/10 bg-card/90 p-2 shadow-[0_12px_36px_rgba(15,23,42,0.05)] transition-all focus-within:border-primary/25 focus-within:shadow-[0_18px_48px_rgba(15,23,42,0.08)] dark:bg-card/80">
             <textarea
               value={
                 prompt
@@ -1065,7 +1065,7 @@ export function AiLeadSearchChat({
                   !campaignId
                 }
                 aria-label="Send"
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 {loading ? (
                   <Loader2 className="size-4 animate-spin" />

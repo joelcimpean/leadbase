@@ -19,6 +19,10 @@ import type {
     CustomerDesignFrame,
     PreviewVisitTracker,
   } from "./customer-design-frame";
+
+  import {
+    ConceptPreviewExperience,
+  } from "./concept-preview-experience";
   
   /* =========================================================
      CONFIG
@@ -92,6 +96,23 @@ import type {
   
     direction?:
       string;
+
+    currentWebsiteSnapshotUrl?:
+      string;
+
+    currentWebsiteSnapshotCapturedAt?:
+      string;
+
+    currentWebsiteFinalUrl?:
+      string;
+
+    currentWebsiteSnapshotViewport?: {
+      width?:
+        number;
+
+      height?:
+        number;
+    };
   };
   
   /* =========================================================
@@ -453,6 +474,23 @@ import type {
             mailBody
           )}`
         : null;
+
+    /*
+     * External websites often block iframe embedding through
+     * X-Frame-Options / CSP. Preview 2.0 therefore uses the frozen
+     * 16:10 website snapshot for the stable comparison and keeps the
+     * original URL only for the explicit "Original öffnen" action.
+     */
+    const currentWebsiteSnapshotUrl =
+      snapshot.currentWebsiteSnapshotUrl?.trim() ||
+      `/api/concept/${encodeURIComponent(
+        slug
+      )}/current-snapshot`;
+
+    const currentWebsiteUrl =
+      snapshot.currentWebsiteFinalUrl?.trim() ||
+      row.source_website_url?.trim() ||
+      null;
   
     return (
       <main className="min-h-screen bg-white text-neutral-950">
@@ -462,91 +500,80 @@ import type {
           }
         />
   
-        <div className="sticky top-0 z-[100] border-b border-neutral-200 bg-white/95 text-neutral-950 shadow-[0_1px_0_rgba(0,0,0,.04)] backdrop-blur-xl">
-          <div className="mx-auto flex min-h-[64px] max-w-[1440px] items-center justify-between gap-2 px-3 py-2.5 sm:min-h-[76px] sm:gap-4 sm:px-6 sm:py-3 lg:px-8">
-            <div className="min-w-0 flex-1 pr-1 sm:pr-3">
-              <p className="line-clamp-2 text-[8px] font-semibold uppercase leading-[1.3] tracking-[0.13em] text-neutral-500 min-[390px]:text-[9px] sm:text-[10px] sm:tracking-[0.15em]">
-                Persönliches Designkonzept für
-              </p>
-  
-              <p className="mt-1 truncate text-[13px] font-semibold leading-tight text-neutral-950 min-[390px]:text-sm sm:text-base">
-                {
-                  companyName
-                }
-              </p>
+        {/*
+         * Customer utility bar:
+         * - fixed to the viewport instead of living inside the scroll flow
+         * - full-width glass surface so it behaves like a real product navbar
+         * - one compact row to avoid covering too much of the design
+         * - explicit spacer below prevents the generated design from hiding underneath it
+         */}
+        <div className="fixed inset-x-0 top-0 z-[100] overflow-x-hidden border-b border-neutral-200/70 bg-white/[0.88] shadow-[0_1px_0_rgba(15,23,42,.02),0_10px_32px_rgba(15,23,42,.045)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.78]">
+          <div className="mx-auto flex h-[68px] w-full max-w-[1600px] items-center justify-between gap-3 px-4 sm:h-[72px] sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#002BBA] text-white shadow-[0_8px_20px_rgba(0,43,186,.16)] sm:size-10">
+                <span className="text-[17px] font-semibold leading-none">⚡︎</span>
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="hidden size-1.5 shrink-0 rounded-full bg-[#002BBA] sm:block" />
+                  <p className="truncate text-[9px] font-semibold uppercase tracking-[0.16em] text-neutral-500 sm:text-[10px]">
+                    Persönliches Designkonzept
+                  </p>
+                </div>
+
+                <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                  <p className="truncate text-sm font-semibold tracking-[-0.02em] text-neutral-950 sm:text-[15px]">
+                    {companyName}
+                  </p>
+
+                  <span className="hidden text-[10px] text-neutral-300 xl:inline">·</span>
+                  <span className="hidden truncate text-[10px] text-neutral-400 xl:inline">
+                    Unverbindliche Vorschau · kein finales Konzept
+                  </span>
+                </div>
+              </div>
             </div>
-  
-            <div className="hidden shrink-0 text-right md:block">
-              <p className="text-[11px] text-neutral-500">
-                Erstellt von
-              </p>
-  
+
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <a
-                href={
-                  portfolioUrl
-                }
+                href={portfolioUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group mt-0.5 inline-flex items-center gap-1 text-sm font-semibold text-neutral-950 transition-opacity hover:opacity-60"
+                className="group hidden items-center gap-1.5 rounded-xl px-2.5 py-2 text-right transition-colors hover:bg-neutral-100/80 lg:flex"
               >
-                {
-                  designerName
-                }
-  
-                <ArrowUpRight className="size-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              </a>
-  
-              <p className="mt-0.5 text-[9px] text-neutral-400">
-                Unverbindliche Designvorschau · mögliche Gestaltungsrichtung · kein finales Konzept
-              </p>
-            </div>
-  
-            <CustomerContactChoice
-              companyName={
-                companyName
-              }
-              mailUrl={
-                mailUrl
-              }
-              calendarUrl={
-                calendarUrl
-              }
-            />
-          </div>
-  
-          <div className="border-t border-neutral-100 px-3 py-1.5 md:hidden">
-            <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3">
-              <a
-                href={
-                  portfolioUrl
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-w-0 items-center gap-1 text-[9px] font-medium text-neutral-500 transition-colors hover:text-neutral-950"
-              >
-                <span className="truncate">
-                  Erstellt von{" "}
-                  <strong className="font-semibold text-neutral-700">
-                    {
-                      designerName
-                    }
-                  </strong>
+                <span>
+                  <span className="block text-[9px] leading-none text-neutral-400">Erstellt von</span>
+                  <span className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold leading-none text-neutral-800 transition-colors group-hover:text-[#002BBA]">
+                    {designerName}
+                    <ArrowUpRight className="size-3 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                  </span>
                 </span>
-  
-                <ArrowUpRight className="size-2.5 shrink-0" />
               </a>
-  
-              <span className="hidden shrink-0 text-[8px] text-neutral-400 min-[430px]:block">
-                Unverbindliche Designvorschau · kein finales Konzept
-              </span>
+
+              <CustomerContactChoice
+                companyName={companyName}
+                mailUrl={mailUrl}
+                calendarUrl={calendarUrl}
+              />
             </div>
           </div>
         </div>
-  
-        <CustomerDesignFrame
-          title={`Designkonzept für ${companyName}`}
+
+        <div aria-hidden="true" className="h-[68px] sm:h-[72px]" />
+
+        <ConceptPreviewExperience
+          companyName={
+            companyName
+          }
           html={
             snapshot.html
+          }
+          currentWebsiteSnapshotUrl={
+            currentWebsiteSnapshotUrl
+          }
+          currentWebsiteUrl={
+            currentWebsiteUrl
           }
         />
       </main>

@@ -12,6 +12,7 @@ import {
 } from "next/navigation";
 
 import {
+  Bell,
   BriefcaseBusiness,
   Inbox,
   Languages,
@@ -40,6 +41,10 @@ import {
 } from "@/lib/i18n";
 
 import {
+  createClient,
+} from "@/lib/supabase/client";
+
+import {
   cn,
 } from "@/lib/utils";
 
@@ -50,12 +55,15 @@ import {
 function SidebarContent({
   pathname,
   unreadInboxCount,
+  unreadNotificationCount,
   onNavigate,
   showCloseButton = false,
 }: {
   pathname: string;
 
   unreadInboxCount: number;
+
+  unreadNotificationCount: number;
 
   onNavigate?: () => void;
 
@@ -139,6 +147,19 @@ function SidebarContent({
     },
 
     {
+      name:
+        language === "de"
+          ? "Benachrichtigungen"
+          : "Notifications",
+
+      href:
+        "/notifications",
+
+      icon:
+        Bell,
+    },
+
+    {
       name: "Analytics",
       href: "/analytics",
       icon: BarChart3,
@@ -176,7 +197,7 @@ function SidebarContent({
           }
           className="flex min-w-0 items-center gap-3"
         >
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-sm font-semibold text-background">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20">
             ⚡︎
           </div>
 
@@ -235,6 +256,10 @@ function SidebarContent({
                 item.href ===
                 "/inbox";
 
+              const isNotifications =
+                item.href ===
+                "/notifications";
+
               return (
                 <Link
                   key={
@@ -250,8 +275,8 @@ function SidebarContent({
                     "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
 
                     isActive
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/10"
+                      : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground"
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
@@ -265,10 +290,20 @@ function SidebarContent({
                   {isInbox &&
                   unreadInboxCount >
                     0 ? (
-                    <span className="flex min-w-5 shrink-0 items-center justify-center rounded-full bg-foreground px-1.5 py-0.5 text-[10px] font-semibold leading-none text-background">
+                    <span className="flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground shadow-sm shadow-primary/20">
                       {
                         unreadLabel
                       }
+                    </span>
+                  ) : null}
+
+                  {isNotifications &&
+                  unreadNotificationCount >
+                    0 ? (
+                    <span className="flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                      {unreadNotificationCount > 99
+                        ? "99+"
+                        : unreadNotificationCount}
                     </span>
                   ) : null}
                 </Link>
@@ -361,8 +396,8 @@ function SidebarContent({
             pathname.startsWith(
               "/settings"
             )
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground"
           )}
         >
           <Settings className="size-4 shrink-0" />
@@ -407,7 +442,7 @@ function SidebarContent({
         >
           <button
             type="submit"
-            className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/70 hover:text-accent-foreground"
           >
             <LogOut className="size-4 shrink-0" />
 
@@ -428,9 +463,13 @@ function SidebarContent({
 ========================================================= */
 
 export function AppSidebar({
+  userId = null,
   unreadInboxCount = 0,
+  unreadNotificationCount = 0,
 }: {
+  userId?: string | null;
   unreadInboxCount?: number;
+  unreadNotificationCount?: number;
 }) {
   const pathname =
     usePathname();
@@ -444,6 +483,102 @@ export function AppSidebar({
     languageCopy[
       language
     ].sidebar;
+
+  const [
+    liveUnreadNotificationCount,
+    setLiveUnreadNotificationCount,
+  ] =
+    useState(
+      unreadNotificationCount
+    );
+
+  useEffect(
+    () => {
+      setLiveUnreadNotificationCount(
+        unreadNotificationCount
+      );
+    },
+    [
+      unreadNotificationCount,
+    ]
+  );
+
+  useEffect(
+    () => {
+      if (!userId) {
+        return;
+      }
+
+      let cancelled =
+        false;
+
+      async function refreshNotificationCount() {
+        const supabase =
+          createClient();
+
+        const {
+          count,
+          error,
+        } = await supabase
+          .from(
+            "app_notifications"
+          )
+          .select(
+            "id",
+            {
+              count:
+                "exact",
+              head:
+                true,
+            }
+          )
+          .eq(
+            "user_id",
+            userId
+          )
+          .is(
+            "read_at",
+            null
+          );
+
+        if (error) {
+          console.error(
+            "Could not refresh live notification count:",
+            error
+          );
+          return;
+        }
+
+        if (!cancelled) {
+          setLiveUnreadNotificationCount(
+            count ?? 0
+          );
+        }
+      }
+
+      function handleChange() {
+        void refreshNotificationCount();
+      }
+
+      window.addEventListener(
+        "leadbase:persistent-notifications-changed",
+        handleChange
+      );
+
+      return () => {
+        cancelled =
+          true;
+
+        window.removeEventListener(
+          "leadbase:persistent-notifications-changed",
+          handleChange
+        );
+      };
+    },
+    [
+      userId,
+    ]
+  );
 
   const [
     mobileOpen,
@@ -509,13 +644,16 @@ export function AppSidebar({
           DESKTOP
       =================================================== */}
 
-      <aside className="hidden h-full w-64 shrink-0 flex-col border-r bg-background md:flex">
+      <aside className="hidden h-full w-64 shrink-0 flex-col border-r bg-background/95 md:flex">
         <SidebarContent
           pathname={
             pathname
           }
           unreadInboxCount={
             unreadInboxCount
+          }
+          unreadNotificationCount={
+            liveUnreadNotificationCount
           }
         />
       </aside>
@@ -524,12 +662,12 @@ export function AppSidebar({
           MOBILE HEADER
       =================================================== */}
 
-      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur md:hidden">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b bg-background/90 px-4 shadow-[0_1px_0_rgba(0,0,0,0.02)] backdrop-blur-xl md:hidden">
         <Link
           href="/"
           className="flex min-w-0 items-center gap-2.5"
         >
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-sm font-semibold text-background">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20">
             ⚡︎
           </div>
 
@@ -539,6 +677,22 @@ export function AppSidebar({
         </Link>
 
         <div className="flex items-center gap-2">
+          {liveUnreadNotificationCount > 0 ? (
+            <Link
+              href="/notifications"
+              aria-label={`${liveUnreadNotificationCount} Benachrichtigungen`}
+              className="relative flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Bell className="size-5" />
+
+              <span className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-4 text-primary-foreground">
+                {liveUnreadNotificationCount > 99
+                  ? "99+"
+                  : liveUnreadNotificationCount}
+              </span>
+            </Link>
+          ) : null}
+
           {unreadInboxCount >
           0 ? (
             <Link
@@ -548,7 +702,7 @@ export function AppSidebar({
             >
               <Inbox className="size-5" />
 
-              <span className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full bg-foreground px-1 text-[9px] font-semibold leading-4 text-background">
+              <span className="absolute right-0.5 top-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-4 text-primary-foreground shadow-sm shadow-primary/20">
                 {unreadInboxCount >
                 99
                   ? "99+"
@@ -570,7 +724,7 @@ export function AppSidebar({
                 true
               )
             }
-            className="flex size-9 items-center justify-center rounded-lg border bg-background text-foreground transition-colors hover:bg-muted"
+            className="flex size-9 items-center justify-center rounded-lg border bg-background text-foreground shadow-xs transition-colors hover:border-primary/20 hover:bg-accent hover:text-accent-foreground"
           >
             <Menu className="size-5" />
           </button>
@@ -610,6 +764,9 @@ export function AppSidebar({
               }
               unreadInboxCount={
                 unreadInboxCount
+              }
+              unreadNotificationCount={
+                unreadNotificationCount
               }
               showCloseButton
               onNavigate={() =>

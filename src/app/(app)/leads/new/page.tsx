@@ -14,6 +14,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/server";
 
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
 type NewLeadPageProps = {
   searchParams: Promise<{
     error?: string;
@@ -76,7 +80,8 @@ export default async function NewLeadPage({
     : "Back to leads";
 
   return (
-    <div className="mx-auto w-full max-w-[900px] px-8 py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[960px] px-4 py-5 sm:px-6 sm:py-7 md:px-8 lg:px-10 lg:py-10">
+      <WorkspacePageMotion />
       <Link
         href={returnHref}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -85,7 +90,7 @@ export default async function NewLeadPage({
         {returnLabel}
       </Link>
 
-      <header className="mt-6">
+      <header data-workspace-reveal className="leadbase-workspace-header mt-6 p-5 sm:p-6">
         <p className="text-sm text-muted-foreground">
           CRM
         </p>
@@ -109,7 +114,7 @@ export default async function NewLeadPage({
         ) : null}
       </header>
 
-      <Card className="mt-8 shadow-none">
+      <Card data-workspace-reveal className="leadbase-workspace-card mt-8">
         <CardContent className="p-6">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-lg border">

@@ -7,13 +7,13 @@ import {
 } from "lucide-react";
 
 import {
-  useTheme,
-} from "next-themes";
-
-import {
   useEffect,
   useState,
 } from "react";
+
+import {
+  useTheme,
+} from "@/components/theme-provider";
 
 import {
   cn,
@@ -29,9 +29,11 @@ type ThemeOption = {
     | "dark"
     | "system";
 
-  label: string;
+  label:
+    string;
 
-  description: string;
+  description:
+    string;
 
   icon:
     React.ElementType;
@@ -101,16 +103,22 @@ export function ThemeSelector() {
     mounted,
     setMounted,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   useEffect(
     () => {
-      setMounted(true);
+      setMounted(
+        true
+      );
     },
     []
   );
 
-  if (!mounted) {
+  if (
+    !mounted
+  ) {
     return (
       <div className="grid gap-3 sm:grid-cols-3">
         {themeOptions.map(
@@ -148,37 +156,41 @@ export function ThemeSelector() {
                 option.value
               }
               type="button"
-              onClick={
-                () =>
-                  setTheme(
-                    option.value
-                  )
+              onClick={() =>
+                setTheme(
+                  option.value
+                )
               }
               className={cn(
-                "relative rounded-xl border p-4 text-left transition-colors",
+                "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15",
 
                 active
-                  ? "border-foreground bg-muted/60"
-                  : "hover:bg-muted/40"
+                  ? "border-primary/30 bg-primary/[0.055] shadow-[0_8px_28px_rgba(0,43,186,0.07)]"
+                  : "border-border/70 bg-background hover:-translate-y-px hover:border-primary/15 hover:bg-primary/[0.025] hover:shadow-sm"
               )}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex size-9 items-center justify-center rounded-lg border bg-background">
+                <div className={cn(
+                    "flex size-10 items-center justify-center rounded-xl border transition-colors",
+                    active
+                      ? "border-primary/15 bg-primary/10 text-primary"
+                      : "border-border/70 bg-background text-muted-foreground group-hover:text-foreground"
+                  )}>
                   <Icon className="size-4" />
                 </div>
 
                 <div
                   className={cn(
-                    "mt-1 size-3.5 rounded-full border",
+                    "mt-1 flex size-4 items-center justify-center rounded-full border transition-all",
 
                     active
-                      ? "border-foreground bg-foreground ring-2 ring-background"
-                      : "border-muted-foreground/40"
+                      ? "border-primary bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--primary)_12%,transparent)]"
+                      : "border-muted-foreground/35 bg-background"
                   )}
                 />
               </div>
 
-              <p className="mt-4 text-sm font-medium">
+              <p className={cn("mt-4 text-sm font-semibold transition-colors", active ? "text-primary" : "text-foreground")}>
                 {
                   option.label
                 }

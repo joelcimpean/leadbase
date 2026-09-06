@@ -9,6 +9,7 @@ import {
 } from "next/navigation";
 
 import {
+  setGmailQuotaCooldownForCurrentUser,
   syncGmailRepliesForCurrentUser,
 } from "@/lib/gmail-sync";
 
@@ -25,6 +26,30 @@ type ConversationState =
   | "ARCHIVED"
   | "TRASH"
   | "DELETED";
+
+function isGmailQuotaError(
+  error: unknown
+) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : String(
+          error ??
+          ""
+        );
+
+  return (
+    message.includes(
+      "Quota exceeded"
+    ) ||
+    message.includes(
+      "Total Query Cost"
+    ) ||
+    message.includes(
+      "Units per minute per user"
+    )
+  );
+}
 
 /* =========================================================
    REVALIDATE
@@ -294,16 +319,25 @@ export async function syncInbox() {
 
   try {
     const result =
-      await syncGmailRepliesForCurrentUser();
+      await syncGmailRepliesForCurrentUser({
+        mode:
+          "manual",
+      });
 
-    destination =
-      `/inbox?sync=done&new=${result.newReplies}`;
+    if (
+      "skipped" in result &&
+      result.skipped
+    ) {
+      destination =
+        result.skipReason ===
+        "cooldown"
+          ? "/inbox?sync=quota"
+          : "/inbox?sync=done&new=0";
+    } else {
+      destination =
+        `/inbox?sync=done&new=${result.newReplies}`;
+    }
   } catch (error) {
-    console.error(
-      "Inbox sync failed:",
-      error
-    );
-
     const message =
       error instanceof
         Error
@@ -311,17 +345,37 @@ export async function syncInbox() {
         : "";
 
     if (
-      message ===
-      "GMAIL_READ_PERMISSION_REQUIRED"
+      isGmailQuotaError(
+        error
+      )
     ) {
+      console.warn(
+        "Inbox sync paused because the Gmail per-user quota is temporarily exhausted."
+      );
+
+      await setGmailQuotaCooldownForCurrentUser();
+
       destination =
-        "/inbox?sync=permission";
-    } else if (
-      message ===
-      "GMAIL_NOT_CONNECTED"
-    ) {
-      destination =
-        "/inbox?sync=not-connected";
+        "/inbox?sync=quota";
+    } else {
+      console.error(
+        "Inbox sync failed:",
+        error
+      );
+
+      if (
+        message ===
+        "GMAIL_READ_PERMISSION_REQUIRED"
+      ) {
+        destination =
+          "/inbox?sync=permission";
+      } else if (
+        message ===
+        "GMAIL_NOT_CONNECTED"
+      ) {
+        destination =
+          "/inbox?sync=not-connected";
+      }
     }
   }
 
@@ -339,7 +393,26 @@ export async function syncInbox() {
 export async function syncInboxSilently() {
   try {
     const result =
-      await syncGmailRepliesForCurrentUser();
+      await syncGmailRepliesForCurrentUser({
+        mode:
+          "auto",
+      });
+
+    if (
+      "skipped" in result &&
+      result.skipped
+    ) {
+      return {
+        ok:
+          true,
+
+        newReplies:
+          0,
+
+        skipped:
+          true,
+      };
+    }
 
     if (
       result.newReplies >
@@ -356,6 +429,29 @@ export async function syncInboxSilently() {
         result.newReplies,
     };
   } catch (error) {
+    if (
+      isGmailQuotaError(
+        error
+      )
+    ) {
+      console.warn(
+        "Automatic inbox sync paused: Gmail per-user quota reached."
+      );
+
+      await setGmailQuotaCooldownForCurrentUser();
+
+      return {
+        ok:
+          false,
+
+        newReplies:
+          0,
+
+        error:
+          "GMAIL_QUOTA_COOLDOWN",
+      };
+    }
+
     console.error(
       "Automatic inbox sync failed:",
       error

@@ -24,7 +24,7 @@ import type {
   export const metadata:
     Metadata = {
     title:
-      "Edit Design",
+      "Design Studio",
   
     robots: {
       index:

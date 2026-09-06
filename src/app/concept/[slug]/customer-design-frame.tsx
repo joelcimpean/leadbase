@@ -285,13 +285,13 @@ export function CustomerContactChoice({
                 );
               }
             }}
-            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-black/45 p-0 backdrop-blur-[4px] sm:items-center sm:p-6"
+            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-neutral-950/50 p-0 backdrop-blur-[8px] sm:items-center sm:p-6"
           >
             <div
               role="dialog"
               aria-modal="true"
               aria-labelledby="customer-contact-title"
-              className="relative my-0 w-full max-h-[calc(100dvh-24px)] overflow-y-auto rounded-t-[26px] border border-neutral-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,.28)] sm:my-auto sm:max-w-[640px] sm:rounded-[26px]"
+              className="relative my-0 w-full max-h-[calc(100dvh-24px)] overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white shadow-[0_30px_100px_rgba(15,23,42,.24)] sm:my-auto sm:max-w-[720px] sm:rounded-[30px]"
             >
               {/* ===========================================
                   CLOSE
@@ -305,7 +305,7 @@ export function CustomerContactChoice({
                   )
                 }
                 aria-label="Dialog schließen"
-                className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition-colors hover:bg-neutral-100 hover:text-neutral-950 sm:right-5 sm:top-5"
+                className="absolute right-4 top-4 z-20 flex size-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition-all hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:right-5 sm:top-5"
               >
                 <X className="size-4" />
               </button>
@@ -314,19 +314,19 @@ export function CustomerContactChoice({
                   HEADER
               =========================================== */}
 
-              <div className="border-b border-neutral-100 px-5 pb-5 pt-6 pr-16 sm:px-7 sm:pb-6 sm:pt-7 sm:pr-20">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-neutral-400">
+              <div className="border-b border-neutral-100 px-5 pb-6 pt-7 pr-16 sm:px-8 sm:pb-7 sm:pt-8 sm:pr-20">
+                <p className="inline-flex items-center gap-2 rounded-full border border-[#002BBA]/10 bg-[#002BBA]/[0.045] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#002BBA]">
                   Designvorschau
                 </p>
 
                 <h2
                   id="customer-contact-title"
-                  className="mt-2 text-xl font-semibold tracking-tight text-neutral-950 sm:text-2xl"
+                  className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-neutral-950 sm:text-[30px]"
                 >
                   Wie möchten Sie weitermachen?
                 </h2>
 
-                <p className="mt-3 max-w-[540px] text-sm leading-6 text-neutral-600">
+                <p className="mt-3 max-w-[590px] text-sm leading-6 text-neutral-600 sm:text-[15px]">
                   Wenn Ihnen die Richtung für{" "}
                   <strong className="font-semibold text-neutral-900">
                     {
@@ -341,7 +341,7 @@ export function CustomerContactChoice({
                   OPTIONS
               =========================================== */}
 
-              <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+              <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6">
                 {/* =========================================
                     EMAIL
                 ========================================= */}
@@ -356,9 +356,9 @@ export function CustomerContactChoice({
                         false
                       )
                     }
-                    className="group flex min-h-[200px] flex-col rounded-2xl border border-neutral-200 bg-white p-5 text-neutral-950 transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-lg"
+                    className="group flex min-h-[210px] flex-col rounded-[22px] border border-neutral-200 bg-white p-5 text-neutral-950 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#002BBA]/25 hover:shadow-[0_18px_50px_rgba(15,23,42,.08)]"
                   >
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-neutral-950 text-white">
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-900 ring-1 ring-neutral-200">
                       <Mail className="size-4" />
                     </div>
 
@@ -395,9 +395,9 @@ export function CustomerContactChoice({
                       false
                     )
                   }
-                  className="group flex min-h-[200px] flex-col rounded-2xl border border-neutral-950 bg-neutral-950 p-5 text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-neutral-900 hover:shadow-lg"
+                  className="group flex min-h-[210px] flex-col rounded-[22px] border border-[#002BBA] bg-[#002BBA] p-5 text-white shadow-[0_16px_40px_rgba(0,43,186,.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0026a6] hover:shadow-[0_22px_54px_rgba(0,43,186,.24)]"
                 >
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-white text-neutral-950">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-white/95 text-[#002BBA]">
                     <CalendarDays className="size-4" />
                   </div>
 
@@ -406,7 +406,7 @@ export function CustomerContactChoice({
                       30-Minuten-Call buchen
                     </p>
 
-                    <p className="mt-2 text-sm leading-6 text-neutral-300">
+                    <p className="mt-2 text-sm leading-6 text-white/75">
                       Falls Sie die Vorschau lieber persönlich mit mir besprechen möchten, können Sie direkt einen passenden Termin auswählen.
                     </p>
                   </div>
@@ -423,7 +423,7 @@ export function CustomerContactChoice({
                   FOOTER
               =========================================== */}
 
-              <div className="border-t border-neutral-100 bg-neutral-50 px-5 py-3.5 text-center text-[11px] leading-5 text-neutral-400 sm:px-7">
+              <div className="border-t border-neutral-100 bg-neutral-50/70 px-5 py-3.5 text-center text-[11px] leading-5 text-neutral-400 sm:px-7">
                 Beides ist unverbindlich – wählen Sie einfach den Weg, der für Sie angenehmer ist.
               </div>
             </div>
@@ -445,7 +445,7 @@ export function CustomerContactChoice({
             true
           )
         }
-        className="group inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-neutral-950 px-3 text-[11px] font-semibold text-white shadow-sm transition-all duration-300 ease-out hover:-translate-y-px hover:bg-neutral-800 min-[390px]:gap-2 min-[390px]:px-3.5 min-[390px]:text-xs sm:h-11 sm:px-5 sm:text-sm"
+        className="group inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#002BBA] px-3 text-[11px] font-semibold text-white shadow-[0_10px_24px_rgba(0,43,186,.16)] transition-all duration-300 ease-out hover:-translate-y-px hover:bg-[#0026a6] min-[390px]:gap-2 min-[390px]:px-3.5 min-[390px]:text-xs sm:h-11 sm:px-5 sm:text-sm"
       >
         <Mail className="size-3.5 shrink-0 sm:size-4" />
 
@@ -1373,7 +1373,7 @@ export function PreviewVisitInspector({
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-neutral-500" />
 
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-neutral-400">
+                  <p className="inline-flex items-center gap-2 rounded-full border border-[#002BBA]/10 bg-[#002BBA]/[0.045] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#002BBA]">
                     Nur für dich sichtbar
                   </p>
                 </div>

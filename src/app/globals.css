@@ -72,8 +72,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
 
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: #002BBA;
+  --primary-foreground: #ffffff;
 
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -81,14 +81,14 @@
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
 
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent: #eef3ff;
+  --accent-foreground: #002BBA;
 
   --destructive: oklch(0.577 0.245 27.325);
 
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: #002BBA;
 
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -96,19 +96,19 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
 
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
 
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: #002BBA;
+  --sidebar-primary-foreground: #ffffff;
 
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-accent: #eef3ff;
+  --sidebar-accent-foreground: #002BBA;
 
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: #002BBA;
 }
 
 /* =========================================================
@@ -125,8 +125,8 @@
   --popover: oklch(0.19 0 0);
   --popover-foreground: oklch(0.985 0 0);
 
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: #4D6BFF;
+  --primary-foreground: #ffffff;
 
   --secondary: oklch(0.245 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -134,14 +134,14 @@
   --muted: oklch(0.235 0 0);
   --muted-foreground: oklch(0.708 0 0);
 
-  --accent: oklch(0.255 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent: color-mix(in srgb, #4D6BFF 16%, transparent);
+  --accent-foreground: #eef2ff;
 
   --destructive: oklch(0.704 0.191 22.216);
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: #6F87FF;
 
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -152,14 +152,14 @@
   --sidebar: oklch(0.17 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
 
-  --sidebar-primary: oklch(0.922 0 0);
-  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-primary: #4D6BFF;
+  --sidebar-primary-foreground: #ffffff;
 
-  --sidebar-accent: oklch(0.235 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-accent: color-mix(in srgb, #4D6BFF 16%, transparent);
+  --sidebar-accent-foreground: #eef2ff;
 
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: #6F87FF;
 }
 
 /* =========================================================
@@ -177,5 +177,471 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* =========================================================
+   LEADBASE UI FOUNDATION
+========================================================= */
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  min-height: 100%;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  scroll-margin: 12px;
+}
+
+.leadbase-page-surface {
+  background:
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--primary) 5%, transparent), transparent 34rem),
+    var(--background);
+}
+
+.dark .leadbase-page-surface {
+  background:
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 34rem),
+    var(--background);
+}
+
+
+/* =========================================================
+   PHASE 9C — DASHBOARD POLISH
+========================================================= */
+
+.leadbase-dashboard-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 45%, transparent) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.32), transparent 38rem);
+  pointer-events: none;
+}
+
+.leadbase-kpi-card {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 4%, var(--card)), var(--card) 46%);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.025),
+    0 10px 32px rgb(15 23 42 / 0.035);
+}
+
+.dark .leadbase-kpi-card {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 8%, var(--card)), var(--card) 50%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.025),
+    0 14px 40px rgb(0 0 0 / 0.16);
+}
+
+.leadbase-panel {
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.025),
+    0 14px 42px rgb(15 23 42 / 0.025);
+}
+
+.dark .leadbase-panel {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.025),
+    0 18px 48px rgb(0 0 0 / 0.12);
+}
+
+.leadbase-live-dot {
+  position: relative;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 10%, transparent);
+  animation: leadbase-live-pulse 1.8s ease-in-out infinite;
+}
+
+.leadbase-live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, transparent);
+  border-radius: 999px;
+  animation: leadbase-live-ring 1.8s ease-out infinite;
+}
+
+@keyframes leadbase-live-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes leadbase-live-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.75);
+  }
+
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leadbase-live-dot,
+  .leadbase-live-dot::after {
+    animation: none !important;
+  }
+
+  [data-leadbase-reveal] {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+
+
+/* =========================================================
+   PHASE 9F — WORKSPACE VISUAL SYSTEM
+========================================================= */
+
+.leadbase-workspace-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 24rem),
+    radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--primary) 4%, transparent), transparent 28rem),
+    var(--background);
+}
+
+.dark .leadbase-workspace-page {
+  background:
+    radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 26rem),
+    radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--primary) 6%, transparent), transparent 30rem),
+    var(--background);
+}
+
+.leadbase-workspace-header {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 1.5rem;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 5%, var(--card)), var(--card) 52%);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.025),
+    0 18px 55px rgb(15 23 42 / 0.035);
+}
+
+.leadbase-workspace-header::after {
+  content: "";
+  position: absolute;
+  right: -6rem;
+  top: -8rem;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  filter: blur(26px);
+  pointer-events: none;
+}
+
+.dark .leadbase-workspace-header {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 10%, var(--card)), var(--card) 56%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.025),
+    0 22px 64px rgb(0 0 0 / 0.16);
+}
+
+.leadbase-workspace-card {
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--primary) 2.6%, var(--card)), var(--card) 48%) !important;
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.022),
+    0 12px 36px rgb(15 23 42 / 0.028) !important;
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.leadbase-workspace-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border)) !important;
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.025),
+    0 18px 48px rgb(15 23 42 / 0.045) !important;
+}
+
+.dark .leadbase-workspace-card {
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--primary) 5%, var(--card)), var(--card) 52%) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.018),
+    0 14px 42px rgb(0 0 0 / 0.12) !important;
+}
+
+.leadbase-workspace-stat {
+  position: relative;
+  overflow: hidden;
+}
+
+.leadbase-workspace-stat::after {
+  content: "";
+  position: absolute;
+  inset: auto -2.5rem -3.5rem auto;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  pointer-events: none;
+}
+
+.leadbase-workspace-table {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  box-shadow: 0 14px 42px rgb(15 23 42 / 0.025);
+}
+
+.dark .leadbase-workspace-table {
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.12);
+}
+
+.leadbase-workspace-segmented {
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+.leadbase-workspace-empty {
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 14rem),
+    color-mix(in srgb, var(--card) 96%, transparent);
+}
+
+.leadbase-inbox-page {
+  background:
+    radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--primary) 6%, transparent), transparent 26rem),
+    var(--background);
+}
+
+.dark .leadbase-inbox-page {
+  background:
+    radial-gradient(circle at 20% -10%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 28rem),
+    var(--background);
+}
+
+.leadbase-inbox-header {
+  background: color-mix(in srgb, var(--background) 90%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.leadbase-inbox-folders {
+  background: color-mix(in srgb, var(--background) 90%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.leadbase-inbox-list-panel {
+  background: color-mix(in srgb, var(--card) 74%, transparent);
+}
+
+.leadbase-inbox-thread-panel {
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--primary) 2%, transparent), transparent 12rem),
+    var(--background);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .leadbase-workspace-card[data-lift="true"]:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leadbase-workspace-card {
+    transition: none !important;
+  }
+}
+
+/* =========================================================
+   PHASE 9G — FINAL WORKSPACE / FORMS / DETAIL POLISH
+========================================================= */
+
+.leadbase-subtle-panel {
+  border-color: color-mix(in srgb, var(--border) 88%, transparent);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 2.5%, var(--card)), color-mix(in srgb, var(--card) 96%, transparent));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+.dark .leadbase-subtle-panel {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 6%, var(--card)), color-mix(in srgb, var(--card) 96%, transparent));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
+}
+
+.leadbase-workspace-page [data-slot="input"],
+.leadbase-workspace-page [data-slot="textarea"] {
+  border-color: color-mix(in srgb, var(--border) 92%, transparent);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+.leadbase-workspace-page [data-slot="input"] {
+  min-height: 2.55rem;
+  border-radius: 0.75rem;
+  padding-inline: 0.8rem;
+}
+
+.leadbase-workspace-page [data-slot="textarea"] {
+  min-height: 7rem;
+  border-radius: 0.85rem;
+  padding: 0.75rem 0.8rem;
+  line-height: 1.55;
+}
+
+.leadbase-workspace-page [data-slot="input"]:focus-visible,
+.leadbase-workspace-page [data-slot="textarea"]:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 62%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+.dark .leadbase-workspace-page [data-slot="input"],
+.dark .leadbase-workspace-page [data-slot="textarea"] {
+  background: color-mix(in srgb, var(--background) 70%, var(--card));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
+}
+
+.leadbase-workspace-page select {
+  border-color: color-mix(in srgb, var(--border) 92%, transparent);
+  background-color: color-mix(in srgb, var(--background) 90%, transparent);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.leadbase-workspace-page select:focus {
+  border-color: color-mix(in srgb, var(--primary) 62%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.leadbase-workspace-page label {
+  letter-spacing: -0.01em;
+}
+
+.leadbase-workspace-page .leadbase-workspace-card > [data-slot="card-content"] {
+  position: relative;
+}
+
+.leadbase-workspace-page .leadbase-workspace-card h2,
+.leadbase-workspace-page .leadbase-workspace-card h3 {
+  letter-spacing: -0.015em;
+}
+
+.leadbase-detail-metric {
+  position: relative;
+  overflow: hidden;
+}
+
+.leadbase-detail-metric::after {
+  content: "";
+  position: absolute;
+  right: -2.5rem;
+  bottom: -3.5rem;
+  width: 7rem;
+  height: 7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  pointer-events: none;
+}
+
+.leadbase-form-actions {
+  border-top: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--background) 90%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.leadbase-workspace-page a,
+.leadbase-workspace-page button {
+  text-underline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .leadbase-workspace-page a[class*="rounded-lg"][class*="border"],
+  .leadbase-workspace-page a[class*="rounded-md"][class*="border"],
+  .leadbase-workspace-page button[class*="rounded-lg"][class*="border"],
+  .leadbase-workspace-page button[class*="rounded-md"][class*="border"] {
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .leadbase-workspace-page a[class*="rounded-lg"][class*="border"]:hover,
+  .leadbase-workspace-page a[class*="rounded-md"][class*="border"]:hover,
+  .leadbase-workspace-page button[class*="rounded-lg"][class*="border"]:hover,
+  .leadbase-workspace-page button[class*="rounded-md"][class*="border"]:hover {
+    border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  }
+}
+
+@media (max-width: 640px) {
+  .leadbase-workspace-header {
+    border-radius: 1.25rem;
+  }
+
+  .leadbase-workspace-card {
+    border-radius: 1rem !important;
+  }
+
+  .leadbase-workspace-page [data-slot="input"] {
+    min-height: 2.75rem;
+    font-size: 1rem;
+  }
+}
+
+/* =========================================================
+   PHASE 9I — INTERACTION MOTION
+========================================================= */
+
+[data-motion-lift="true"] {
+  transform-origin: center;
+  will-change: transform;
+}
+
+[data-motion-press="true"] {
+  transform-origin: center;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-motion-lift="true"],
+  [data-motion-press="true"],
+  [data-anime-stagger] > * {
+    transform: none !important;
+    opacity: 1 !important;
   }
 }

@@ -700,7 +700,7 @@ export function BulkOutreachScheduleDialog({
               onClick={() =>
                 void schedule()
               }
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               {scheduling ? (
                 <Loader2 className="size-4 animate-spin" />

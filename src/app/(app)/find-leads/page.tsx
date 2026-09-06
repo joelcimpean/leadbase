@@ -50,6 +50,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -376,12 +380,13 @@ export default async function FindLeadsPage({
   ======================================================= */
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <WorkspacePageMotion />
       {/* ===================================================
           HEADER
       =================================================== */}
 
-      <header>
+      <header data-workspace-reveal className="leadbase-workspace-header p-5 sm:p-6">
         <p className="text-sm text-muted-foreground">
           {
             text.eyebrow
@@ -419,7 +424,7 @@ export default async function FindLeadsPage({
 
       {campaignRows.length ===
       0 ? (
-        <Card className="mt-6 min-w-0 border-dashed shadow-none md:mt-8">
+        <Card data-workspace-reveal className="leadbase-workspace-card mt-6 min-w-0 border-dashed md:mt-8">
           <CardContent className="px-4 py-10 text-center sm:px-6">
             <Sparkles className="mx-auto size-5 text-muted-foreground" />
 
@@ -492,7 +497,7 @@ export default async function FindLeadsPage({
 
           {candidates.length ===
           0 ? (
-            <Card className="mt-4 border-dashed shadow-none">
+            <Card data-workspace-reveal className="leadbase-workspace-card mt-4 border-dashed">
               <CardContent className="flex min-h-40 items-center justify-center p-5 text-center sm:p-6">
                 <div>
                   <p className="text-sm font-medium">
@@ -526,7 +531,7 @@ export default async function FindLeadsPage({
                       key={
                         candidate.id
                       }
-                      className="min-w-0 shadow-none"
+                      className="leadbase-workspace-card min-w-0"
                     >
                       <CardContent className="p-4 sm:p-5">
                         {/* =================================
@@ -689,7 +694,7 @@ export default async function FindLeadsPage({
           MANUAL SEARCH
       =================================================== */}
 
-      <Card className="mt-8 min-w-0 shadow-none md:mt-10">
+      <Card data-workspace-reveal className="leadbase-workspace-card mt-8 min-w-0 md:mt-10">
         <CardContent className="p-4 sm:p-5 md:p-6">
           <div className="flex items-start gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
@@ -761,7 +766,7 @@ export default async function FindLeadsPage({
 
         {searchRows.length ===
         0 ? (
-          <Card className="mt-4 border-dashed shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card mt-4 border-dashed">
             <CardContent className="flex min-h-44 items-center justify-center p-5 sm:p-6">
               <div className="text-center">
                 <div className="mx-auto flex size-9 items-center justify-center rounded-lg border">

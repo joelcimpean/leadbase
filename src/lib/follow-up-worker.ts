@@ -36,6 +36,12 @@ const CLOSED_STATUSES =
     "DO_NOT_CONTACT",
   ]);
 
+const PROTECTED_EARLY_SEND_MODES =
+  new Set([
+    "OOO",
+    "REQUESTED",
+  ]);
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -73,6 +79,21 @@ type FollowUpRunResult = {
       reason?:
         string;
     }[];
+};
+
+export type ScheduledFollowUpCandidate = {
+  leadId:
+    string;
+
+  companyName:
+    string;
+
+  nextFollowUpAt:
+    string;
+
+  smartFollowUpMode:
+    string
+    | null;
 };
 
 type GmailConnection = {
@@ -138,6 +159,99 @@ function errorMessage(
   }
 
   return "UNKNOWN_ERROR";
+}
+
+function isGmailQuotaError(
+  error:
+    unknown
+) {
+  const message =
+    errorMessage(
+      error
+    ).toLowerCase();
+
+  return (
+    message.includes(
+      "quota exceeded"
+    ) ||
+    message.includes(
+      "units per minute per user"
+    ) ||
+    message.includes(
+      "userratelimitexceeded"
+    ) ||
+    message.includes(
+      "rate limit exceeded"
+    )
+  );
+}
+
+function gmailQuotaReason() {
+  return "Gmail API rate limit reached. This follow-up was not marked as sent. Wait about a minute and retry; Leadbase stopped the remaining batch to avoid duplicate or repeated requests.";
+}
+
+function sleep(
+  milliseconds:
+    number
+) {
+  return new Promise<void>(
+    (
+      resolve
+    ) => {
+      setTimeout(
+        resolve,
+        milliseconds
+      );
+    }
+  );
+}
+
+function canSendBeforeScheduledTime({
+  nextFollowUpAt,
+  smartFollowUpMode,
+  nowMs,
+}: {
+  nextFollowUpAt:
+    string
+    | null;
+
+  smartFollowUpMode:
+    string
+    | null;
+
+  nowMs:
+    number;
+}) {
+  if (
+    !nextFollowUpAt
+  ) {
+    return false;
+  }
+
+  const scheduledTime =
+    new Date(
+      nextFollowUpAt
+    ).getTime();
+
+  if (
+    !Number.isFinite(
+      scheduledTime
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    scheduledTime <=
+      nowMs
+  ) {
+    return true;
+  }
+
+  return !PROTECTED_EARLY_SEND_MODES.has(
+    smartFollowUpMode ??
+      ""
+  );
 }
 
 async function loadGmailConnection({
@@ -206,12 +320,55 @@ export async function countDueFollowUpsForUser(
   userId:
     string
 ) {
+  const candidates =
+    await listScheduledFollowUpsForUser(
+      userId
+    );
+
+  const nowMs =
+    Date.now();
+
+  return candidates.filter(
+    (
+      candidate
+    ) => {
+      const scheduledMs =
+        new Date(
+          candidate.nextFollowUpAt
+        ).getTime();
+
+      return (
+        Number.isFinite(
+          scheduledMs
+        ) &&
+        scheduledMs <=
+          nowMs
+      );
+    }
+  ).length;
+}
+
+/* =========================================================
+   COUNT MANUALLY SENDABLE FOLLOW-UPS
+
+   Includes normal scheduled follow-ups that are planned for
+   later today / later in the sequence. Explicit OOO and
+   customer-requested future dates stay protected.
+========================================================= */
+
+export async function listScheduledFollowUpsForUser(
+  userId:
+    string,
+  limit =
+    100
+): Promise<
+  ScheduledFollowUpCandidate[]
+> {
   const supabase =
     createAdminClient();
 
-  const now =
-    new Date()
-      .toISOString();
+  const nowMs =
+    Date.now();
 
   const {
     data,
@@ -223,7 +380,14 @@ export async function countDueFollowUpsForUser(
       )
       .select(`
         id,
-        status
+        status,
+        next_follow_up_at,
+        smart_follow_up_mode,
+        manual_follow_up_stopped_at,
+
+        company:companies (
+          name
+        )
       `)
       .eq(
         "user_id",
@@ -234,33 +398,448 @@ export async function countDueFollowUpsForUser(
         "is",
         null
       )
-      .lte(
+      .is(
+        "manual_follow_up_stopped_at",
+        null
+      )
+      .order(
         "next_follow_up_at",
-        now
+        {
+          ascending:
+            true,
+        }
+      )
+      .limit(
+        Math.max(
+          1,
+          Math.min(
+            limit,
+            100
+          )
+        )
       );
 
   if (
     error
   ) {
     console.error(
-      "Could not count due follow-ups:",
+      "Could not load scheduled follow-ups:",
       error
     );
 
-    return 0;
+    return [];
   }
 
-  return (
-    data ??
-    []
-  ).filter(
+  const activeLeads =
     (
-      lead
-    ) =>
-      !CLOSED_STATUSES.has(
-        lead.status
+      data ??
+      []
+    ).filter(
+      (
+        lead
+      ) =>
+        !CLOSED_STATUSES.has(
+          lead.status
+        ) &&
+        canSendBeforeScheduledTime({
+          nextFollowUpAt:
+            lead.next_follow_up_at,
+
+          smartFollowUpMode:
+            lead.smart_follow_up_mode,
+
+          nowMs,
+        })
+    );
+
+  if (
+    activeLeads.length ===
+    0
+  ) {
+    return [];
+  }
+
+  const leadIds =
+    activeLeads.map(
+      (
+        lead
+      ) =>
+        lead.id
+    );
+
+  /*
+   * A lead-level next_follow_up_at is only a schedule. Before
+   * showing it in Settings, reconcile that schedule against
+   * the actual outreach draft and synced outbound Gmail history.
+   *
+   * This prevents already-sent follow-ups from reappearing when
+   * an older send path failed to clear next_follow_up_at.
+   */
+  const [
+    draftResult,
+    outgoingResult,
+  ] =
+    await Promise.all([
+      supabase
+        .from(
+          "outreach_drafts"
+        )
+        .select(`
+          lead_id,
+          status,
+          sent_at,
+          follow_up_body,
+          follow_up_sent_at,
+          follow_up_sending_started_at,
+          created_at
+        `)
+        .eq(
+          "user_id",
+          userId
+        )
+        .in(
+          "lead_id",
+          leadIds
+        )
+        .eq(
+          "status",
+          "SENT"
+        )
+        .not(
+          "follow_up_body",
+          "is",
+          null
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        ),
+
+      supabase
+        .from(
+          "email_messages"
+        )
+        .select(`
+          lead_id,
+          direction,
+          received_at
+        `)
+        .eq(
+          "user_id",
+          userId
+        )
+        .in(
+          "lead_id",
+          leadIds
+        )
+        .eq(
+          "direction",
+          "OUTGOING"
+        )
+        .order(
+          "received_at",
+          {
+            ascending:
+              false,
+          }
+        ),
+    ]);
+
+  if (
+    draftResult.error
+  ) {
+    console.error(
+      "Could not reconcile follow-up drafts:",
+      draftResult.error
+    );
+
+    /*
+     * Be conservative: if Leadbase cannot verify an unsent
+     * follow-up draft, do not offer a potentially duplicate send.
+     */
+    return [];
+  }
+
+  if (
+    outgoingResult.error
+  ) {
+    console.error(
+      "Could not reconcile outbound email history:",
+      outgoingResult.error
+    );
+  }
+
+  type FollowUpDraftState = {
+    lead_id:
+      string;
+
+    sent_at:
+      string
+      | null;
+
+    follow_up_body:
+      string
+      | null;
+
+    follow_up_sent_at:
+      string
+      | null;
+
+    follow_up_sending_started_at:
+      string
+      | null;
+  };
+
+  const latestDraftByLead =
+    new Map<
+      string,
+      FollowUpDraftState
+    >();
+
+  for (
+    const draft of
+      draftResult.data ??
+      []
+  ) {
+    if (
+      !latestDraftByLead.has(
+        draft.lead_id
       )
-  ).length;
+    ) {
+      latestDraftByLead.set(
+        draft.lead_id,
+        draft as FollowUpDraftState
+      );
+    }
+  }
+
+  const outgoingByLead =
+    new Map<
+      string,
+      string[]
+    >();
+
+  if (
+    !outgoingResult.error
+  ) {
+    for (
+      const message of
+        outgoingResult.data ??
+        []
+    ) {
+      if (
+        !message.lead_id ||
+        !message.received_at
+      ) {
+        continue;
+      }
+
+      const existing =
+        outgoingByLead.get(
+          message.lead_id
+        ) ??
+        [];
+
+      existing.push(
+        message.received_at
+      );
+
+      outgoingByLead.set(
+        message.lead_id,
+        existing
+      );
+    }
+  }
+
+  const staleSentLeadIds:
+    string[] =
+    [];
+
+  const candidates =
+    activeLeads.flatMap(
+      (
+        lead
+      ) => {
+        if (
+          !lead.next_follow_up_at
+        ) {
+          return [];
+        }
+
+        const draft =
+          latestDraftByLead.get(
+            lead.id
+          );
+
+        /*
+         * No matching sent outreach draft means there is no
+         * verifiable follow-up that can safely be sent.
+         */
+        if (
+          !draft ||
+          !draft.follow_up_body
+            ?.trim()
+        ) {
+          return [];
+        }
+
+        const initialSentAtMs =
+          draft.sent_at
+            ? new Date(
+                draft.sent_at
+              ).getTime()
+            : Number.NaN;
+
+        const hasLaterSyncedOutbound =
+          Number.isFinite(
+            initialSentAtMs
+          ) &&
+          (
+            outgoingByLead.get(
+              lead.id
+            ) ??
+            []
+          ).some(
+            (
+              receivedAt
+            ) => {
+              const time =
+                new Date(
+                  receivedAt
+                ).getTime();
+
+              return (
+                Number.isFinite(
+                  time
+                ) &&
+                time >
+                  initialSentAtMs +
+                    5 * 60_000
+              );
+            }
+          );
+
+        const alreadySent =
+          Boolean(
+            draft.follow_up_sent_at
+          ) ||
+          hasLaterSyncedOutbound;
+
+        if (
+          alreadySent
+        ) {
+          staleSentLeadIds.push(
+            lead.id
+          );
+
+          return [];
+        }
+
+        /*
+         * If another process is currently sending it, do not
+         * expose it as manually sendable and risk a duplicate.
+         */
+        if (
+          draft.follow_up_sending_started_at
+        ) {
+          return [];
+        }
+
+        const company =
+          getSingleRelation<{
+            name:
+              string;
+          }>(
+            lead.company
+          );
+
+        return [
+          {
+            leadId:
+              lead.id,
+
+            companyName:
+              company?.name ??
+              "Unknown company",
+
+            nextFollowUpAt:
+              lead.next_follow_up_at,
+
+            smartFollowUpMode:
+              lead.smart_follow_up_mode,
+          },
+        ];
+      }
+    );
+
+  if (
+    staleSentLeadIds.length >
+    0
+  ) {
+    const reconciledAt =
+      new Date()
+        .toISOString();
+
+    const {
+      error:
+        reconcileError,
+    } =
+      await supabase
+        .from(
+          "leads"
+        )
+        .update({
+          next_follow_up_at:
+            null,
+
+          smart_follow_up_mode:
+            "STOPPED",
+
+          smart_follow_up_reason:
+            "Follow-up already sent; stale schedule reconciled.",
+
+          smart_follow_up_updated_at:
+            reconciledAt,
+        })
+        .eq(
+          "user_id",
+          userId
+        )
+        .in(
+          "id",
+          Array.from(
+            new Set(
+              staleSentLeadIds
+            )
+          )
+        );
+
+    if (
+      reconcileError
+    ) {
+      console.error(
+        "Could not clear stale sent follow-up schedules:",
+        reconcileError
+      );
+    }
+  }
+
+  return candidates;
+}
+
+export async function countScheduledFollowUpsForUser(
+  userId:
+    string
+) {
+  const candidates =
+    await listScheduledFollowUpsForUser(
+      userId
+    );
+
+  return candidates.length;
 }
 
 /* =========================================================
@@ -270,12 +849,20 @@ export async function countDueFollowUpsForUser(
 export async function sendDueFollowUpsForUser({
   userId,
   limit = 20,
+  allowEarlySend = false,
+  leadIds,
 }: {
   userId:
     string;
 
   limit?:
     number;
+
+  allowEarlySend?:
+    boolean;
+
+  leadIds?:
+    string[];
 }): Promise<FollowUpRunResult> {
   const supabase =
     createAdminClient();
@@ -302,13 +889,35 @@ export async function sendDueFollowUpsForUser({
     new Date()
       .toISOString();
 
-  const {
-    data:
-      dueLeads,
-    error:
-      dueLeadError,
-  } =
-    await supabase
+  const normalizedLeadIds =
+    leadIds ===
+    undefined
+      ? null
+      : Array.from(
+          new Set(
+            leadIds
+              .map(
+                (
+                  value
+                ) =>
+                  value.trim()
+              )
+              .filter(
+                Boolean
+              )
+          )
+        );
+
+  if (
+    normalizedLeadIds &&
+    normalizedLeadIds.length ===
+      0
+  ) {
+    return result;
+  }
+
+  let followUpQuery =
+    supabase
       .from(
         "leads"
       )
@@ -316,6 +925,8 @@ export async function sendDueFollowUpsForUser({
         id,
         status,
         next_follow_up_at,
+        smart_follow_up_mode,
+        manual_follow_up_stopped_at,
 
         company:companies (
           name,
@@ -341,10 +952,38 @@ export async function sendDueFollowUpsForUser({
         "is",
         null
       )
-      .lte(
+      .is(
+        "manual_follow_up_stopped_at",
+        null
+      );
+
+  if (
+    normalizedLeadIds
+  ) {
+    followUpQuery =
+      followUpQuery.in(
+        "id",
+        normalizedLeadIds
+      );
+  }
+
+  if (
+    !allowEarlySend
+  ) {
+    followUpQuery =
+      followUpQuery.lte(
         "next_follow_up_at",
         now
-      )
+      );
+  }
+
+  const {
+    data:
+      dueLeads,
+    error:
+      dueLeadError,
+  } =
+    await followUpQuery
       .order(
         "next_follow_up_at",
         {
@@ -357,7 +996,7 @@ export async function sendDueFollowUpsForUser({
           1,
           Math.min(
             limit,
-            50
+            100
           )
         )
       );
@@ -370,6 +1009,9 @@ export async function sendDueFollowUpsForUser({
     );
   }
 
+  const nowMs =
+    Date.now();
+
   const activeDueLeads =
     (
       dueLeads ??
@@ -380,6 +1022,18 @@ export async function sendDueFollowUpsForUser({
       ) =>
         !CLOSED_STATUSES.has(
           lead.status
+        ) &&
+        (
+          !allowEarlySend ||
+          canSendBeforeScheduledTime({
+            nextFollowUpAt:
+              lead.next_follow_up_at,
+
+            smartFollowUpMode:
+              lead.smart_follow_up_mode,
+
+            nowMs,
+          })
         )
     );
 
@@ -449,6 +1103,12 @@ export async function sendDueFollowUpsForUser({
     return result;
   }
 
+  let gmailQuotaBlocked =
+    false;
+
+  let successfulSendsInRun =
+    0;
+
   for (
     const lead of
       activeDueLeads
@@ -474,6 +1134,31 @@ export async function sendDueFollowUpsForUser({
       | null =
       null;
 
+    if (
+      gmailQuotaBlocked
+    ) {
+      result.skipped +=
+        1;
+
+      result.results.push({
+        leadId:
+          lead.id,
+
+        companyName,
+
+        draftId:
+          null,
+
+        result:
+          "SKIPPED",
+
+        reason:
+          gmailQuotaReason(),
+      });
+
+      continue;
+    }
+
     try {
       /*
        * Re-check the current lead state immediately before
@@ -494,6 +1179,8 @@ export async function sendDueFollowUpsForUser({
             id,
             status,
             next_follow_up_at,
+            smart_follow_up_mode,
+            manual_follow_up_stopped_at,
 
             company:companies (
               name,
@@ -530,16 +1217,48 @@ export async function sendDueFollowUpsForUser({
         );
       }
 
+      const nextFollowUpAt =
+        freshLead
+          .next_follow_up_at;
+
+      const nextFollowUpTime =
+        nextFollowUpAt
+          ? new Date(
+              nextFollowUpAt
+            ).getTime()
+          : Number.NaN;
+
+      const nextFollowUpIsValid =
+        Number.isFinite(
+          nextFollowUpTime
+        );
+
+      const nextFollowUpIsFuture =
+        nextFollowUpIsValid &&
+        nextFollowUpTime >
+          Date.now();
+
+      const protectedEarlySend =
+        allowEarlySend &&
+        nextFollowUpIsFuture &&
+        PROTECTED_EARLY_SEND_MODES.has(
+          freshLead
+            .smart_follow_up_mode ??
+            ""
+        );
+
       if (
         CLOSED_STATUSES.has(
           freshLead.status
         ) ||
-        !freshLead
-          .next_follow_up_at ||
-        new Date(
-          freshLead.next_follow_up_at
-        ).getTime() >
-          Date.now()
+        freshLead.manual_follow_up_stopped_at ||
+        !nextFollowUpAt ||
+        !nextFollowUpIsValid ||
+        (
+          !allowEarlySend &&
+          nextFollowUpIsFuture
+        ) ||
+        protectedEarlySend
       ) {
         result.skipped +=
           1;
@@ -557,7 +1276,11 @@ export async function sendDueFollowUpsForUser({
             "SKIPPED",
 
           reason:
-            "Follow-up is no longer due.",
+            protectedEarlySend
+              ? "Future follow-up is protected by an out-of-office or customer-requested contact date."
+              : allowEarlySend
+                ? "Follow-up can no longer be sent."
+                : "Follow-up is no longer due.",
         });
 
         continue;
@@ -1007,10 +1730,24 @@ export async function sendDueFollowUpsForUser({
       } catch (
         error
       ) {
-        const message =
-          errorMessage(
+        const quotaError =
+          isGmailQuotaError(
             error
           );
+
+        const message =
+          quotaError
+            ? gmailQuotaReason()
+            : errorMessage(
+                error
+              );
+
+        if (
+          quotaError
+        ) {
+          gmailQuotaBlocked =
+            true;
+        }
 
         await supabase
           .from(
@@ -1224,6 +1961,22 @@ export async function sendDueFollowUpsForUser({
         result:
           "SENT",
       });
+
+      successfulSendsInRun +=
+        1;
+
+      /*
+       * Avoid bursting the Gmail API when several selected
+       * follow-ups are processed in one manual run.
+       */
+      if (
+        successfulSendsInRun >
+        0
+      ) {
+        await sleep(
+          1250
+        );
+      }
     } catch (
       error
     ) {

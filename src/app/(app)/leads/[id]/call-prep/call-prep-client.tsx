@@ -401,7 +401,7 @@ export function CallPrepClient({
     !prep
   ) {
     return (
-      <Card>
+      <Card className="leadbase-workspace-card">
         <CardContent className="flex min-h-72 flex-col items-center justify-center gap-3 p-6 text-center">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
 
@@ -430,7 +430,7 @@ export function CallPrepClient({
     !prep
   ) {
     return (
-      <Card>
+      <Card className="leadbase-workspace-card">
         <CardContent className="flex min-h-64 flex-col items-center justify-center gap-4 p-6 text-center">
           <AlertTriangle className="size-6 text-destructive" />
 
@@ -475,7 +475,7 @@ export function CallPrepClient({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="leadbase-subtle-panel flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           {context.contactName ? (
             <Badge
@@ -552,10 +552,10 @@ export function CallPrepClient({
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="leadbase-workspace-card">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Building2 className="size-4" />
+              <Building2 className="size-4 text-primary" />
               {language ===
               "de"
                 ? "Kurzüberblick"
@@ -568,10 +568,10 @@ export function CallPrepClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="leadbase-workspace-card">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Target className="size-4" />
+              <Target className="size-4 text-primary" />
               {language ===
               "de"
                 ? "Aktuelle Situation"
@@ -586,7 +586,7 @@ export function CallPrepClient({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="leadbase-workspace-card">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 font-medium">
               <MessageSquareText className="size-4" />
@@ -606,7 +606,7 @@ export function CallPrepClient({
                     key={`${index}-${item}`}
                     className="flex gap-3 text-sm leading-6"
                   >
-                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                    <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                       {index +
                         1}
                     </span>
@@ -621,7 +621,7 @@ export function CallPrepClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="leadbase-workspace-card">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 font-medium">
               <CircleHelp className="size-4" />
@@ -651,7 +651,7 @@ export function CallPrepClient({
         </Card>
       </div>
 
-      <Card>
+      <Card className="leadbase-workspace-card">
         <CardContent className="p-5">
           <div className="font-medium">
             {language ===
@@ -684,7 +684,7 @@ export function CallPrepClient({
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1.35fr]">
-        <Card>
+        <Card className="leadbase-workspace-card">
           <CardContent className="p-5">
             <p className="text-sm font-medium text-muted-foreground">
               {language ===
@@ -736,7 +736,7 @@ export function CallPrepClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="leadbase-workspace-card">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 font-medium">
               <Target className="size-4" />

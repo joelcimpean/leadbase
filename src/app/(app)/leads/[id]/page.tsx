@@ -20,6 +20,8 @@ import {
   User,
   XCircle,
   BriefcaseBusiness,
+  BarChart3,
+  FileText,
 } from "lucide-react";
 
 import {
@@ -80,6 +82,22 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
+/* =========================================================
+   TEMP FEATURE FLAGS
+========================================================= */
+
+/*
+ * Competitor Snapshot stays in the codebase, but is
+ * intentionally hidden for now. Re-enable later when
+ * Joel wants to continue that feature.
+ */
+const COMPETITOR_SNAPSHOT_ENABLED =
+  false;
 
 /* =========================================================
    TYPES
@@ -835,6 +853,35 @@ export default async function LeadDetailPage({
     );
   }
 
+  const {
+    data:
+      existingProposal,
+
+    error:
+      existingProposalError,
+  } =
+    await supabase
+      .from(
+        "proposals"
+      )
+      .select(
+        "id"
+      )
+      .eq(
+        "lead_id",
+        id
+      )
+      .maybeSingle();
+
+  if (
+    existingProposalError
+  ) {
+    console.error(
+      "Could not load proposal state:",
+      existingProposalError
+    );
+  }
+
   const company =
     getSingleRelation(
       lead.company
@@ -870,7 +917,8 @@ export default async function LeadDetailPage({
     "NOT_ANALYZED";
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1400px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <WorkspacePageMotion />
       <Link
         href="/leads"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -887,7 +935,7 @@ export default async function LeadDetailPage({
           HEADER
       =================================================== */}
 
-      <header className="mt-5 flex flex-col justify-between gap-5 sm:mt-6 lg:flex-row lg:items-start lg:gap-6">
+      <header data-workspace-reveal className="leadbase-workspace-header mt-5 flex flex-col justify-between gap-5 p-5 sm:mt-6 sm:p-6 lg:flex-row lg:items-start lg:gap-6">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
@@ -937,203 +985,204 @@ export default async function LeadDetailPage({
         </div>
 
         {/* =================================================
-            ACTIONS
+            ESSENTIAL ACTIONS
         ================================================= */}
 
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center lg:max-w-[900px] lg:justify-end">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
           <div className="[&>*]:w-full sm:[&>*]:w-auto">
             <AnalyzeWebsiteButton
-              leadId={
-                lead.id
-              }
-              hasWebsite={Boolean(
-                company?.website_url
-              )}
+              leadId={lead.id}
+              hasWebsite={Boolean(company?.website_url)}
             />
           </div>
 
-          <Link
-            href={`/projects/new?leadId=${encodeURIComponent(
-              lead.id
-            )}`}
-            className={buttonVariants({
-              variant:
-                "outline",
-
-              className:
-                "h-10 w-full gap-2 sm:h-9 sm:w-auto",
-            })}
-          >
-            <BriefcaseBusiness className="size-4" />
-
-            {language ===
-            "de"
-              ? "Zu Projekten hinzufügen"
-              : "Add to projects"}
-          </Link>
-
-          <Link
-            href={`/leads/${encodeURIComponent(
-              lead.id
-            )}/call-prep`}
-            className={buttonVariants({
-              variant:
-                "outline",
-
-              className:
-                "h-10 w-full gap-2 sm:h-9 sm:w-auto",
-            })}
-          >
-            <PhoneCall className="size-4" />
-
-            {language ===
-            "de"
-              ? "Call vorbereiten"
-              : "Prepare call"}
-          </Link>
-
-          {company?.website_url &&
-          structuralStatus ===
-            "COMPLETED" ? (
-            <RedesignPreviewActions
-              leadId={
-                lead.id
-              }
-              initialPreviewToken={
-                latestRedesignPreview
-                  ?.public_token ??
-                null
-              }
-              initialGenerationIndex={
-                latestRedesignPreview
-                  ?.generation_index ??
-                0
-              }
-            />
+          {company?.website_url ? (
+            <a
+              href={normalizeUrl(company.website_url)}
+              target="_blank"
+              rel="noreferrer"
+              className={buttonVariants({
+                variant: "outline",
+                className: "h-10 gap-2 sm:h-9",
+              })}
+            >
+              <Globe2 className="size-4" />
+              {text.common.visitWebsite}
+              <ExternalLink className="size-3.5 opacity-60" />
+            </a>
           ) : null}
 
           <Link
             href={`/leads/${lead.id}/edit`}
             className={buttonVariants({
-              variant:
-                "outline",
-
-              className:
-                "h-10 w-full gap-2 sm:h-9 sm:w-auto",
+              variant: "outline",
+              className: "h-10 gap-2 sm:h-9",
             })}
           >
             <Pencil className="size-4" />
-
-            {
-              text.detail.edit
-            }
+            {text.detail.edit}
           </Link>
-
-          <form
-            action={
-              updateLeadStatus
-            }
-            className="col-span-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:items-center"
-          >
-            <input
-              type="hidden"
-              name="leadId"
-              value={
-                lead.id
-              }
-            />
-
-            <select
-              name="status"
-              defaultValue={
-                lead.status
-              }
-              className="h-10 min-w-0 rounded-lg border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/50 focus:ring-2 focus:ring-ring sm:h-9"
-            >
-              {[
-                "NEW",
-                "RESEARCHING",
-                "QUALIFIED",
-                "NOT_A_FIT",
-                "DRAFT_READY",
-                "CONTACTED",
-                "REPLIED",
-                "CALL_BOOKED",
-                "PROPOSAL",
-                "WON",
-                "LOST",
-                "DO_NOT_CONTACT",
-              ].map(
-                (
-                  item
-                ) => (
-                  <option
-                    key={
-                      item
-                    }
-                    value={
-                      item
-                    }
-                  >
-                    {getLeadStatusLabel(
-                      item,
-                      language
-                    )}
-                  </option>
-                )
-              )}
-            </select>
-
-            <PendingSubmitButton
-              pendingText={
-                language ===
-                  "de"
-                  ? "Aktualisiert..."
-                  : "Updating..."
-              }
-              className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-foreground px-3 text-sm font-medium text-background transition-opacity hover:opacity-90 sm:h-9"
-            >
-              {
-                text.detail
-                  .update
-              }
-            </PendingSubmitButton>
-          </form>
-
-          {company?.website_url ? (
-            <a
-              href={
-                normalizeUrl(
-                  company.website_url
-                )
-              }
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-muted sm:h-9 sm:w-auto"
-            >
-              {
-                text.common
-                  .visitWebsite
-              }
-
-              <ExternalLink className="size-4" />
-            </a>
-          ) : null}
-
-          <div className="[&>*]:w-full sm:[&>*]:w-auto">
-            <DeleteLeadDialog
-              leadId={
-                lead.id
-              }
-              companyName={
-                company?.name ??
-                text.detail
-                  .thisLead
-              }
-            />
-          </div>
         </div>
       </header>
+
+      {/* ===================================================
+          WORKFLOW / NEXT STEPS
+      =================================================== */}
+
+      <section data-workspace-reveal className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,.75fr)]">
+        <Card className="leadbase-workspace-card overflow-hidden rounded-[24px]">
+          <CardContent className="p-0">
+            <div className="border-b px-5 py-4 sm:px-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+                {language === "de" ? "Nächste Schritte" : "Next steps"}
+              </p>
+              <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    {language === "de" ? "Aus Lead wird Kunde" : "Move the lead forward"}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {language === "de"
+                      ? "Die wichtigsten Sales-Aktionen an einem Ort – ohne Button-Chaos im Header."
+                      : "The key sales actions in one place, without a crowded header."}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-px bg-border/70 sm:grid-cols-3">
+              <Link
+                href={`/leads/${encodeURIComponent(lead.id)}/proposal`}
+                className="group flex min-h-[128px] flex-col justify-between bg-card p-5 transition-colors hover:bg-primary/[0.035] dark:hover:bg-primary/[0.07]"
+              >
+                <span className="flex size-9 items-center justify-center rounded-xl border bg-background text-primary shadow-sm">
+                  <FileText className="size-4" />
+                </span>
+                <div className="mt-5">
+                  <p className="font-semibold">
+                    {existingProposal
+                      ? language === "de" ? "Angebot ansehen" : "View proposal"
+                      : language === "de" ? "Angebot erstellen" : "Create proposal"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {language === "de" ? "Preis, Scope und Annahme verwalten." : "Manage price, scope and acceptance."}
+                  </p>
+                </div>
+              </Link>
+
+              <Link
+                href={`/leads/${encodeURIComponent(lead.id)}/call-prep`}
+                className="group flex min-h-[128px] flex-col justify-between bg-card p-5 transition-colors hover:bg-primary/[0.035] dark:hover:bg-primary/[0.07]"
+              >
+                <span className="flex size-9 items-center justify-center rounded-xl border bg-background text-primary shadow-sm">
+                  <PhoneCall className="size-4" />
+                </span>
+                <div className="mt-5">
+                  <p className="font-semibold">
+                    {language === "de" ? "Call vorbereiten" : "Prepare call"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {language === "de" ? "Gesprächspunkte, Einwände und Fragen." : "Talking points, objections and questions."}
+                  </p>
+                </div>
+              </Link>
+
+              <Link
+                href={`/projects/new?leadId=${encodeURIComponent(lead.id)}`}
+                className="group flex min-h-[128px] flex-col justify-between bg-card p-5 transition-colors hover:bg-primary/[0.035] dark:hover:bg-primary/[0.07]"
+              >
+                <span className="flex size-9 items-center justify-center rounded-xl border bg-background text-primary shadow-sm">
+                  <BriefcaseBusiness className="size-4" />
+                </span>
+                <div className="mt-5">
+                  <p className="font-semibold">
+                    {language === "de" ? "Projekt anlegen" : "Create project"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {language === "de" ? "Lead direkt in die Projektphase übernehmen." : "Move this lead into delivery."}
+                  </p>
+                </div>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="leadbase-workspace-card rounded-[24px]">
+          <CardContent className="p-5 sm:p-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {language === "de" ? "Lead verwalten" : "Manage lead"}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight">
+              {language === "de" ? "Status & Verwaltung" : "Status & management"}
+            </h2>
+
+            <form action={updateLeadStatus} className="mt-5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <input type="hidden" name="leadId" value={lead.id} />
+              <select
+                name="status"
+                defaultValue={lead.status}
+                className="h-10 min-w-0 rounded-xl border bg-background px-3 text-sm outline-none transition-colors hover:bg-muted/40 focus:ring-2 focus:ring-ring"
+              >
+                {[
+                  "NEW", "RESEARCHING", "QUALIFIED", "NOT_A_FIT", "DRAFT_READY",
+                  "CONTACTED", "REPLIED", "CALL_BOOKED", "PROPOSAL", "WON", "LOST",
+                  "DO_NOT_CONTACT",
+                ].map((item) => (
+                  <option key={item} value={item}>
+                    {getLeadStatusLabel(item, language)}
+                  </option>
+                ))}
+              </select>
+
+              <PendingSubmitButton
+                pendingText={language === "de" ? "Aktualisiert..." : "Updating..."}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                {text.detail.update}
+              </PendingSubmitButton>
+            </form>
+
+            <div className="mt-5 border-t pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">
+                    {language === "de" ? "Weitere Aktionen" : "More actions"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {language === "de" ? "Seltene oder destruktive Aktionen bleiben bewusst getrennt." : "Rare and destructive actions stay separate."}
+                  </p>
+                </div>
+                <DeleteLeadDialog
+                  leadId={lead.id}
+                  companyName={company?.name ?? text.detail.thisLead}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {company?.website_url && structuralStatus === "COMPLETED" ? (
+        <div data-workspace-reveal className="mt-4">
+          <RedesignPreviewActions
+            leadId={lead.id}
+            initialPreviewToken={latestRedesignPreview?.public_token ?? null}
+            initialGenerationIndex={latestRedesignPreview?.generation_index ?? 0}
+          />
+        </div>
+      ) : null}
+
+      {COMPETITOR_SNAPSHOT_ENABLED ? (
+        <div className="mt-4">
+          <Link
+            href={`/leads/${encodeURIComponent(lead.id)}/competitors`}
+            className={buttonVariants({ variant: "outline", className: "gap-2" })}
+          >
+            <BarChart3 className="size-4" />
+            {language === "de" ? "Marktvergleich" : "Market snapshot"}
+          </Link>
+        </div>
+      ) : null}
 
       {/* ===================================================
           TOP SCORES
@@ -1160,7 +1209,7 @@ export default async function LeadDetailPage({
           }
         />
 
-        <Card className="col-span-2 min-w-0 shadow-none lg:col-span-1">
+        <Card className="leadbase-detail-metric leadbase-workspace-card col-span-2 min-w-0 lg:col-span-1">
           <CardContent className="p-4 sm:p-5">
             <p className="text-xs text-muted-foreground sm:text-sm">
               {
@@ -1203,7 +1252,7 @@ export default async function LeadDetailPage({
 
       <div className="mt-4 grid min-w-0 gap-4 sm:mt-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-4">
-          <Card className="min-w-0 shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
                 {
@@ -1361,7 +1410,7 @@ export default async function LeadDetailPage({
             }
           />
 
-          <Card className="min-w-0 shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
                 {
@@ -1378,7 +1427,7 @@ export default async function LeadDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="min-w-0 shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
                 {
@@ -1397,7 +1446,7 @@ export default async function LeadDetailPage({
         </div>
 
         <div className="min-w-0 space-y-4">
-          <Card className="min-w-0 shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
                 {
@@ -1468,7 +1517,7 @@ export default async function LeadDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="min-w-0 shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
             <CardContent className="p-4 sm:p-5">
               <h2 className="text-sm font-semibold">
                 {
@@ -1629,7 +1678,7 @@ function VisualAnalysisCard({
       : "en-IE";
 
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
           <div className="flex min-w-0 gap-3">
@@ -1939,7 +1988,7 @@ function StructuralAnalysisCard({
     ].detail;
 
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
           <div className="min-w-0">
@@ -2083,7 +2132,7 @@ function VisualMetric({
 
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-foreground transition-all"
+          className="h-full rounded-full bg-primary transition-all"
           style={{
             width: `${Math.max(
               0,
@@ -2156,7 +2205,7 @@ function ScoreCard({
     | null;
 }) {
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card className="leadbase-detail-metric leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
         <p className="text-xs text-muted-foreground sm:text-sm">
           {

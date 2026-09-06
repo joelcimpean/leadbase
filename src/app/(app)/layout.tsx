@@ -19,6 +19,14 @@ import {
 } from "@/components/language-provider";
 
 import {
+  NotificationRealtimeBridge,
+} from "@/components/notification-realtime-bridge";
+
+import {
+  LeadbaseInteractionMotion,
+} from "@/components/leadbase-interaction-motion";
+
+import {
   getAppLanguage,
 } from "@/lib/i18n-server";
 
@@ -60,6 +68,9 @@ export default async function AppLayout({
   let unreadInboxCount =
     0;
 
+  let unreadNotificationCount =
+    0;
+
   let gmailAutoSyncEnabled =
     false;
 
@@ -70,6 +81,7 @@ export default async function AppLayout({
   if (user) {
     const [
       unreadResult,
+      notificationResult,
       gmailResult,
     ] =
       await Promise.all([
@@ -102,6 +114,29 @@ export default async function AppLayout({
 
         supabase
           .from(
+            "app_notifications"
+          )
+          .select(
+            "id",
+            {
+              count:
+                "exact",
+
+              head:
+                true,
+            }
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
+          .is(
+            "read_at",
+            null
+          ),
+
+        supabase
+          .from(
             "gmail_connections"
           )
           .select(
@@ -125,6 +160,19 @@ export default async function AppLayout({
 
     unreadInboxCount =
       unreadResult.count ??
+      0;
+
+    if (
+      notificationResult.error
+    ) {
+      console.error(
+        "Could not load unread notification count:",
+        notificationResult.error
+      );
+    }
+
+    unreadNotificationCount =
+      notificationResult.count ??
       0;
 
     if (
@@ -165,16 +213,30 @@ export default async function AppLayout({
         <AppBackgroundTasksProvider>
           <div className="flex h-dvh w-full overflow-hidden bg-background">
             <AppSidebar
+              userId={
+                user?.id ?? null
+              }
               unreadInboxCount={
                 unreadInboxCount
               }
+              unreadNotificationCount={
+                unreadNotificationCount
+              }
             />
+
+            {user ? (
+              <NotificationRealtimeBridge
+                userId={user.id}
+              />
+            ) : null}
 
             <InboxAutoSync
               enabled={
                 gmailAutoSyncEnabled
               }
             />
+
+            <LeadbaseInteractionMotion />
 
             <main className="min-w-0 flex-1 overflow-y-auto pt-14 md:pt-0">
               {children}

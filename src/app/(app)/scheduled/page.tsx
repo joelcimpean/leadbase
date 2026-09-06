@@ -36,6 +36,10 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
   
   /* =========================================================
      HELPERS
@@ -218,8 +222,9 @@ import {
       [];
   
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+        <WorkspacePageMotion />
+        <div data-workspace-reveal className="leadbase-workspace-header flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
           <div>
             <div className="flex items-center gap-2">
               <CalendarClock className="size-5" />
@@ -251,7 +256,7 @@ import {
   
         {rows.length ===
         0 ? (
-          <Card className="mt-6 shadow-none">
+          <Card data-workspace-reveal className="leadbase-workspace-card mt-6">
             <CardContent className="flex min-h-56 flex-col items-center justify-center p-6 text-center">
               <Mail className="size-7 text-muted-foreground" />
   
@@ -308,7 +313,7 @@ import {
                     key={
                       schedule.id
                     }
-                    className="shadow-none"
+                    className="leadbase-workspace-card"
                   >
                     <CardContent className="p-0">
                       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">

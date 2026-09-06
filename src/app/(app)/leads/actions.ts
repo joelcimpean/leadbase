@@ -734,3 +734,131 @@ export async function updateLeadDetails(formData: FormData) {
 
   redirect(`/leads/${leadId}`);
 }
+/* =========================================================
+   MANUAL LEAD TABLE ORDER
+========================================================= */
+
+export async function reorderLeadsWithinGroup({
+  groupKey,
+  leadIds,
+}: {
+  groupKey: string;
+  leadIds: string[];
+}) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      ok: false as const,
+      error: "Nicht angemeldet.",
+    };
+  }
+
+  const cleanLeadIds = Array.from(
+    new Set(
+      leadIds.filter(
+        (value) =>
+          typeof value === "string" &&
+          value.trim().length > 0
+      )
+    )
+  );
+
+  if (
+    !groupKey ||
+    cleanLeadIds.length === 0 ||
+    cleanLeadIds.length > 1000
+  ) {
+    return {
+      ok: false as const,
+      error: "Ungültige Sortierung.",
+    };
+  }
+
+  const { error } = await supabase.rpc(
+    "reorder_leadbase_leads",
+    {
+      p_group_key: groupKey,
+      p_lead_ids: cleanLeadIds,
+    }
+  );
+
+  if (error) {
+    console.error("Lead reorder failed:", error);
+
+    return {
+      ok: false as const,
+      error: "Die Reihenfolge konnte nicht gespeichert werden.",
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
+}
+
+export async function reorderLeadGroups({
+  groupKeys,
+}: {
+  groupKeys: string[];
+}) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      ok: false as const,
+      error: "Nicht angemeldet.",
+    };
+  }
+
+  const cleanGroupKeys = Array.from(
+    new Set(
+      groupKeys.filter(
+        (value) =>
+          typeof value === "string" &&
+          value.trim().length > 0 &&
+          value.length <= 80
+      )
+    )
+  );
+
+  if (
+    cleanGroupKeys.length === 0 ||
+    cleanGroupKeys.length > 200
+  ) {
+    return {
+      ok: false as const,
+      error: "Ungültige Gruppensortierung.",
+    };
+  }
+
+  const { error } = await supabase.rpc(
+    "reorder_leadbase_groups",
+    {
+      p_group_keys: cleanGroupKeys,
+    }
+  );
+
+  if (error) {
+    console.error("Lead group reorder failed:", error);
+
+    return {
+      ok: false as const,
+      error: "Die Gruppenreihenfolge konnte nicht gespeichert werden.",
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
+}

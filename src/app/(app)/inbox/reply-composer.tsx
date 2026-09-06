@@ -2529,7 +2529,7 @@ export function ReplyComposer({
                 onClick={
                   openNewReply
                 }
-                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <MessageSquareReply className="size-4" />
 
@@ -2582,7 +2582,7 @@ export function ReplyComposer({
                 onClick={
                   openFailedAsNew
                 }
-                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Pencil className="size-4" />
 
@@ -2625,7 +2625,7 @@ export function ReplyComposer({
                   onClick={
                     openNewReply
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                  className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
                 >
                   <Pencil className="size-4" />
 
@@ -2693,7 +2693,7 @@ export function ReplyComposer({
               onClick={
                 openNewReply
               }
-              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background transition-opacity hover:opacity-90"
+              className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               <MessageSquareReply className="size-4" />
 
@@ -3137,7 +3137,7 @@ export function ReplyComposer({
                         onClick={
                           handleCustomSchedule
                         }
-                        className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background disabled:opacity-50"
+                        className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
                       >
                         {scheduling ? (
                           <Loader2 className="size-4 animate-spin" />
@@ -3291,7 +3291,7 @@ export function ReplyComposer({
                 onClick={() =>
                   void saveScheduledReply()
                 }
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
               >
                 {scheduling ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -3347,7 +3347,7 @@ export function ReplyComposer({
                     busy ||
                     !body.trim()
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-l-md bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-l-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                 >
                   {sending ? (
                     <>
@@ -3382,7 +3382,7 @@ export function ReplyComposer({
                         !current
                     )
                   }
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-foreground text-background hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
                   aria-label={
                     text.scheduleSend
                   }

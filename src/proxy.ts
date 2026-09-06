@@ -99,6 +99,9 @@ export async function proxy(
       "/concept"
     ) ||
     pathname.startsWith(
+      "/proposal"
+    ) ||
+    pathname.startsWith(
       "/api/health"
     ) ||
     pathname.startsWith(

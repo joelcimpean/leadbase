@@ -21,6 +21,10 @@ import {
   CallPrepClient,
 } from "./call-prep-client";
 
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -128,7 +132,8 @@ export default async function CallPrepPage({
       : "Unknown company");
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
+      <WorkspacePageMotion />
       <Link
         href={`/leads/${encodeURIComponent(
           id
@@ -142,7 +147,7 @@ export default async function CallPrepPage({
           : "Back to lead"}
       </Link>
 
-      <header className="mb-6 mt-5">
+      <header data-workspace-reveal className="leadbase-workspace-header mb-6 mt-5 p-5 sm:p-6">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-xl border bg-muted/30">
             <PhoneCall className="size-5" />

@@ -87,6 +87,7 @@ export default async function LeadsPage() {
         opportunity_score,
         last_contacted_at,
         created_at,
+        manual_sort_order,
 
         company:companies (
           id,
@@ -115,6 +116,28 @@ export default async function LeadsPage() {
             false,
         }
       );
+
+  const {
+    data: groupOrderRows,
+    error: groupOrderError,
+  } = await supabase
+    .from("lead_table_group_order")
+    .select("group_key, sort_order")
+    .order("sort_order", { ascending: true });
+
+  if (groupOrderError) {
+    console.error(
+      "Could not load lead group order:",
+      groupOrderError
+    );
+  }
+
+  const groupOrder = Object.fromEntries(
+    (groupOrderRows ?? []).map((row) => [
+      row.group_key,
+      Number(row.sort_order),
+    ])
+  ) as Record<string, number>;
 
   if (
     error
@@ -200,6 +223,12 @@ export default async function LeadsPage() {
           lastContactedAt:
             lead.last_contacted_at,
 
+          createdAt:
+            lead.created_at,
+
+          sortOrder:
+            lead.manual_sort_order,
+
           campaignId:
             campaign?.id ??
             null,
@@ -256,6 +285,9 @@ export default async function LeadsPage() {
       <LeadsTable
         leads={
           leadRows
+        }
+        groupOrder={
+          groupOrder
         }
       />
     </div>

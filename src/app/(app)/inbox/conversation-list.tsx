@@ -49,6 +49,11 @@ import type {
    TYPES
 ========================================================= */
 
+export type InboxDensity =
+  | "comfortable"
+  | "compact"
+  | "minimal";
+
 export type InboxConversationListItem = {
   leadId: string;
 
@@ -57,6 +62,10 @@ export type InboxConversationListItem = {
   company: string;
 
   contact: string;
+
+  email:
+    | string
+    | null;
 
   subject: string;
 
@@ -91,6 +100,8 @@ type ConversationListProps = {
     | "inbox"
     | "archived"
     | "trash";
+
+  density?: InboxDensity;
 };
 
 type SwipeState = {
@@ -219,6 +230,7 @@ export function ConversationList({
   conversations,
   selectedLeadId = null,
   view,
+  density = "compact",
 }: ConversationListProps) {
   const router =
     useRouter();
@@ -1712,7 +1724,13 @@ export function ConversationList({
                       ? "none"
                       : undefined,
                 }}
-                className={`relative flex cursor-pointer gap-3 bg-background px-4 py-4 outline-none transition-[background-color,transform] duration-150 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring md:translate-x-0 ${
+                className={`relative flex cursor-pointer bg-background outline-none transition-[background-color,transform] duration-150 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring md:translate-x-0 ${
+                  density === "comfortable"
+                    ? "gap-3 px-4 py-4"
+                    : density === "compact"
+                      ? "gap-3 px-4 py-3"
+                      : "gap-2.5 px-4 py-2.5"
+                } ${
                   selected
                     ? "bg-muted/70"
                     : selectedLeadId ===
@@ -1726,7 +1744,7 @@ export function ConversationList({
                     <div
                       className={`flex size-5 items-center justify-center rounded-full border ${
                         selected
-                          ? "border-foreground bg-foreground text-background"
+                          ? "border-primary bg-primary text-primary-foreground"
                           : "bg-background"
                       }`}
                     >
@@ -1736,7 +1754,13 @@ export function ConversationList({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full border bg-background text-xs font-semibold">
+                  <div
+                    className={`flex shrink-0 items-center justify-center rounded-full border bg-background font-semibold ${
+                      density === "minimal"
+                        ? "size-7 text-[10px]"
+                        : "size-9 text-xs"
+                    }`}
+                  >
                     {
                       conversation.initials
                     }
@@ -1764,14 +1788,22 @@ export function ConversationList({
                     </span>
                   </div>
 
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {
-                      conversation.contact
-                    }
-                  </p>
+                  {density !== "minimal" ? (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {
+                        conversation.contact
+                      }
+                    </p>
+                  ) : null}
 
                   <p
-                    className={`mt-2.5 truncate text-sm ${
+                    className={`${
+                      density === "comfortable"
+                        ? "mt-2.5"
+                        : density === "compact"
+                          ? "mt-1.5"
+                          : "mt-0.5"
+                    } truncate text-sm ${
                       conversation.unread
                         ? "font-semibold"
                         : ""
@@ -1782,28 +1814,46 @@ export function ConversationList({
                     }
                   </p>
 
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                    {
-                      conversation.preview
-                    }
-                  </p>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={
-                        messageStatusClass(
-                          conversation.status
-                        )
+                  {density === "comfortable" ? (
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                      {
+                        conversation.preview
                       }
-                    >
-                      {getInboxMessageStatusLabel(
-                        conversation.status,
-                        language
-                      )}
-                    </Badge>
+                    </p>
+                  ) : density === "compact" ? (
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {
+                        conversation.preview
+                      }
+                    </p>
+                  ) : null}
 
-                    {conversation.replyClassification ? (
+                  <div
+                    className={`${
+                      density === "comfortable"
+                        ? "mt-3"
+                        : density === "compact"
+                          ? "mt-2"
+                          : "mt-1.5"
+                    } flex flex-wrap items-center gap-2`}
+                  >
+                    {density !== "minimal" ? (
+                      <Badge
+                        variant="outline"
+                        className={
+                          messageStatusClass(
+                            conversation.status
+                          )
+                        }
+                      >
+                        {getInboxMessageStatusLabel(
+                          conversation.status,
+                          language
+                        )}
+                      </Badge>
+                    ) : null}
+
+                    {density !== "minimal" && conversation.replyClassification ? (
                       <Badge
                         variant="outline"
                         className={

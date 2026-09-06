@@ -3872,6 +3872,9 @@ export async function sendApprovedOutreachDraft(
         smart_follow_up_updated_at:
           new Date()
             .toISOString(),
+
+        manual_follow_up_stopped_at:
+          null,
       })
       .eq(
         "id",

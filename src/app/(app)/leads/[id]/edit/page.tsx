@@ -50,6 +50,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -252,7 +256,8 @@ export default async function EditLeadPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1000px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1080px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <WorkspacePageMotion />
       <Link
         href={`/leads/${lead.id}`}
         className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -265,7 +270,7 @@ export default async function EditLeadPage({
         }
       </Link>
 
-      <header className="mt-5 sm:mt-6">
+      <header data-workspace-reveal className="leadbase-workspace-header mt-5 p-5 sm:mt-6 sm:p-6">
         <p className="text-sm text-muted-foreground">
           CRM
         </p>
@@ -298,7 +303,7 @@ export default async function EditLeadPage({
           }
         />
 
-        <Card className="min-w-0 shadow-none">
+        <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
           <CardContent className="p-4 sm:p-6">
             <div className="flex min-w-0 items-start gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
@@ -426,7 +431,7 @@ export default async function EditLeadPage({
           </CardContent>
         </Card>
 
-        <Card className="min-w-0 shadow-none">
+        <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
           <CardContent className="p-4 sm:p-6">
             <h2 className="text-sm font-semibold">
               {
@@ -497,7 +502,7 @@ export default async function EditLeadPage({
           </CardContent>
         </Card>
 
-        <Card className="min-w-0 shadow-none">
+        <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
           <CardContent className="p-4 sm:p-6">
             <h2 className="text-sm font-semibold">
               {

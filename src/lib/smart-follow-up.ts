@@ -591,7 +591,8 @@ export async function recalculateSmartFollowUpForLead({
           id,
           status,
           last_contacted_at,
-          next_follow_up_at
+          next_follow_up_at,
+          manual_follow_up_stopped_at
         `)
         .eq(
           "id",
@@ -664,6 +665,44 @@ export async function recalculateSmartFollowUpForLead({
     !leadResult.data
   ) {
     return null;
+  }
+
+  if (
+    leadResult.data
+      .manual_follow_up_stopped_at
+  ) {
+    const plan: SmartFollowUpPlan = {
+      mode: "STOPPED",
+      nextFollowUpAt: null,
+      reason: "Follow-up manually stopped by the user.",
+    };
+
+    if (
+      leadResult.data
+        .next_follow_up_at
+    ) {
+      const {
+        error: manualStopSyncError,
+      } = await supabase
+        .from("leads")
+        .update({
+          next_follow_up_at: null,
+          smart_follow_up_mode: "STOPPED",
+          smart_follow_up_reason: plan.reason,
+          smart_follow_up_updated_at: new Date().toISOString(),
+        })
+        .eq("id", leadId)
+        .eq("user_id", userId);
+
+      if (manualStopSyncError) {
+        console.error(
+          "Could not keep manually stopped follow-up suppressed:",
+          manualStopSyncError
+        );
+      }
+    }
+
+    return plan;
   }
 
   const externalVisits =

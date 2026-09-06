@@ -31,6 +31,10 @@ import {
 } from "@/components/ui/card";
 
 import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
+import {
   getAppLanguage,
 } from "@/lib/i18n-server";
 
@@ -1543,12 +1547,12 @@ export default async function AnalyticsPage({
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page min-h-full"><WorkspacePageMotion /><div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       {/* ===================================================
           HEADER
       =================================================== */}
 
-      <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+      <header data-workspace-reveal className="leadbase-workspace-header flex flex-col gap-5 p-5 sm:p-6 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
             {
@@ -1570,7 +1574,7 @@ export default async function AnalyticsPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border bg-muted/20 p-1">
+          <div className="leadbase-workspace-segmented inline-flex rounded-xl p-1">
             {ranges.map(
               (
                 option
@@ -1580,10 +1584,11 @@ export default async function AnalyticsPage({
                     option.value
                   }
                   href={`/analytics?range=${option.value}`}
+                  data-motion-segment-active={range === option.value ? "true" : undefined}
                   className={`inline-flex h-7 min-w-10 items-center justify-center rounded-md px-2.5 text-xs font-medium transition-colors ${
                     range ===
                     option.value
-                      ? "bg-background text-foreground shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -1632,7 +1637,7 @@ export default async function AnalyticsPage({
           KPIs
       =================================================== */}
 
-      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <section data-workspace-reveal data-anime-stagger className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard
           label={
             copy.sent
@@ -1786,8 +1791,8 @@ export default async function AnalyticsPage({
           FUNNEL + CAMPAIGNS
       =================================================== */}
 
-      <section className="mt-4 grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
-        <Card className="min-w-0 shadow-none">
+      <section data-workspace-reveal className="mt-4 grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
+        <Card className="leadbase-workspace-card min-w-0">
           <CardContent className="p-4 sm:p-5">
             <h2 className="text-sm font-semibold">
               {
@@ -1843,7 +1848,8 @@ export default async function AnalyticsPage({
 
                           <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
                             <div
-                              className="h-full rounded-full bg-foreground transition-all"
+                              data-motion-progress
+                              className="h-full rounded-full bg-primary transition-all"
                               style={{
                                 width:
                                   `${Math.max(
@@ -1872,7 +1878,7 @@ export default async function AnalyticsPage({
           </CardContent>
         </Card>
 
-        <Card className="min-w-0 shadow-none">
+        <Card className="leadbase-workspace-card min-w-0">
           <CardContent className="p-0">
             <div className="border-b px-4 py-4 sm:px-5">
               <h2 className="text-sm font-semibold">
@@ -2181,7 +2187,7 @@ export default async function AnalyticsPage({
           copy.note
         }
       </p>
-    </div>
+    </div></div>
   );
 }
 
@@ -2264,7 +2270,7 @@ function MetricCard({
       0;
 
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card className="leadbase-workspace-card min-w-0">
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-2">
           <p className="truncate text-xs text-muted-foreground">
@@ -2276,7 +2282,7 @@ function MetricCard({
           <Icon className="size-4 shrink-0 text-muted-foreground" />
         </div>
 
-        <p className="mt-4 break-words text-2xl font-semibold tracking-tight">
+        <p data-motion-count className="mt-4 break-words text-2xl font-semibold tracking-tight">
           {
             value
           }
@@ -2367,7 +2373,7 @@ function SignalCard({
     typeof Mail;
 }) {
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card className="leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">

@@ -38,8 +38,16 @@ import {
 } from "@/components/ui/card";
 
 import {
+  DashboardMotion,
+} from "@/components/dashboard-motion";
+
+import {
   getAppLanguage,
 } from "@/lib/i18n-server";
+
+import {
+  listScheduledFollowUpsForUser,
+} from "@/lib/follow-up-worker";
 
 import {
   createClient,
@@ -52,6 +60,25 @@ import {
 type AppLanguage =
   | "de"
   | "en";
+
+type DashboardFocus =
+  | "replies"
+  | "hot"
+  | "followups"
+  | "email-issues"
+  | "drafts"
+  | "ooo";
+
+type DashboardSearchParams = {
+  focus?:
+    | string
+    | string[];
+};
+
+type DashboardPageProps = {
+  searchParams?:
+    Promise<DashboardSearchParams>;
+};
 
 type CommandItem = {
   key:
@@ -674,7 +701,37 @@ function pipelineBarClass(
       return "bg-violet-500";
 
     default:
-      return "bg-foreground";
+      return "bg-primary";
+  }
+}
+
+function getQueryValue(
+  value:
+    | string
+    | string[]
+    | undefined
+) {
+  return Array.isArray(
+    value
+  )
+    ? value[0] ?? ""
+    : value ?? "";
+}
+
+function parseDashboardFocus(
+  value: string
+): DashboardFocus | null {
+  switch (value) {
+    case "replies":
+    case "hot":
+    case "followups":
+    case "email-issues":
+    case "drafts":
+    case "ooo":
+      return value;
+
+    default:
+      return null;
   }
 }
 
@@ -682,7 +739,9 @@ function pipelineBarClass(
    PAGE
 ========================================================= */
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
   const [
     supabase,
     language,
@@ -695,6 +754,19 @@ export default async function DashboardPage() {
   const de =
     language ===
     "de";
+
+  const params:
+    DashboardSearchParams =
+    searchParams
+      ? await searchParams
+      : {};
+
+  const activeFocus =
+    parseDashboardFocus(
+      getQueryValue(
+        params.focus
+      )
+    );
 
   const {
     data: {
@@ -740,6 +812,7 @@ export default async function DashboardPage() {
     visitsResult,
     sentEmailsResult,
     projectsResult,
+    scheduledFollowUps,
   ] =
     await Promise.all([
       supabase
@@ -927,6 +1000,16 @@ export default async function DashboardPage() {
               false,
           }
         ),
+
+      /*
+       * Use the exact same follow-up reconciliation as Settings.
+       * This prevents manually stopped or already-sent follow-ups
+       * from lingering in the Daily Command Center.
+       */
+      listScheduledFollowUpsForUser(
+        user.id,
+        100
+      ),
     ]);
 
   for (
@@ -1297,16 +1380,13 @@ export default async function DashboardPage() {
       );
 
   const followUpsDue =
-    openLeads
+    scheduledFollowUps
       .filter(
         (
-          lead
+          candidate
         ) =>
-          Boolean(
-            lead.next_follow_up_at
-          ) &&
           timestamp(
-            lead.next_follow_up_at
+            candidate.nextFollowUpAt
           ) <
             timestamp(
               tomorrowStart
@@ -1318,10 +1398,10 @@ export default async function DashboardPage() {
           b
         ) =>
           timestamp(
-            a.next_follow_up_at
+            a.nextFollowUpAt
           ) -
           timestamp(
-            b.next_follow_up_at
+            b.nextFollowUpAt
           )
       );
 
@@ -1445,6 +1525,12 @@ export default async function DashboardPage() {
       CommandItem
     >();
 
+  const commandsByFocus =
+    new Map<
+      DashboardFocus,
+      CommandItem[]
+    >();
+
   function addCommand(
     item:
       CommandItem
@@ -1464,6 +1550,31 @@ export default async function DashboardPage() {
         item
       );
     }
+  }
+
+  function addFocusedCommand(
+    focus:
+      DashboardFocus,
+    item:
+      CommandItem
+  ) {
+    const existing =
+      commandsByFocus.get(
+        focus
+      ) ?? [];
+
+    existing.push(
+      item
+    );
+
+    commandsByFocus.set(
+      focus,
+      existing
+    );
+
+    addCommand(
+      item
+    );
   }
 
   /* -------------------------------------------------------
@@ -1505,7 +1616,7 @@ export default async function DashboardPage() {
             ? "Neue Antwort"
             : "New reply";
 
-    addCommand({
+    addFocusedCommand("replies", {
       key:
         `lead:${leadId}`,
 
@@ -1557,7 +1668,7 @@ export default async function DashboardPage() {
     ] of
       oooReturningToday
   ) {
-    addCommand({
+    addFocusedCommand("ooo", {
       key:
         `lead:${leadId}`,
 
@@ -1607,15 +1718,15 @@ export default async function DashboardPage() {
   ) {
     const overdue =
       timestamp(
-        lead.next_follow_up_at
+        lead.nextFollowUpAt
       ) <
       timestamp(
         todayStart
       );
 
-    addCommand({
+    addFocusedCommand("followups", {
       key:
-        `lead:${lead.id}`,
+        `lead:${lead.leadId}`,
 
       priority:
         overdue
@@ -1623,9 +1734,7 @@ export default async function DashboardPage() {
           : 95,
 
       title:
-        companyNameByLeadId.get(
-          lead.id
-        ) ??
+        lead.companyName ||
         (
           de
             ? "Unbekanntes Unternehmen"
@@ -1636,25 +1745,25 @@ export default async function DashboardPage() {
         overdue
           ? de
             ? `Follow-up überfällig · ${formatDateTime(
-                lead.next_follow_up_at,
+                lead.nextFollowUpAt,
                 language
               )}`
             : `Follow-up overdue · ${formatDateTime(
-                lead.next_follow_up_at,
+                lead.nextFollowUpAt,
                 language
               )}`
           : de
             ? `Follow-up heute · ${formatDateTime(
-                lead.next_follow_up_at,
+                lead.nextFollowUpAt,
                 language
               )}`
             : `Follow-up today · ${formatDateTime(
-                lead.next_follow_up_at,
+                lead.nextFollowUpAt,
                 language
               )}`,
 
       href:
-        `/leads/${lead.id}#outreach`,
+        `/leads/${lead.leadId}#outreach`,
 
       badge:
         overdue
@@ -1672,7 +1781,7 @@ export default async function DashboardPage() {
 
       sortTime:
         timestamp(
-          lead.next_follow_up_at
+          lead.nextFollowUpAt
         ),
     });
   }
@@ -1696,7 +1805,7 @@ export default async function DashboardPage() {
           0
       );
 
-    addCommand({
+    addFocusedCommand("hot", {
       key:
         `lead:${lead.id}`,
 
@@ -1760,7 +1869,7 @@ export default async function DashboardPage() {
         lead.primary_contact
       );
 
-    addCommand({
+    addFocusedCommand("email-issues", {
       key:
         `lead:${lead.id}`,
 
@@ -1817,7 +1926,7 @@ export default async function DashboardPage() {
         lead.id
       );
 
-    addCommand({
+    addFocusedCommand("drafts", {
       key:
         `lead:${lead.id}`,
 
@@ -1912,8 +2021,14 @@ export default async function DashboardPage() {
   }
 
   const commandItems =
-    Array.from(
-      commandByKey.values()
+    (
+      activeFocus
+        ? commandsByFocus.get(
+            activeFocus
+          ) ?? []
+        : Array.from(
+            commandByKey.values()
+          )
     )
       .sort(
         (
@@ -1927,7 +2042,9 @@ export default async function DashboardPage() {
       )
       .slice(
         0,
-        10
+        activeFocus
+          ? 30
+          : 10
       );
 
   /* =======================================================
@@ -2269,8 +2386,11 @@ export default async function DashboardPage() {
       icon:
         MessageSquareReply,
 
+      focus:
+        "replies" as const,
+
       href:
-        "/inbox",
+        "/?focus=replies#dashboard-focus",
 
       accent:
         unreadHumanReplyByLead.size >
@@ -2289,8 +2409,11 @@ export default async function DashboardPage() {
       icon:
         Flame,
 
+      focus:
+        "hot" as const,
+
       href:
-        "/leads",
+        "/?focus=hot#dashboard-focus",
 
       accent:
         hotLeads.length >
@@ -2309,8 +2432,11 @@ export default async function DashboardPage() {
       icon:
         CalendarClock,
 
+      focus:
+        "followups" as const,
+
       href:
-        "/leads",
+        "/?focus=followups#dashboard-focus",
 
       accent:
         followUpsDue.length >
@@ -2329,8 +2455,11 @@ export default async function DashboardPage() {
       icon:
         ShieldAlert,
 
+      focus:
+        "email-issues" as const,
+
       href:
-        "/leads",
+        "/?focus=email-issues#dashboard-focus",
 
       accent:
         emailIssueLeads.length >
@@ -2349,8 +2478,11 @@ export default async function DashboardPage() {
       icon:
         Mail,
 
+      focus:
+        "drafts" as const,
+
       href:
-        "/leads",
+        "/?focus=drafts#dashboard-focus",
 
       accent:
         readyDraftLeads.length >
@@ -2369,8 +2501,11 @@ export default async function DashboardPage() {
       icon:
         BellRing,
 
+      focus:
+        "ooo" as const,
+
       href:
-        "/inbox",
+        "/?focus=ooo#dashboard-focus",
 
       accent:
         oooReturningToday.length >
@@ -2380,31 +2515,46 @@ export default async function DashboardPage() {
     },
   ];
 
+  const activeFocusLabel =
+    activeFocus
+      ? summaryCards.find(
+          (
+            card
+          ) =>
+            card.focus ===
+            activeFocus
+        )?.label ?? null
+      : null;
+
   /* =======================================================
      RENDER
   ======================================================= */
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <DashboardMotion>
+      <div className="leadbase-page-surface relative min-h-full overflow-hidden">
+        <div className="leadbase-dashboard-grid absolute inset-0" aria-hidden="true" />
+
+        <div className="relative mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       {/* ===================================================
           HEADER
       =================================================== */}
 
-      <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <header data-leadbase-reveal className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">
-            {
-              copy.eyebrow
-            }
-          </p>
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/10 bg-primary/[0.045] px-2.5 py-1 text-xs font-medium text-primary">
+            <span className="leadbase-live-dot size-1.5 rounded-full bg-primary" />
 
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+            {copy.eyebrow}
+          </div>
+
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
             {
               copy.title
             }
           </h1>
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-2.5 max-w-2xl text-sm leading-6 text-muted-foreground">
             {
               copy.description
             }
@@ -2414,7 +2564,7 @@ export default async function DashboardPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             variant="outline"
-            className="h-8 rounded-lg px-3 font-normal"
+            className="h-9 rounded-xl border-border/70 bg-background/80 px-3 font-normal shadow-sm backdrop-blur"
           >
             {
               formatToday(
@@ -2425,7 +2575,7 @@ export default async function DashboardPage() {
 
           <Link
             href="/analytics"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-background/80 px-3 text-xs font-medium shadow-sm backdrop-blur transition-all hover:-translate-y-px hover:border-primary/20 hover:bg-accent/70 hover:text-primary"
           >
             <BarChart3 className="size-3.5" />
 
@@ -2436,7 +2586,7 @@ export default async function DashboardPage() {
 
           <Link
             href="/inbox"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-background/80 px-3 text-xs font-medium shadow-sm backdrop-blur transition-all hover:-translate-y-px hover:border-primary/20 hover:bg-accent/70 hover:text-primary"
           >
             <Inbox className="size-3.5" />
 
@@ -2451,7 +2601,7 @@ export default async function DashboardPage() {
           TODAY SUMMARY
       =================================================== */}
 
-      <section className="mt-6 grid grid-cols-2 gap-3 md:mt-8 md:grid-cols-3 xl:grid-cols-6">
+      <section data-leadbase-reveal data-anime-stagger className="mt-6 grid grid-cols-2 gap-3 md:mt-8 md:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map(
           (
             card
@@ -2468,9 +2618,18 @@ export default async function DashboardPage() {
                   card.href
                 }
                 className="group min-w-0"
+                data-motion-lift="true"
+                data-motion-press="true"
               >
-                <Card className="h-full min-w-0 shadow-none transition-colors group-hover:border-foreground/30">
-                  <CardContent className="p-4">
+                <Card
+                  className={`leadbase-kpi-card h-full min-w-0 py-0 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/20 group-hover:shadow-[0_14px_36px_color-mix(in_srgb,var(--primary)_8%,transparent)] ${
+                    activeFocus ===
+                    card.focus
+                      ? "border-primary/35 ring-1 ring-primary/10"
+                      : "border-border/70"
+                  }`}
+                >
+                  <CardContent className="p-4 sm:p-5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-xs text-muted-foreground">
                         {
@@ -2478,12 +2637,14 @@ export default async function DashboardPage() {
                         }
                       </p>
 
-                      <Icon
-                        className={`size-4 shrink-0 ${card.accent}`}
-                      />
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-primary/10 bg-primary/[0.055]">
+                        <Icon
+                          className={`size-4 shrink-0 ${card.accent}`}
+                        />
+                      </span>
                     </div>
 
-                    <p className="mt-4 text-2xl font-semibold tracking-tight">
+                    <p data-motion-count className="mt-5 text-2xl font-semibold tracking-[-0.03em]">
                       {
                         card.value
                       }
@@ -2500,16 +2661,17 @@ export default async function DashboardPage() {
           FOCUS + HOT LEADS
       =================================================== */}
 
-      <section className="mt-4 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-        <Card className="min-w-0 shadow-none">
+      <section id="dashboard-focus" data-leadbase-reveal className="mt-4 scroll-mt-6 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <Card className="leadbase-panel min-w-0 border-border/70">
           <CardContent className="p-0">
             <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-muted-foreground" />
+                  <Sparkles className="size-4 text-primary" />
 
                   <h2 className="text-sm font-semibold">
                     {
+                      activeFocusLabel ??
                       copy.focus
                     }
                   </h2>
@@ -2517,17 +2679,29 @@ export default async function DashboardPage() {
 
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   {
-                    copy.focusDescription
+                    activeFocusLabel
+                      ? de
+                        ? `Nur ${activeFocusLabel.toLowerCase()} werden hier angezeigt.`
+                        : `Only ${activeFocusLabel.toLowerCase()} are shown here.`
+                      : copy.focusDescription
                   }
                 </p>
               </div>
 
               <Link
-                href="/leads"
-                className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                href={
+                  activeFocus
+                    ? "/#dashboard-focus"
+                    : "/leads"
+                }
+                className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
               >
                 {
-                  copy.viewAllLeads
+                  activeFocus
+                    ? de
+                      ? "Filter zurücksetzen"
+                      : "Clear filter"
+                    : copy.viewAllLeads
                 }
               </Link>
             </div>
@@ -2554,7 +2728,7 @@ export default async function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <div className="divide-y">
+              <div data-motion-list-stagger className="divide-y">
                 {commandItems.map(
                   (
                     item
@@ -2606,7 +2780,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="min-w-0 shadow-none">
+        <Card className="leadbase-panel min-w-0 border-border/70">
           <CardContent className="p-0">
             <div className="border-b px-4 py-4 sm:px-5">
               <div className="flex items-center gap-2">
@@ -2714,7 +2888,7 @@ export default async function DashboardPage() {
           BUSINESS OVERVIEW
       =================================================== */}
 
-      <section className="mt-4">
+      <section data-leadbase-reveal className="mt-4">
         <div>
           <h2 className="text-sm font-semibold">
             {
@@ -2805,8 +2979,8 @@ export default async function DashboardPage() {
           PIPELINE + PROJECTS
       =================================================== */}
 
-      <section className="mt-4 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
-        <Card className="min-w-0 shadow-none">
+      <section data-leadbase-reveal className="mt-4 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
+        <Card className="leadbase-panel min-w-0 border-border/70">
           <CardContent className="p-4 sm:p-5">
             <h2 className="text-sm font-semibold">
               {
@@ -2881,7 +3055,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="min-w-0 shadow-none">
+        <Card className="leadbase-panel min-w-0 border-border/70">
           <CardContent className="p-0">
             <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
               <div>
@@ -3018,7 +3192,7 @@ export default async function DashboardPage() {
           QUICK ACTIONS
       =================================================== */}
 
-      <section className="mt-4 grid gap-3 sm:grid-cols-3">
+      <section data-leadbase-reveal className="mt-4 grid gap-3 sm:grid-cols-3">
         <QuickAction
           href="/find-leads"
           icon={
@@ -3070,7 +3244,9 @@ export default async function DashboardPage() {
           }
         />
       </section>
-    </div>
+        </div>
+      </div>
+    </DashboardMotion>
   );
 }
 
@@ -3146,10 +3322,10 @@ function QuickAction({
       }
       className="group min-w-0"
     >
-      <Card className="h-full shadow-none transition-colors group-hover:border-foreground/30">
+      <Card className="leadbase-panel h-full border-border/70 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/20 group-hover:shadow-[0_16px_40px_color-mix(in_srgb,var(--primary)_7%,transparent)]">
         <CardContent className="flex h-full items-start justify-between gap-4 p-4 sm:p-5">
           <div className="min-w-0">
-            <div className="flex size-9 items-center justify-center rounded-lg border">
+            <div className="flex size-10 items-center justify-center rounded-xl border border-primary/10 bg-primary/[0.055] text-primary">
               <Icon className="size-4" />
             </div>
 

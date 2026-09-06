@@ -64,6 +64,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -345,7 +349,8 @@ export default async function CampaignDetailPage({
     );
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <WorkspacePageMotion />
       {/* ===================================================
           BACK
       =================================================== */}
@@ -365,7 +370,7 @@ export default async function CampaignDetailPage({
           HEADER
       =================================================== */}
 
-      <header className="mt-5 flex flex-col justify-between gap-5 md:mt-6 xl:flex-row xl:items-start xl:gap-6">
+      <header data-workspace-reveal className="leadbase-workspace-header mt-5 flex flex-col justify-between gap-5 p-5 md:mt-6 md:p-6 xl:flex-row xl:items-start xl:gap-6">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
@@ -542,7 +547,7 @@ export default async function CampaignDetailPage({
           CAMPAIGN LEADS
       =================================================== */}
 
-      <Card className="mt-4 min-w-0 shadow-none xl:mt-6">
+      <Card data-workspace-reveal className="leadbase-workspace-card mt-4 min-w-0 xl:mt-6">
         <CardContent className="p-0">
           <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:items-center sm:px-6 sm:py-5">
             <div className="min-w-0">
@@ -958,10 +963,10 @@ function StatCard({
   value: string;
 }) {
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card className="leadbase-detail-metric leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
-        <div className="flex size-8 items-center justify-center rounded-lg border">
-          <Icon className="size-3.5 text-muted-foreground" />
+        <div className="flex size-8 items-center justify-center rounded-lg border border-primary/15 bg-primary/8">
+          <Icon className="size-3.5 text-primary" />
         </div>
 
         <p className="mt-4 text-xs text-muted-foreground">
@@ -998,7 +1003,7 @@ function InfoCard({
   empty: string;
 }) {
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card data-workspace-reveal className="leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
         <h2 className="text-sm font-semibold">
           {

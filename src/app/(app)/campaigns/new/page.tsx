@@ -47,6 +47,10 @@ import {
   getCampaignIdea,
 } from "@/lib/campaign-ideas";
 
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -76,7 +80,8 @@ export default async function NewCampaignPage({
     );
 
   return (
-    <div className="mx-auto w-full max-w-[1000px] px-8 py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1080px] px-4 py-5 sm:px-6 sm:py-7 md:px-8 lg:px-10 lg:py-10">
+      <WorkspacePageMotion />
       {/* ===================================================
           BACK
       =================================================== */}
@@ -94,7 +99,7 @@ export default async function NewCampaignPage({
           HEADER
       =================================================== */}
 
-      <header className="mt-6">
+      <header data-workspace-reveal className="leadbase-workspace-header mt-6 p-5 sm:p-6">
         <p className="text-sm text-muted-foreground">
           Outreach
         </p>
@@ -161,7 +166,7 @@ export default async function NewCampaignPage({
             BASICS
         ================================================= */}
 
-        <Card className="shadow-none">
+        <Card data-workspace-reveal className="leadbase-workspace-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-lg border">
@@ -314,7 +319,7 @@ export default async function NewCampaignPage({
             QUALIFICATION
         ================================================= */}
 
-        <Card className="shadow-none">
+        <Card data-workspace-reveal className="leadbase-workspace-card">
           <CardContent className="p-6">
             <h2 className="text-sm font-semibold">
               Qualification
@@ -356,7 +361,7 @@ export default async function NewCampaignPage({
             OUTREACH
         ================================================= */}
 
-        <Card className="shadow-none">
+        <Card data-workspace-reveal className="leadbase-workspace-card">
           <CardContent className="p-6">
             <h2 className="text-sm font-semibold">
               Outreach

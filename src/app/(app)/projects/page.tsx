@@ -30,6 +30,10 @@ import {
 } from "@/components/ui/card";
 
 import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
+import {
   languageCopy,
   type AppLanguage,
 } from "@/lib/i18n";
@@ -389,8 +393,8 @@ export default async function ProjectsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+    <div className="leadbase-workspace-page min-h-full"><WorkspacePageMotion /><div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+      <header data-workspace-reveal className="leadbase-workspace-header flex flex-col justify-between gap-5 p-5 sm:p-6 lg:flex-row lg:items-end">
         <div>
           <p className="text-sm text-muted-foreground">
             {
@@ -426,7 +430,7 @@ export default async function ProjectsPage() {
         </Link>
       </header>
 
-      <section className="mt-6 grid grid-cols-2 gap-3 md:mt-8 xl:grid-cols-4">
+      <section data-workspace-reveal className="mt-5 grid grid-cols-2 gap-3 md:mt-6 xl:grid-cols-4">
         <StatCard
           icon={
             CircleDollarSign
@@ -490,7 +494,7 @@ export default async function ProjectsPage() {
         />
       </section>
 
-      <section className="mt-6 md:mt-8">
+      <section data-workspace-reveal className="mt-7 md:mt-9">
         <div>
           <h2 className="text-sm font-semibold">
             {
@@ -507,7 +511,7 @@ export default async function ProjectsPage() {
 
         {rows.length ===
         0 ? (
-          <Card className="mt-4 border-dashed shadow-none">
+          <Card className="leadbase-workspace-empty mt-4 border-dashed">
             <CardContent className="flex min-h-64 items-center justify-center p-6 text-center">
               <div className="max-w-sm">
                 <div className="mx-auto flex size-10 items-center justify-center rounded-lg border">
@@ -572,7 +576,7 @@ export default async function ProjectsPage() {
                     key={
                       project.id
                     }
-                    className="min-w-0 shadow-none"
+                    className="leadbase-workspace-card min-w-0"
                   >
                     <CardContent className="p-4 sm:p-5">
                       <div className="flex items-start justify-between gap-3">
@@ -783,7 +787,7 @@ export default async function ProjectsPage() {
           </div>
         )}
       </section>
-    </div>
+    </div></div>
   );
 }
 
@@ -804,7 +808,7 @@ function StatCard({
   value: string;
 }) {
   return (
-    <Card className="min-w-0 shadow-none">
+    <Card className="leadbase-workspace-card min-w-0">
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-2">
           <p className="text-xs leading-5 text-muted-foreground sm:text-sm">

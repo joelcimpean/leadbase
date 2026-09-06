@@ -14,7 +14,6 @@ import {
   MailOpen,
   Paperclip,
   RotateCcw,
-  Search,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -40,9 +39,12 @@ import {
 } from "./actions";
 
 import {
-  ConversationList,
   type InboxConversationListItem,
 } from "./conversation-list";
+
+import {
+  InboxListPane,
+} from "./inbox-list-pane";
 
 import {
   ReplyComposer,
@@ -61,16 +63,16 @@ import {
 } from "@/components/ui/badge";
 
 import {
-  Input,
-} from "@/components/ui/input";
-
-import {
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
 
 import {
   Separator,
 } from "@/components/ui/separator";
+
+import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
 
 import {
   APP_LANGUAGE_COOKIE,
@@ -2480,7 +2482,7 @@ export default async function InboxPage({
 
   const conversationListItems:
     InboxConversationListItem[] =
-    filtered.map(
+    folderConversations.map(
       (
         conversation
       ) => ({
@@ -2505,6 +2507,9 @@ export default async function InboxPage({
 
         contact:
           conversation.contact,
+
+        email:
+          conversation.email,
 
         subject:
           conversation.subject,
@@ -2551,13 +2556,13 @@ export default async function InboxPage({
   ======================================================= */
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="leadbase-inbox-page flex h-full min-w-0 flex-1 flex-col overflow-hidden"><WorkspacePageMotion />
       {/* ===================================================
           HEADER
       =================================================== */}
 
       <header
-        className={`shrink-0 items-start justify-between gap-4 border-b px-4 py-5 sm:px-6 md:flex md:items-end md:gap-6 md:px-8 md:py-7 lg:px-10 ${
+        className={`leadbase-inbox-header shrink-0 items-start justify-between gap-4 border-b px-4 py-5 sm:px-6 md:flex md:items-end md:gap-6 md:px-8 md:py-7 lg:px-10 ${
           mobileThreadOpen
             ? "hidden"
             : "flex"
@@ -2675,6 +2680,18 @@ export default async function InboxPage({
       ) : null}
 
       {syncStatus ===
+      "quota" ? (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 sm:px-6 md:px-8 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertCircle className="size-3.5 shrink-0" />
+
+          {language ===
+          "de"
+            ? "Gmail hat das kurzfristige API-Limit erreicht. Leadbase pausiert den Sync automatisch für ein paar Minuten und versucht es danach wieder."
+            : "Gmail reached its short-term API quota. Leadbase pauses syncing for a few minutes and will try again automatically."}
+        </div>
+      ) : null}
+
+      {syncStatus ===
       "error" ? (
         <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 sm:px-6 md:px-8 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
           <AlertCircle className="size-3.5 shrink-0" />
@@ -2690,7 +2707,7 @@ export default async function InboxPage({
       =================================================== */}
 
       <div
-        className={`shrink-0 items-center gap-1 overflow-x-auto border-b px-3 py-2 sm:px-4 md:flex md:px-6 ${
+        className={`leadbase-inbox-folders shrink-0 items-center gap-1 overflow-x-auto border-b px-3 py-2 sm:px-4 md:flex md:px-6 ${
           mobileThreadOpen
             ? "hidden"
             : "flex"
@@ -2758,81 +2775,30 @@ export default async function InboxPage({
         ================================================= */}
 
         <aside
-          className={`w-full shrink-0 flex-col border-r md:flex md:w-[390px] ${
+          className={`leadbase-inbox-list-panel w-full shrink-0 flex-col border-r md:flex md:w-[390px] ${
             mobileThreadOpen
               ? "hidden"
               : "flex"
           }`}
         >
-          <div className="border-b p-3 sm:p-4">
-            <form>
-              {currentView !==
-              "inbox" ? (
-                <input
-                  type="hidden"
-                  name="view"
-                  value={
-                    currentView
-                  }
-                />
-              ) : null}
-
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                <Input
-                  name="q"
-                  defaultValue={
-                    rawQuery
-                  }
-                  placeholder={
-                    searchPlaceholder
-                  }
-                  className="pl-9"
-                />
-              </div>
-            </form>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {filtered.length ===
-            0 ? (
-              <div className="px-6 py-12 text-center">
-                {currentView ===
-                "archived" ? (
-                  <Archive className="mx-auto size-5 text-muted-foreground" />
-                ) : currentView ===
-                  "trash" ? (
-                  <Trash2 className="mx-auto size-5 text-muted-foreground" />
-                ) : (
-                  <Inbox className="mx-auto size-5 text-muted-foreground" />
-                )}
-
-                <p className="mt-3 text-sm font-medium">
-                  {currentView ===
-                  "archived"
-                    ? text.noArchived
-                    : currentView ===
-                        "trash"
-                      ? text.trashEmpty
-                      : text.noConversations}
-                </p>
-              </div>
-            ) : (
-              <ConversationList
-                conversations={
-                  conversationListItems
-                }
-                selectedLeadId={
-                  requestedLeadId ||
-                  null
-                }
-                view={
-                  currentView
-                }
-              />
-            )}
-          </div>
+          <InboxListPane
+            conversations={
+              conversationListItems
+            }
+            selectedLeadId={
+              requestedLeadId ||
+              null
+            }
+            view={
+              currentView
+            }
+            initialQuery={
+              rawQuery
+            }
+            searchPlaceholder={
+              searchPlaceholder
+            }
+          />
         </aside>
 
         {/* =================================================
@@ -2840,7 +2806,7 @@ export default async function InboxPage({
         ================================================= */}
 
         <main
-          className={`min-w-0 flex-1 overflow-y-auto md:block ${
+          className={`leadbase-inbox-thread-panel min-w-0 flex-1 overflow-y-auto md:block ${
             mobileThreadOpen
               ? "block"
               : "hidden"
@@ -3243,8 +3209,8 @@ function FolderTab({
       }
       className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
         active
-          ? "bg-muted text-foreground"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15"
+          : "text-muted-foreground hover:bg-primary/[0.055] hover:text-foreground"
       }`}
     >
       <Icon className="size-4" />

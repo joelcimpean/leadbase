@@ -25,6 +25,10 @@ import {
 } from "@/components/ui/card";
 
 import {
+  WorkspacePageMotion,
+} from "@/components/workspace-page-motion";
+
+import {
   acquisitionCopy,
   getCampaignIdeaCategoryLabel,
   getCampaignIdeaDescription,
@@ -190,12 +194,12 @@ export default async function CampaignsPage() {
     ).slice(0, 6);
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page min-h-full"><WorkspacePageMotion /><div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
       {/* ===================================================
           HEADER
       =================================================== */}
 
-      <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+      <header data-workspace-reveal className="leadbase-workspace-header flex flex-col justify-between gap-5 p-5 sm:p-6 lg:flex-row lg:items-end">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">
             {
@@ -237,7 +241,7 @@ export default async function CampaignsPage() {
 
       {recommendedIdeas.length >
       0 ? (
-        <section className="mt-7 md:mt-8">
+        <section data-workspace-reveal className="mt-7 md:mt-8">
           <div className="flex items-end justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -265,7 +269,7 @@ export default async function CampaignsPage() {
                   key={
                     idea.id
                   }
-                  className="group min-w-0 shadow-none transition-colors hover:border-foreground/25"
+                  className="leadbase-workspace-card group min-w-0 transition-colors" data-lift="true"
                 >
                   <CardContent className="flex h-full flex-col p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-3">
@@ -333,7 +337,7 @@ export default async function CampaignsPage() {
           YOUR CAMPAIGNS
       =================================================== */}
 
-      <section className="mt-8 md:mt-10">
+      <section data-workspace-reveal className="mt-8 md:mt-10">
         <div>
           <h2 className="text-sm font-semibold">
             {
@@ -350,7 +354,7 @@ export default async function CampaignsPage() {
 
         {campaignRows.length ===
         0 ? (
-          <div className="mt-4 flex min-h-64 items-center justify-center rounded-xl border border-dashed px-4 py-10 sm:min-h-72">
+          <div className="leadbase-workspace-empty mt-4 flex min-h-64 items-center justify-center rounded-3xl border border-dashed px-4 py-10 sm:min-h-72">
             <div className="max-w-sm text-center">
               <div className="mx-auto flex size-10 items-center justify-center rounded-lg border">
                 <Megaphone className="size-4" />
@@ -398,7 +402,7 @@ export default async function CampaignsPage() {
                       key={
                         campaign.id
                       }
-                      className="min-w-0 shadow-none"
+                      className="leadbase-workspace-card min-w-0"
                     >
                       <CardContent className="p-4 sm:p-5 xl:p-6">
                         <div className="flex items-start justify-between gap-4">
@@ -559,6 +563,6 @@ export default async function CampaignsPage() {
           </>
         )}
       </section>
-    </div>
+    </div></div>
   );
 }
