@@ -695,7 +695,11 @@ export async function updateLeadDetails(formData: FormData) {
 
   if (leadError) {
     console.error("Lead update failed:", leadError);
-    return;
+    redirect(
+      `/leads/${leadId}/edit?error=${encodeURIComponent(
+        `Lead/Notizen konnten nicht gespeichert werden: ${leadError.message}`
+      )}`
+    );
   }
 
   /* ---------------------------------------------------------

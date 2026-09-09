@@ -1,21 +1,10 @@
 "use client";
 
-import {
-  Loader2,
-  Send,
-} from "lucide-react";
+import { Send } from "lucide-react";
+import { useState } from "react";
 
-import {
-  useFormStatus,
-} from "react-dom";
-
-import {
-  sendApprovedOutreachDraft,
-} from "../outreach-actions";
-
-/* =========================================================
-   TYPES
-========================================================= */
+import { sendApprovedOutreachDraft } from "../outreach-actions";
+import { queueUndoableSend } from "@/lib/undoable-send";
 
 type SendEmailButtonProps = {
   leadId: string;
@@ -23,92 +12,30 @@ type SendEmailButtonProps = {
   recipientEmail: string;
 };
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+export function SendEmailButton({ leadId, draftId, recipientEmail }: SendEmailButtonProps) {
+  const [queued, setQueued] = useState(false);
 
-export function SendEmailButton({
-  leadId,
-  draftId,
-  recipientEmail,
-}: SendEmailButtonProps) {
-  function handleSubmit(
-    event:
-      React.FormEvent<HTMLFormElement>
-  ) {
-    const confirmed =
-      window.confirm(
-        `Send this email now to ${recipientEmail}?\n\nThis will send the approved draft through Gmail.`
-      );
+  function queueSend() {
+    if (queued) return;
+    const formData = new FormData();
+    formData.set("leadId", leadId);
+    formData.set("draftId", draftId);
+    setQueued(true);
 
-    if (
-      !confirmed
-    ) {
-      event.preventDefault();
-    }
+    queueUndoableSend({
+      label: `E-Mail an ${recipientEmail}`,
+      detail: "Wird in 10 Sekunden gesendet.",
+      commit: async () => { await sendApprovedOutreachDraft(formData); },
+      onUndo: () => setQueued(false),
+      onSuccess: () => setQueued(false),
+      onError: () => setQueued(false),
+    });
   }
 
   return (
-    <form
-      action={
-        sendApprovedOutreachDraft
-      }
-      onSubmit={
-        handleSubmit
-      }
-    >
-      <input
-        type="hidden"
-        name="leadId"
-        value={
-          leadId
-        }
-      />
-
-      <input
-        type="hidden"
-        name="draftId"
-        value={
-          draftId
-        }
-      />
-
-      <SendButtonContent />
-    </form>
-  );
-}
-
-/* =========================================================
-   BUTTON
-========================================================= */
-
-function SendButtonContent() {
-  const {
-    pending,
-  } =
-    useFormStatus();
-
-  return (
-    <button
-      type="submit"
-      disabled={
-        pending
-      }
-      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {pending ? (
-        <>
-          <Loader2 className="size-3.5 animate-spin" />
-
-          Sending...
-        </>
-      ) : (
-        <>
-          <Send className="size-3.5" />
-
-          Send email
-        </>
-      )}
+    <button type="button" disabled={queued} onClick={queueSend} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+      <Send className="size-3.5" />
+      {queued ? "Zum Senden vorgemerkt" : "Send email"}
     </button>
   );
 }

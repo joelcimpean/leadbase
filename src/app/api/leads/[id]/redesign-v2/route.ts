@@ -22,6 +22,14 @@ import {
   import {
     generateSolStaticDesign,
   } from "@/lib/sol-static-design-engine";
+
+import {
+    buildDesignInspirationMemo,
+    normalizeDesignModel,
+    normalizeDesignReasoningEffort,
+    normalizeMotionPreset,
+    normalizeStringArray,
+  } from "@/lib/design-generation-options";
   
   import {
     getStoredMaxiBestOfAccessToken,
@@ -34,6 +42,11 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    assertAiUsageAvailable,
+    recordAiUsage,
+  } from "@/lib/ai-usage";
   
   /* =========================================================
      CONFIG
@@ -61,6 +74,24 @@ import {
   
   type PostBody = {
     regenerate?:
+      unknown;
+
+    designModel?:
+      unknown;
+
+    reasoningEffort?:
+      unknown;
+
+    inspirationMemo?:
+      unknown;
+
+    inspirationLinks?:
+      unknown;
+
+    inspirationImages?:
+      unknown;
+
+    motionPreset?:
       unknown;
   };
   
@@ -317,6 +348,43 @@ import {
   
       selectedAt:
         row.selected_at,
+  
+      motionApplied:
+        isRecord(
+          row.source_snapshot
+        ) &&
+        isRecord(
+          row.source_snapshot[
+            "generationSettings"
+          ]
+        )
+          ? row.source_snapshot[
+              "generationSettings"
+            ][
+              "motionApplied"
+            ] === true
+          : false,
+  
+      motionSourceGenerationIndex:
+        isRecord(
+          row.source_snapshot
+        ) &&
+        isRecord(
+          row.source_snapshot[
+            "generationSettings"
+          ]
+        ) &&
+        typeof row.source_snapshot[
+          "generationSettings"
+        ][
+          "motionSourceGenerationIndex"
+        ] === "number"
+          ? row.source_snapshot[
+              "generationSettings"
+            ][
+              "motionSourceGenerationIndex"
+            ] as number
+          : null,
   
       createdAt:
         row.created_at,
@@ -675,6 +743,38 @@ import {
     const regenerate =
       body.regenerate ===
       true;
+
+    const selectedDesignModel =
+      normalizeDesignModel(
+        body.designModel
+      );
+
+    const selectedReasoningEffort =
+      normalizeDesignReasoningEffort(
+        body.reasoningEffort,
+        "high"
+      );
+
+    const selectedMotionPreset =
+      normalizeMotionPreset(
+        body.motionPreset,
+        "none"
+      );
+
+    const inspirationMemo =
+      getString(
+        body.inspirationMemo
+      );
+
+    const inspirationLinks =
+      normalizeStringArray(
+        body.inspirationLinks
+      );
+
+    const inspirationImages =
+      normalizeStringArray(
+        body.inspirationImages
+      );
   
     const supabase =
       await createClient();
@@ -1121,7 +1221,19 @@ import {
       ]);
   
     designResearch =
-      resolvedResearch;
+      buildDesignInspirationMemo({
+        baseResearch:
+          resolvedResearch,
+
+        inspirationMemo,
+
+        inspirationLinks,
+
+        inspirationImages,
+
+        motionPreset:
+          selectedMotionPreset,
+      });
   
     /* =======================================================
        GPT-5.6 SOL
@@ -1138,6 +1250,8 @@ import {
       >;
   
     try {
+      await assertAiUsageAvailable(user.id);
+
       generated =
         await generateSolStaticDesign({
           variantId,
@@ -1154,6 +1268,12 @@ import {
   
           previousDirections:
             existing.previousDirections,
+
+          designModel:
+            selectedDesignModel,
+
+          reasoningEffort:
+            selectedReasoningEffort,
         });
     } catch (
       error
@@ -1184,6 +1304,15 @@ import {
       );
     }
   
+    await recordAiUsage({
+      userId: user.id,
+      feature: "design_generation",
+      model: generated.model,
+      usage: generated.usage,
+      requestKey: `design-generation:${variantId}`,
+      metadata: { leadId, variantId },
+    });
+
     /* =======================================================
        SAVE
     ======================================================= */
@@ -1235,8 +1364,29 @@ import {
           prompt_snapshot:
             generated.promptSnapshot,
   
-          source_snapshot:
-            generated.snapshot,
+          source_snapshot: {
+            ...(generated.snapshot as Record<
+              string,
+              unknown
+            >),
+
+            generationSettings: {
+              model:
+                selectedDesignModel,
+
+              reasoningEffort:
+                selectedReasoningEffort,
+
+              motionPreset:
+                selectedMotionPreset,
+
+              inspirationMemo,
+
+              inspirationLinks,
+
+              inspirationImages,
+            },
+          },
   
           selected:
             firstVariant,

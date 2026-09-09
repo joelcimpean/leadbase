@@ -1,7 +1,15 @@
 import {
+    revalidatePath,
+  } from "next/cache";
+
+  import {
     NextResponse,
   } from "next/server";
   
+  import {
+    protectTrustedMapEmbeds,
+  } from "@/lib/design-map-embed";
+
   import {
     createClient,
   } from "@/lib/supabase/server";
@@ -141,8 +149,13 @@ import {
     value:
       string
   ) {
+    const trustedMaps =
+      protectTrustedMapEmbeds(
+        value
+      );
+
     let html =
-      value;
+      trustedMaps.html;
   
     html =
       html.replace(
@@ -186,7 +199,11 @@ import {
         ""
       );
   
-    return html.trim();
+    return trustedMaps
+      .restore(
+        html
+      )
+      .trim();
   }
   
   function isRemoteImageUrl(
@@ -970,6 +987,102 @@ import {
             500,
         }
       );
+    }
+
+    const {
+      data:
+        publicPreviews,
+    } =
+      await supabase
+        .from(
+          "design_public_previews"
+        )
+        .select(`
+          id,
+          public_slug
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .eq(
+          "design_mockup_variant_id",
+          id
+        )
+        .is(
+          "revoked_at",
+          null
+        );
+
+    if (
+      publicPreviews?.length
+    ) {
+      const publicPreviewIds =
+        publicPreviews.map(
+          (
+            preview
+          ) =>
+            preview.id
+        );
+
+      const {
+        error:
+          publicPreviewUpdateError,
+      } =
+        await supabase
+          .from(
+            "design_public_previews"
+          )
+          .update({
+            source_snapshot:
+              nextSnapshot,
+
+            // The customer link updates immediately, but an already
+            // rendered GIF is now stale. Never silently send the old
+            // animation after a design edit.
+            preview_gif_status:
+              "NOT_GENERATED",
+
+            // Keep the stale storage path internally so the next GIF
+            // render can delete that old object after the fresh one is saved.
+            preview_gif_url:
+              null,
+
+            preview_gif_generated_at:
+              null,
+
+            preview_gif_error:
+              null,
+
+            preview_gif_bytes:
+              null,
+          })
+          .in(
+            "id",
+            publicPreviewIds
+          );
+
+      if (
+        publicPreviewUpdateError
+      ) {
+        console.warn(
+          "The linked public preview could not be refreshed after editing:",
+          publicPreviewUpdateError
+        );
+      } else {
+        for (
+          const preview of
+            publicPreviews
+        ) {
+          if (
+            preview.public_slug
+          ) {
+            revalidatePath(
+              `/concept/${preview.public_slug}`
+            );
+          }
+        }
+      }
     }
   
     return NextResponse.json({

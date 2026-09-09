@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import {
+  type ReactNode,
   useEffect,
   useRef,
   useState,
@@ -50,6 +51,12 @@ type LocalizedVisualAnalysisProps = {
 
   narrative:
     VisualNarrative;
+
+  leftContent?:
+    ReactNode;
+
+  footer?:
+    ReactNode;
 };
 
 type LocalizationResponse = {
@@ -202,6 +209,8 @@ export function LocalizedVisualAnalysis({
   leadId,
   sourceLanguage = "en",
   narrative,
+  leftContent,
+  footer,
 }: LocalizedVisualAnalysisProps) {
   const {
     language,
@@ -573,162 +582,97 @@ export function LocalizedVisualAnalysis({
   }
 
   return (
-    <>
-      {/* ===================================================
-          ERROR FALLBACK
-      =================================================== */}
+    <div className="grid min-h-0 gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_334px]">
+      <div className="min-w-0">
+        {leftContent}
 
-      {error ? (
-        <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-          {
-            error
-          }
-        </div>
-      ) : null}
+        {(displayedNarrative.strengths.length > 0 ||
+          displayedNarrative.weaknesses.length > 0) ? (
+          <div className="mt-4 grid gap-5 border-t border-black/[0.07] pt-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <p className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#2F6B3A]">
+                {text.strengths}
+              </p>
 
-      {/* ===================================================
-          STRENGTHS / WEAKNESSES
-      =================================================== */}
+              <div className="mt-2.5 space-y-2.5">
+                {displayedNarrative.strengths.map((strength, index) => (
+                  <div key={`${strength}-${index}`} className="flex min-w-0 gap-2">
+                    <CheckCircle2 className="mt-0.5 size-[13px] shrink-0 text-[#2F6B3A]" />
+                    <span className="break-words text-[11.5px] leading-[1.55] text-[#40454E]">
+                      {strength}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-      {(displayedNarrative
-        .strengths
-        .length >
-        0 ||
-        displayedNarrative
-          .weaknesses
-          .length >
-          0) ? (
-        <div className="mt-6 grid gap-5 border-t pt-5 sm:grid-cols-2">
-          {/* =================================================
-              STRENGTHS
-          ================================================= */}
+            <div className="min-w-0">
+              <p className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#9A5106]">
+                {text.weaknesses}
+              </p>
 
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">
-              {
-                text.strengths
-              }
-            </p>
-
-            <div className="mt-3 space-y-2.5">
-              {displayedNarrative
-                .strengths
-                .map(
-                  (
-                    strength,
-                    index
-                  ) => (
-                    <div
-                      key={`${strength}-${index}`}
-                      className="flex min-w-0 gap-2 text-sm leading-6"
-                    >
-                      <CheckCircle2 className="mt-1 size-4 shrink-0 text-emerald-600" />
-
-                      <span className="break-words">
-                        {
-                          strength
-                        }
-                      </span>
-                    </div>
-                  )
-                )}
+              <div className="mt-2.5 space-y-2.5">
+                {displayedNarrative.weaknesses.map((weakness, index) => (
+                  <div key={`${weakness}-${index}`} className="flex min-w-0 gap-2">
+                    <XCircle className="mt-0.5 size-[13px] shrink-0 text-[#9A5106]" />
+                    <span className="break-words text-[11.5px] leading-[1.55] text-[#40454E]">
+                      {weakness}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        ) : null}
+      </div>
 
-          {/* =================================================
-              WEAKNESSES
-          ================================================= */}
-
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">
-              {
-                text.weaknesses
-              }
-            </p>
-
-            <div className="mt-3 space-y-2.5">
-              {displayedNarrative
-                .weaknesses
-                .map(
-                  (
-                    weakness,
-                    index
-                  ) => (
-                    <div
-                      key={`${weakness}-${index}`}
-                      className="flex min-w-0 gap-2 text-sm leading-6"
-                    >
-                      <XCircle className="mt-1 size-4 shrink-0 text-red-500" />
-
-                      <span className="break-words">
-                        {
-                          weakness
-                        }
-                      </span>
-                    </div>
-                  )
-                )}
-            </div>
+      <div className="flex min-w-0 flex-col gap-3.5">
+        {error ? (
+          <div className="rounded-[10px] border border-[#F2D6B7] bg-[#FDF0E3] px-3 py-2 text-[10.5px] leading-4 text-[#9A5106]">
+            {error}
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {/* ===================================================
-          SUMMARY
-      =================================================== */}
+        {displayedNarrative.summary ? (
+          <div>
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">
+              {text.summary}
+            </p>
+            <p className="mt-2 whitespace-pre-wrap break-words text-[11.5px] leading-[1.55] text-[#40454E]">
+              {displayedNarrative.summary}
+            </p>
+          </div>
+        ) : null}
 
-      {displayedNarrative
-        .summary ? (
-        <AnalysisTextSection
-          label={
-            text.summary
-          }
-          value={
-            displayedNarrative
-              .summary
-          }
-        />
-      ) : null}
+        {displayedNarrative.redesignReason ? (
+          <div>
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">
+              {text.redesignReason}
+            </p>
+            <p className="mt-2 whitespace-pre-wrap break-words text-[11.5px] leading-[1.55] text-[#40454E]">
+              {displayedNarrative.redesignReason}
+            </p>
+          </div>
+        ) : null}
 
-      {/* ===================================================
-          REDESIGN REASON
-      =================================================== */}
+        {displayedNarrative.outreachAngle ? (
+          <div className="rounded-[14px] bg-[#0B0C0E] p-4 text-white">
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-white/60">
+              {text.outreachAngle}
+            </p>
+            <p className="mt-2.5 whitespace-pre-wrap break-words text-[11.5px] leading-[1.6] text-white/80">
+              {displayedNarrative.outreachAngle}
+            </p>
+          </div>
+        ) : null}
 
-      {displayedNarrative
-        .redesignReason ? (
-        <AnalysisTextSection
-          label={
-            text.redesignReason
-          }
-          value={
-            displayedNarrative
-              .redesignReason
-          }
-        />
-      ) : null}
-
-      {/* ===================================================
-          OUTREACH ANGLE
-      =================================================== */}
-
-      {displayedNarrative
-        .outreachAngle ? (
-        <div className="mt-5 rounded-lg border bg-muted/30 px-4 py-4">
-          <p className="text-xs font-medium text-muted-foreground">
-            {
-              text.outreachAngle
-            }
-          </p>
-
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">
-            {
-              displayedNarrative
-                .outreachAngle
-            }
-          </p>
-        </div>
-      ) : null}
-    </>
+        {footer ? (
+          <div className="mt-auto pt-1">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

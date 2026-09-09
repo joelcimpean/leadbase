@@ -1,0 +1,549 @@
+.page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 26px;
+  background: #f6f7f9;
+  color: #0b0c0e;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.headerCopy { min-width: 0; }
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #002bba;
+}
+.eyebrow > span { width: 5px; height: 5px; border-radius: 999px; background: #002bba; }
+.titleRow { margin-top: 8px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.titleRow h1 { margin: 0; font-size: clamp(34px, 2.2vw, 38px); font-weight: 600; letter-spacing: -.035em; line-height: 1; }
+.titleRow > span { font-size: 14.5px; color: #6b7078; letter-spacing: -.01em; }
+.headerCopy > p { margin: 7px 0 0; max-width: 820px; font-size: 13px; line-height: 1.45; color: #6b7078; text-wrap: pretty; }
+.headerActions { flex: none; display: flex; align-items: center; gap: 8px; }
+
+.primaryButton,
+.secondaryButton {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: .14s ease;
+}
+.primaryButton { border: 1px solid #002bba; background: #002bba; color: #fff; font-weight: 500; box-shadow: 0 1px 2px rgba(0,43,186,.30); }
+.primaryButton:hover { background: #00229a; border-color: #00229a; }
+.secondaryButton { border: 1px solid rgba(11,12,14,.09); background: #fff; color: #40454e; }
+.secondaryButton:hover { background: #fdfdfe; color: #0b0c0e; border-color: rgba(11,12,14,.16); }
+.primaryButton svg, .secondaryButton svg { width: 14px; height: 14px; }
+.savedBadge { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 9px; background: #e9f0ea; color: #2f6b3a; font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; }
+.savedBadge svg { width: 11px; height: 11px; }
+
+.workspace { flex: 1; min-height: 0; display: flex; gap: 16px; }
+.mainColumn { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+.sideColumn { width: 376px; flex: none; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding-right: 1px; }
+
+.identityBand { flex: none; display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-radius: 16px; background: #0b0c0e; color: #fff; }
+.avatar { width: 52px; height: 52px; flex: none; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.10); color: #fff; display: flex; align-items: center; justify-content: center; font-family: "Geist Mono", monospace; font-size: 17px; font-weight: 500; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.identityCopy { min-width: 0; }
+.identityName { font-size: 22px; font-weight: 600; letter-spacing: -.02em; line-height: 1.15; }
+.identityRole { margin-top: 3px; font-size: 13px; color: rgba(255,255,255,.72); }
+.identityMeta { margin-top: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.58); }
+.identityMeta i { width: 3px; height: 3px; border-radius: 999px; background: rgba(255,255,255,.30); }
+.identityActions { margin-left: auto; display: flex; align-items: center; gap: 20px; flex: none; }
+.identityBadges { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.readyBadge, .missingBadge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.readyBadge { background: rgba(143,227,165,.14); color: #8fe3a5; }
+.readyBadge > span { width: 5px; height: 5px; border-radius: 999px; background: #8fe3a5; }
+.missingBadge { background: rgba(255,201,138,.14); color: #ffc98a; }
+.avatarButton { height: 30px; padding: 0 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.18); font-size: 12.5px; color: rgba(255,255,255,.88); white-space: nowrap; }
+.avatarButton:hover { background: rgba(255,255,255,.08); }
+
+.profileSurface { flex: 1; min-height: 0; overflow-y: auto; background: #fff; border: 1px solid rgba(11,12,14,.08); border-radius: 16px; box-shadow: 0 1px 2px rgba(11,12,14,.03); padding: 0 20px 16px; }
+.editHint { margin: 14px 0 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: #eaeefb; color: #002bba; font-size: 11.5px; }
+.editHint svg { width: 12px; height: 12px; flex: none; }
+.section { padding: 18px 0 16px; }
+.section + .section { border-top: 1px solid rgba(11,12,14,.07); }
+.sectionHeading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sectionHeading > span { font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; white-space: nowrap; }
+.sectionHeading > i { flex: 1; height: 1px; background: rgba(11,12,14,.07); }
+.sectionHeading > a { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #002bba; white-space: nowrap; }
+.sectionHeading > a:hover { color: #001e85; }
+.sectionHeading > em { font-style: normal; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: #6b7078; white-space: nowrap; }
+.sectionIntro { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; color: #6b7078; text-wrap: pretty; }
+.sectionIntro strong { color: #40454e; font-weight: 400; }
+.twoColGrid { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+.threeColGrid { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.fieldWide { grid-column: 1 / -1; }
+.field { min-width: 0; }
+.fieldLabelRow { min-height: 13px; display: flex; align-items: center; gap: 6px; }
+.fieldLabel { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.dataTag { padding: 1px 5px; border-radius: 5px; background: #fdf0e3; color: #9a5106; font-family: "Geist Mono", monospace; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+.fieldValue { margin-top: 6px; font-size: 13.5px; line-height: 1.4; font-weight: 500; letter-spacing: -.01em; color: #0b0c0e; }
+.input, .textarea, .signatureTextarea { width: 100%; box-sizing: border-box; border-radius: 9px; border: 1px solid rgba(11,12,14,.14); background: #fff; color: #0b0c0e; outline: none; transition: .14s ease; }
+.input { margin-top: 5px; height: 32px; padding: 0 10px; font-size: 13px; }
+.textarea { margin-top: 6px; padding: 9px 10px; font-size: 12.5px; line-height: 1.55; resize: vertical; min-height: 68px; }
+.signatureTextarea { margin-top: 8px; padding: 9px 10px; font-size: 12px; line-height: 1.55; resize: vertical; }
+.input:focus, .textarea:focus, .signatureTextarea:focus { border-color: #002bba; box-shadow: 0 0 0 3px rgba(0,43,186,.12); }
+.inlineValue { margin-top: 6px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.inlineValue > span, .inlineValue > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 500; letter-spacing: -.01em; color: #0b0c0e; }
+.inlineValue > a { color: #002bba; }
+.inlineValue > svg { width: 12px; height: 12px; flex: none; color: #002bba; }
+.inlineValue button { width: 22px; height: 22px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #6b7078; }
+.inlineValue button:hover { background: #f7f8fa; }
+.inlineValue button svg { width: 12px; height: 12px; }
+.inlineValue em { font-style: normal; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: #2f6b3a; }
+.insetBox { margin-top: 14px; padding: 12px 14px; border-radius: 11px; background: #f7f8fa; }
+.insetHeader { display: flex; align-items: center; gap: 6px; }
+.insetHeader > span { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.insetHeader > em { margin-left: auto; font-style: normal; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: #6b7078; }
+.signature { margin-top: 9px; font-size: 12px; line-height: 1.55; color: #40454e; }
+.phoneMissing { margin-top: 6px; display: flex; align-items: baseline; gap: 8px; }
+.phoneMissing b { font-size: 13.5px; color: #6b7078; }
+.phoneMissing span { font-size: 11.5px; color: #9a5106; }
+.proposalStrip { padding: 16px 0 0; border-top: 1px solid rgba(11,12,14,.07); display: flex; gap: 16px; align-items: stretch; }
+.proposalPreview { width: 300px; flex: none; padding: 12px 14px; border-radius: 11px; background: #f7f8fa; }
+.proposalPreview > span { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.proposalPreview > strong { display: block; margin-top: 9px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+.proposalPreview > p { margin: 2px 0 0; font-size: 11.5px; color: #6b7078; }
+.proposalPreview > div { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: "Geist Mono", monospace; font-size: 9.5px; color: #40454e; }
+.proposalPreview > div i { width: 3px; height: 3px; border-radius: 999px; background: rgba(11,12,14,.20); }
+.proposalInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
+.proposalInfo > div { display: flex; align-items: center; gap: 8px; }
+.proposalInfo svg { width: 14px; height: 14px; flex: none; color: #002bba; }
+.proposalInfo strong { font-size: 13px; font-weight: 500; letter-spacing: -.01em; }
+.proposalInfo p { margin: 0; font-size: 11.5px; line-height: 1.45; color: #6b7078; text-wrap: pretty; }
+.proposalInfo a { font-size: 11.5px; color: #002bba; }
+
+.sideCard { background: #fff; border: 1px solid rgba(11,12,14,.08); border-radius: 16px; box-shadow: 0 1px 2px rgba(11,12,14,.03); padding: 16px 18px; }
+.cardHeader { display: flex; align-items: center; gap: 8px; }
+.cardHeader > span { font-family: "Geist Mono", monospace; font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.cardHeader > em { padding: 1px 5px; border-radius: 5px; background: #fdf0e3; color: #9a5106; font-style: normal; font-family: "Geist Mono", monospace; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+.cardHeader > b { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 6px; background: rgba(11,12,14,.05); color: #6b7078; font-family: "Geist Mono", monospace; font-size: 9px; font-weight: 400; letter-spacing: .06em; text-transform: uppercase; }
+.cardHeader > b i { width: 5px; height: 5px; border-radius: 999px; background: currentColor; }
+.usageHero { margin-top: 12px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.usageHero > div:first-child > span { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.usageHero strong { display: block; margin-top: 5px; font-size: 34px; font-weight: 600; letter-spacing: -.035em; line-height: 1; font-variant-numeric: tabular-nums; }
+.usageMeta { text-align: right; display: flex; flex-direction: column; gap: 3px; font-family: "Geist Mono", monospace; font-size: 10.5px; color: #6b7078; font-variant-numeric: tabular-nums; }
+.usageMeta span:last-child { color: #40454e; }
+.usageBar { margin-top: 12px; height: 10px; display: flex; overflow: hidden; border-radius: 999px; background: rgba(11,12,14,.06); }
+.usageBar span { height: 100%; flex: none; border-right: 1px solid #fff; }
+.usageBar i { height: 100%; flex: none; }
+.usageBreakdown { margin-top: 10px; }
+.usageBreakdown > div { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.usageBreakdown > div > span { width: 8px; height: 8px; flex: none; border-radius: 3px; }
+.usageBreakdown p { flex: 1; margin: 0; font-size: 11.5px; color: #40454e; }
+.usageBreakdown b { font-family: "Geist Mono", monospace; font-size: 10.5px; font-weight: 400; color: #6b7078; font-variant-numeric: tabular-nums; }
+.trendBlock { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(11,12,14,.07); }
+.trendBlock > div:first-child { display: flex; align-items: center; justify-content: space-between; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.usageChart { margin-top: 8px; width: 100%; height: 62px; display: block; }
+.trendAxis { display: flex; align-items: center; justify-content: space-between; font-family: "Geist Mono", monospace; font-size: 9px; color: #6b7078; }
+.trendBlock > p { margin: 8px 0 0; font-size: 11px; line-height: 1.45; color: #6b7078; text-wrap: pretty; }
+.usageDisclaimer { margin-top: 12px; padding: 9px 11px; border-radius: 10px; background: #f7f8fa; font-size: 10.5px; line-height: 1.5; color: #6b7078; text-wrap: pretty; }
+.workspaceIdentity { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+.workspaceIdentity > div:first-child { width: 30px; height: 30px; flex: none; border-radius: 9px; background: #eaeefb; display: flex; align-items: center; justify-content: center; color: #002bba; }
+.workspaceIdentity svg { width: 15px; height: 15px; }
+.workspaceIdentity > div:last-child { display: flex; flex-direction: column; gap: 1px; }
+.workspaceIdentity strong { font-size: 13.5px; font-weight: 500; letter-spacing: -.01em; }
+.workspaceIdentity span { font-size: 11.5px; color: #6b7078; }
+.sideNote { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid rgba(11,12,14,.07); font-size: 11px; line-height: 1.45; color: #6b7078; text-wrap: pretty; }
+.securityCard { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.securityRows { margin-top: 8px; display: flex; flex-direction: column; }
+.securityRows > div { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(11,12,14,.07); }
+.securityRows > div > div { flex: 1; min-width: 0; }
+.securityRows span { display: block; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .11em; text-transform: uppercase; color: #6b7078; }
+.securityRows strong { display: block; margin-top: 3px; font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.securityRows p { margin: 3px 0 0; font-size: 12.5px; color: #6b7078; }
+.securityRows button:not(.textButton) { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: #6b7078; }
+.securityRows button:not(.textButton):hover { background: #f7f8fa; color: #0b0c0e; }
+.securityRows button svg { width: 13px; height: 13px; }
+.textButton { font-size: 11.5px; color: #002bba; }
+.textButton:hover { color: #001e85; }
+.securityFooter { margin-top: auto; padding-top: 12px; display: flex; align-items: center; gap: 10px; }
+.securityFooter > span { flex: 1; font-size: 10.5px; line-height: 1.4; color: #6b7078; text-wrap: pretty; }
+.securityFooter .secondaryButton { height: 32px; padding: 0 12px; border-radius: 9px; font-size: 12.5px; }
+
+@media (max-width: 1280px) {
+  .sideColumn { width: 330px; }
+  .identityActions { gap: 10px; }
+  .identityBadges { display: none; }
+  .threeColGrid { grid-template-columns: 1fr 1fr; }
+  .threeColGrid > :last-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 1080px) {
+  .page { overflow-y: auto; }
+  .workspace { flex: none; min-height: auto; flex-direction: column; }
+  .mainColumn { min-height: auto; }
+  .profileSurface { overflow: visible; }
+  .sideColumn { width: 100%; overflow: visible; display: grid; grid-template-columns: 1.25fr 1fr; }
+  .sideColumn > :first-child { grid-row: span 2; }
+  .securityCard { min-height: 240px; }
+}
+
+@media (max-width: 820px) {
+  .page { padding: 20px 18px 24px; }
+  .header { align-items: flex-start; flex-direction: column; }
+  .headerActions { width: 100%; justify-content: flex-end; }
+  .titleRow { gap: 8px 12px; }
+  .identityBand { align-items: flex-start; flex-wrap: wrap; }
+  .identityActions { width: 100%; margin-left: 68px; justify-content: flex-start; }
+  .twoColGrid, .threeColGrid { grid-template-columns: 1fr; }
+  .threeColGrid > :last-child { grid-column: auto; }
+  .proposalStrip { flex-direction: column; }
+  .proposalPreview { width: auto; }
+  .sideColumn { display: flex; }
+  .sectionHeading > em { display: none; }
+}
+
+@media (max-width: 560px) {
+  .page { padding: 16px 12px 22px; gap: 14px; }
+  .titleRow h1 { font-size: 30px; }
+  .titleRow > span { font-size: 12.5px; }
+  .headerCopy > p { font-size: 12px; }
+  .headerActions { justify-content: stretch; }
+  .headerActions > button { flex: 1; }
+  .identityBand { padding: 14px; gap: 12px; }
+  .avatar { width: 46px; height: 46px; }
+  .identityName { font-size: 19px; }
+  .identityMeta { gap: 7px; font-size: 8.5px; }
+  .identityActions { margin-left: 58px; width: calc(100% - 58px); }
+  .avatarButton { width: 100%; }
+  .profileSurface { padding: 0 14px 14px; }
+  .sectionHeading > a { display: none; }
+  .insetHeader > em { display: none; }
+  .usageHero { align-items: flex-start; }
+  .usageHero strong { font-size: 30px; }
+  .usageMeta { font-size: 9.5px; }
+  .securityFooter { align-items: flex-start; flex-direction: column; }
+}
+
+/* Phase 10N6 — persisted profile, avatar crop, real usage + account security */
+.primaryButton:disabled,
+.secondaryButton:disabled { opacity: .62; cursor: wait; }
+.spin { animation: lbProfileSpin .8s linear infinite; }
+@keyframes lbProfileSpin { to { transform: rotate(360deg); } }
+
+.noticeBar { flex: none; min-height: 36px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid rgba(47,107,58,.18); border-radius: 10px; background: #e9f0ea; color: #2f6b3a; font-size: 11.5px; }
+.noticeBarError { border-color: rgba(180,35,24,.18); background: #fceeec; color: #b42318; }
+.noticeBar button { margin-left: auto; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; }
+.noticeBar button:hover { background: rgba(11,12,14,.05); }
+.noticeBar svg { width: 12px; height: 12px; }
+
+.linkButton { align-self: flex-start; padding: 0; font-size: 11.5px; color: #002bba; }
+.linkButton:hover { color: #001e85; }
+
+.phoneEditor { margin-top: 5px; display: flex; gap: 6px; min-width: 0; }
+.phoneEditor .input { margin-top: 0; min-width: 0; flex: 1; }
+.countrySelectWrap { position: relative; width: 102px; height: 32px; flex: none; display: flex; align-items: center; padding: 0 8px 0 9px; gap: 5px; border: 1px solid rgba(11,12,14,.14); border-radius: 9px; background: #fff; color: #40454e; cursor: pointer; }
+.countrySelectWrap > span { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; }
+.countrySelectWrap > svg { width: 12px; height: 12px; flex: none; color: #6b7078; }
+.countrySelectWrap > select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.countrySelectWrap:focus-within { border-color: #002bba; box-shadow: 0 0 0 3px rgba(0,43,186,.12); }
+
+.locationEditor { position: relative; margin-top: 5px; }
+.locationEditor .input { margin-top: 0; }
+.locationInputWrap { position: relative; }
+.inputSpinner { position: absolute; right: 9px; top: 9px; width: 14px; height: 14px; color: #6b7078; animation: lbProfileSpin .8s linear infinite; }
+.cityMenu { position: absolute; z-index: 35; top: calc(100% + 6px); left: 0; right: 0; padding: 5px; border: 1px solid rgba(11,12,14,.09); border-radius: 11px; background: #fff; box-shadow: 0 16px 34px -18px rgba(11,12,14,.30); }
+.cityMenu button { width: 100%; display: flex; align-items: baseline; gap: 7px; padding: 8px 9px; border-radius: 8px; text-align: left; }
+.cityMenu button:hover { background: #f7f8fa; }
+.cityMenu strong { font-size: 11.5px; font-weight: 500; color: #0b0c0e; }
+.cityMenu span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: #6b7078; }
+.googleAttribution { padding: 5px 9px 3px; border-top: 1px solid rgba(11,12,14,.06); font-family: "Geist Mono", monospace; font-size: 8.5px; color: #6b7078; text-align: right; }
+
+.securityCard { flex: none; min-height: auto; }
+.securityActionPair { flex: none !important; display: flex; align-items: center; gap: 2px; }
+.securityRows .securityActionPair button { width: auto; min-width: 28px; }
+.securityRows .textButton { display: inline-flex; align-items: center; gap: 5px; width: auto !important; padding: 0 5px; color: #002bba; }
+.securityRows .textButton:hover { background: #eaeefb !important; color: #002bba !important; }
+.securityRowIcon { width: 14px; height: 14px; flex: none; color: #6b7078; }
+.securityFooter { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(11,12,14,.07); }
+.destructiveButton { height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 11px; border: 1px solid rgba(180,35,24,.18); border-radius: 9px; background: #fceeec; color: #b42318; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.destructiveButton:hover { border-color: rgba(180,35,24,.30); background: #f9e4e1; }
+.destructiveButton svg { width: 13px; height: 13px; }
+
+.modalBackdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(11,12,14,.38); backdrop-filter: blur(3px); }
+.modal { width: min(520px, 100%); max-height: min(760px, calc(100vh - 40px)); overflow: auto; border: 1px solid rgba(11,12,14,.09); border-radius: 16px; background: #fff; box-shadow: 0 28px 64px -26px rgba(11,12,14,.38); }
+.modalWide { width: min(650px, 100%); }
+.modalHeader { display: flex; align-items: flex-start; gap: 16px; padding: 17px 18px 15px; border-bottom: 1px solid rgba(11,12,14,.07); }
+.modalHeader > div { min-width: 0; flex: 1; }
+.modalHeader strong { display: block; font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
+.modalHeader p { margin: 4px 0 0; font-size: 11.5px; line-height: 1.45; color: #6b7078; }
+.modalHeader > button { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #6b7078; }
+.modalHeader > button:hover { background: #f7f8fa; color: #0b0c0e; }
+.modalHeader svg { width: 14px; height: 14px; }
+.modalFooter { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 13px 18px 16px; border-top: 1px solid rgba(11,12,14,.07); }
+.modalError { padding: 8px 10px; border-radius: 9px; background: #fceeec; color: #b42318; font-size: 11.5px; line-height: 1.4; }
+
+.cropBody { padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.cropViewport { position: relative; width: 286px; height: 286px; overflow: hidden; border-radius: 16px; background: #0b0c0e; cursor: grab; touch-action: none; user-select: none; }
+.cropViewport:active { cursor: grabbing; }
+.cropViewport img { position: absolute; left: 50%; top: 50%; max-width: none; pointer-events: none; user-select: none; }
+.cropRing { position: absolute; inset: 18px; border: 2px solid rgba(255,255,255,.95); border-radius: 50%; box-shadow: 0 0 0 999px rgba(11,12,14,.35); pointer-events: none; }
+.zoomRow { width: 286px; display: flex; align-items: center; gap: 12px; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: #6b7078; }
+.zoomRow input { flex: 1; accent-color: #002bba; }
+
+.brandingBody { padding: 18px; display: grid; gap: 16px; }
+.brandingColorRow, .brandingLogoRow { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(240px, 1.2fr); gap: 16px; align-items: center; padding-bottom: 16px; border-bottom: 1px solid rgba(11,12,14,.07); }
+.brandingColorRow p, .brandingLogoRow p { margin: 4px 0 0; font-size: 10.5px; line-height: 1.4; color: #6b7078; }
+.colorControl { display: flex; align-items: center; gap: 8px; }
+.colorControl input[type="color"] { width: 42px; height: 34px; padding: 3px; border: 1px solid rgba(11,12,14,.12); border-radius: 9px; background: #fff; cursor: pointer; }
+.colorControl input[type="text"], .colorControl input:not([type]) { height: 34px; flex: 1; min-width: 0; padding: 0 10px; border: 1px solid rgba(11,12,14,.12); border-radius: 9px; font-family: "Geist Mono", monospace; font-size: 11px; text-transform: uppercase; }
+.logoDrop { min-height: 76px; display: flex; align-items: center; justify-content: center; gap: 8px; overflow: hidden; border: 1px dashed rgba(11,12,14,.16); border-radius: 11px; background: #f7f8fa; color: #6b7078; cursor: pointer; }
+.logoDrop:hover { border-color: rgba(0,43,186,.35); background: #f4f6fc; color: #002bba; }
+.logoDrop img { max-width: 90%; max-height: 58px; object-fit: contain; }
+.logoDrop svg { width: 15px; height: 15px; }
+.logoDrop span { font-size: 11.5px; }
+.logoDrop input { display: none; }
+.removeLogo { grid-column: 2; display: inline-flex; align-items: center; gap: 7px; margin-top: -8px; font-size: 10.5px; color: #6b7078; }
+.removeLogo input { accent-color: #002bba; }
+.brandingPreview { padding: 14px; border: 1px solid rgba(11,12,14,.08); border-radius: 12px; background: #fff; }
+.brandingPreview > div { display: flex; align-items: center; gap: 9px; font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .09em; text-transform: uppercase; color: #6b7078; }
+.brandingPreview > div i { flex: 1; height: 1px; background: rgba(11,12,14,.07); }
+.brandingPreview strong { display: block; margin-top: 12px; font-size: 16px; }
+.brandingPreview button { margin-top: 12px; height: 30px; padding: 0 11px; border-radius: 8px; background: var(--proposal-accent); color: #fff; font-size: 11px; }
+
+.accountDialogBody { padding: 18px; display: grid; gap: 14px; }
+.accountDialogBody label { display: grid; gap: 6px; }
+.accountDialogBody label > span { font-family: "Geist Mono", monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #6b7078; }
+.accountDialogBody input { height: 36px; padding: 0 10px; border: 1px solid rgba(11,12,14,.13); border-radius: 9px; outline: none; font-size: 13px; }
+.accountDialogBody input:focus { border-color: #002bba; box-shadow: 0 0 0 3px rgba(0,43,186,.12); }
+
+.usageLoading { min-height: 130px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6b7078; font-size: 11px; }
+.usageLoading svg { width: 18px; height: 18px; color: #002bba; }
+.realUsageHero { margin-top: 13px; display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.realUsageHero > div { min-width: 0; padding: 9px 10px; border-radius: 10px; background: #f7f8fa; }
+.realUsageHero span { display: block; font-family: "Geist Mono", monospace; font-size: 8.5px; letter-spacing: .09em; text-transform: uppercase; color: #6b7078; }
+.realUsageHero strong { display: block; margin-top: 5px; font-size: 18px; font-weight: 600; letter-spacing: -.025em; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.realUsageHero > div:first-child strong { color: #002bba; font-size: 24px; }
+.tokenSplit { margin-top: 10px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid rgba(11,12,14,.07); border-radius: 10px; overflow: hidden; }
+.tokenSplit > div { padding: 7px 9px; }
+.tokenSplit > div + div { border-left: 1px solid rgba(11,12,14,.07); }
+.tokenSplit span { display: block; font-size: 9.5px; color: #6b7078; }
+.tokenSplit b { display: block; margin-top: 2px; font-family: "Geist Mono", monospace; font-size: 10.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.usageSectionTitle { margin-bottom: 5px; font-family: "Geist Mono", monospace; font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: #6b7078; }
+.modelList { margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(11,12,14,.07); }
+.modelRow { display: grid; grid-template-columns: minmax(88px, 1fr) 78px 42px; align-items: center; gap: 7px; padding: 4px 0; }
+.modelRow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: #40454e; }
+.modelRow > div { height: 4px; overflow: hidden; border-radius: 999px; background: rgba(11,12,14,.06); }
+.modelRow > div i { display: block; height: 100%; border-radius: 999px; background: #002bba; }
+.modelRow b { text-align: right; font-family: "Geist Mono", monospace; font-size: 9.5px; font-weight: 400; color: #6b7078; }
+.otherUsage { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(11,12,14,.07); display: grid; grid-template-columns: 1fr repeat(3, auto); align-items: center; gap: 10px; }
+.otherUsage > span { font-family: "Geist Mono", monospace; font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: #6b7078; }
+.otherUsage > div { min-width: 44px; text-align: right; }
+.otherUsage b { display: block; font-family: "Geist Mono", monospace; font-size: 10px; font-weight: 500; }
+.otherUsage em { display: block; margin-top: 1px; font-style: normal; font-size: 8.5px; color: #6b7078; white-space: nowrap; }
+.emptyTrend { height: 62px; margin-top: 8px; border-radius: 8px; background: linear-gradient(180deg, rgba(0,43,186,.03), rgba(0,43,186,0)); }
+.usageSetup { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 12px; border-radius: 11px; background: #f7f8fa; }
+.usageSetup > svg { width: 16px; height: 16px; color: #002bba; }
+.usageSetup > strong { font-size: 12.5px; font-weight: 600; }
+.usageSetup p { margin: 0; font-size: 10.5px; line-height: 1.5; color: #6b7078; }
+.usageSetup code { max-width: 100%; padding: 4px 6px; overflow: auto; border-radius: 6px; background: rgba(11,12,14,.05); font-family: "Geist Mono", monospace; font-size: 8.5px; color: #6b7078; }
+.usageSetup .secondaryButton { margin-top: 2px; height: 30px; font-size: 11px; }
+
+@media (max-width: 560px) {
+  .modalBackdrop { padding: 0; align-items: end; }
+  .modal, .modalWide { width: 100%; max-height: 88vh; border-radius: 16px 16px 0 0; }
+  .cropViewport { width: 260px; height: 260px; }
+  .zoomRow { width: 260px; }
+  .brandingColorRow, .brandingLogoRow { grid-template-columns: 1fr; }
+  .removeLogo { grid-column: auto; }
+  .realUsageHero { grid-template-columns: 1fr 1fr; }
+  .realUsageHero > div:first-child { grid-column: 1 / -1; }
+  .otherUsage { grid-template-columns: 1fr 1fr; }
+  .otherUsage > span { grid-column: 1 / -1; }
+  .phoneEditor { flex-direction: column; }
+  .countrySelectWrap { width: 100%; }
+}
+
+/* Phase 11B.5.2 — complete profile dark-mode pass */
+:global(.dark) .page {
+  background: #0b0c0e;
+  color: #f4f5f7;
+}
+
+:global(.dark) .titleRow > span,
+:global(.dark) .headerCopy > p,
+:global(.dark) .sectionHeading > span,
+:global(.dark) .sectionHeading > em,
+:global(.dark) .sectionIntro,
+:global(.dark) .fieldLabel,
+:global(.dark) .insetHeader > span,
+:global(.dark) .insetHeader > em,
+:global(.dark) .proposalPreview > span,
+:global(.dark) .proposalPreview > p,
+:global(.dark) .sideNote,
+:global(.dark) .usageDisclaimer,
+:global(.dark) .usageMeta,
+:global(.dark) .usageSectionTitle,
+:global(.dark) .tokenSplit span,
+:global(.dark) .modelRow b,
+:global(.dark) .otherUsage > span,
+:global(.dark) .otherUsage em,
+:global(.dark) .securityRows span,
+:global(.dark) .modalHeader p,
+:global(.dark) .accountDialogBody label > span,
+:global(.dark) .brandingColorRow p,
+:global(.dark) .brandingLogoRow p,
+:global(.dark) .usageSetup p,
+:global(.dark) .usageSetup code,
+:global(.dark) .zoomRow {
+  color: #aeb2ba;
+}
+
+:global(.dark) .profileSurface,
+:global(.dark) .sideCard,
+:global(.dark) .modal,
+:global(.dark) .brandingPreview {
+  background: #121316;
+  border-color: rgba(255,255,255,.09);
+  color: #f4f5f7;
+  box-shadow: 0 1px 2px rgba(0,0,0,.28);
+}
+
+:global(.dark) .section + .section,
+:global(.dark) .proposalStrip,
+:global(.dark) .securityFooter,
+:global(.dark) .brandingColorRow,
+:global(.dark) .brandingLogoRow,
+:global(.dark) .modalHeader,
+:global(.dark) .modalFooter,
+:global(.dark) .modelList,
+:global(.dark) .otherUsage,
+:global(.dark) .tokenSplit,
+:global(.dark) .tokenSplit > div + div,
+:global(.dark) .securityRows > div {
+  border-color: rgba(255,255,255,.07);
+}
+
+:global(.dark) .sectionHeading > i,
+:global(.dark) .brandingPreview > div i,
+:global(.dark) .proposalPreview > div i {
+  background: rgba(255,255,255,.10);
+}
+
+:global(.dark) .insetBox,
+:global(.dark) .proposalPreview,
+:global(.dark) .realUsageHero > div,
+:global(.dark) .usageSetup,
+:global(.dark) .emptyTrend {
+  background: #17181c;
+}
+
+:global(.dark) .fieldValue,
+:global(.dark) .inlineValue > span,
+:global(.dark) .inlineValue > a,
+:global(.dark) .sectionIntro strong,
+:global(.dark) .signature,
+:global(.dark) .proposalPreview > strong,
+:global(.dark) .proposalPreview > div,
+:global(.dark) .proposalInfo strong,
+:global(.dark) .modelRow > span,
+:global(.dark) .securityRows strong,
+:global(.dark) .modalHeader strong,
+:global(.dark) .brandingPreview strong,
+:global(.dark) .usageSetup > strong {
+  color: #f4f5f7;
+}
+
+:global(.dark) .input,
+:global(.dark) .textarea,
+:global(.dark) .signatureTextarea,
+:global(.dark) .countrySelectWrap,
+:global(.dark) .accountDialogBody input,
+:global(.dark) .colorControl input[type="color"],
+:global(.dark) .colorControl input[type="text"],
+:global(.dark) .colorControl input:not([type]) {
+  background: #17181c;
+  border-color: rgba(255,255,255,.10);
+  color: #f4f5f7;
+}
+
+:global(.dark) .input::placeholder,
+:global(.dark) .textarea::placeholder,
+:global(.dark) .signatureTextarea::placeholder,
+:global(.dark) .accountDialogBody input::placeholder {
+  color: #8c9199;
+}
+
+:global(.dark) .secondaryButton,
+:global(.dark) .readButton,
+:global(.dark) .avatarButton {
+  border-color: rgba(255,255,255,.10);
+}
+
+:global(.dark) .secondaryButton {
+  background: #17181c;
+  color: #d7d9de;
+}
+
+:global(.dark) .secondaryButton:hover,
+:global(.dark) .inlineValue button:hover,
+:global(.dark) .modalHeader > button:hover {
+  background: rgba(255,255,255,.055);
+  color: #fff;
+}
+
+:global(.dark) .cityMenu {
+  background: #17181c;
+  border-color: rgba(255,255,255,.10);
+  box-shadow: 0 18px 36px -18px rgba(0,0,0,.7);
+}
+
+:global(.dark) .cityMenu button:hover {
+  background: rgba(255,255,255,.05);
+}
+
+:global(.dark) .cityMenu strong {
+  color: #f4f5f7;
+}
+
+:global(.dark) .cityMenu span,
+:global(.dark) .googleAttribution {
+  color: #aeb2ba;
+}
+
+:global(.dark) .logoDrop {
+  background: #17181c;
+  border-color: rgba(255,255,255,.14);
+  color: #aeb2ba;
+}
+
+:global(.dark) .logoDrop:hover {
+  background: rgba(0,43,186,.12);
+  border-color: rgba(76,102,212,.55);
+  color: #8ea3ff;
+}
+
+:global(.dark) .tokenSplit,
+:global(.dark) .modelRow > div {
+  border-color: rgba(255,255,255,.08);
+}
+
+:global(.dark) .modelRow > div {
+  background: rgba(255,255,255,.08);
+}
+
+:global(.dark) .usageSetup code {
+  background: rgba(255,255,255,.06);
+}

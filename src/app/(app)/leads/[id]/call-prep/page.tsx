@@ -132,7 +132,7 @@ export default async function CallPrepPage({
       : "Unknown company");
 
   return (
-    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
+    <div className="leadbase-workspace-page leadbase-route-lead-tool mx-auto min-h-full w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
       <WorkspacePageMotion />
       <Link
         href={`/leads/${encodeURIComponent(

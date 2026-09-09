@@ -10,19 +10,15 @@ import {
   useRouter,
 } from "next/navigation";
 
-import {
-  syncInboxSilently,
-} from "@/app/(app)/inbox/actions";
-
 /* =========================================================
    CONFIG
 ========================================================= */
 
 const AUTO_SYNC_INTERVAL_MS =
-  180_000;
+  60_000;
 
 const MIN_AUTO_SYNC_GAP_MS =
-  120_000;
+  45_000;
 
 const QUOTA_COOLDOWN_MS =
   180_000;
@@ -32,6 +28,13 @@ const LAST_AUTO_SYNC_KEY =
 
 const QUOTA_COOLDOWN_KEY =
   "leadbase:gmail-sync-cooldown-until";
+
+type AutoSyncResponse = {
+  ok?: boolean;
+  newReplies?: number;
+  skipped?: boolean;
+  error?: string;
+};
 
 function getStoredNumber(
   key: string
@@ -47,8 +50,7 @@ function getStoredNumber(
     Number(
       window.localStorage.getItem(
         key
-      ) ??
-        0
+      ) ?? 0
     );
 
   return Number.isFinite(
@@ -80,10 +82,48 @@ function canRunAutoSync() {
     );
 
   return (
-    now -
-      lastAttempt >=
+    now - lastAttempt >=
     MIN_AUTO_SYNC_GAP_MS
   );
+}
+
+async function requestInboxSync() {
+  const response =
+    await fetch(
+      "/api/inbox/sync",
+      {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Accept:
+            "application/json",
+        },
+      }
+    );
+
+  const text =
+    await response.text();
+
+  if (!text) {
+    throw new Error(
+      `Inbox sync returned an empty response (${response.status}).`
+    );
+  }
+
+  let result:
+    AutoSyncResponse;
+
+  try {
+    result =
+      JSON.parse(text) as
+        AutoSyncResponse;
+  } catch {
+    throw new Error(
+      `Inbox sync returned invalid JSON (${response.status}).`
+    );
+  }
+
+  return result;
 }
 
 /* =========================================================
@@ -99,9 +139,7 @@ export function InboxAutoSync({
     useRouter();
 
   const syncingRef =
-    useRef(
-      false
-    );
+    useRef(false);
 
   const runSync =
     useCallback(
@@ -128,14 +166,21 @@ export function InboxAutoSync({
 
         window.localStorage.setItem(
           LAST_AUTO_SYNC_KEY,
-          String(
-            Date.now()
-          )
+          String(Date.now())
         );
 
         try {
+          /*
+           * IMPORTANT:
+           *
+           * Auto sync deliberately uses a stable API route instead of a
+           * Next.js Server Action. Server Action IDs are build-specific.
+           * An already-open browser tab can otherwise hold an old action
+           * hash after `npm run dev` / .next regeneration and immediately
+           * produce `Failed to find Server Action` on startup.
+           */
           const result =
-            await syncInboxSilently();
+            await requestInboxSync();
 
           if (
             !result.ok &&
@@ -153,9 +198,7 @@ export function InboxAutoSync({
             return;
           }
 
-          if (
-            result.ok
-          ) {
+          if (result.ok) {
             window.localStorage.removeItem(
               QUOTA_COOLDOWN_KEY
             );
@@ -163,7 +206,7 @@ export function InboxAutoSync({
 
           if (
             result.ok &&
-            result.newReplies >
+            (result.newReplies ?? 0) >
               0
           ) {
             router.refresh();
@@ -186,15 +229,9 @@ export function InboxAutoSync({
 
   useEffect(
     () => {
-      if (
-        !enabled
-      ) {
+      if (!enabled) {
         return;
       }
-
-      /*
-       * Initial sync shortly after loading Leadbase.
-       */
 
       const initialTimeout =
         window.setTimeout(
@@ -204,12 +241,6 @@ export function InboxAutoSync({
           1_500
         );
 
-      /*
-       * Lightweight background sync while the app is open.
-       * A client-side gap prevents focus/visibility events from
-       * stacking Gmail API work on top of the interval.
-       */
-
       const interval =
         window.setInterval(
           () => {
@@ -217,10 +248,6 @@ export function InboxAutoSync({
           },
           AUTO_SYNC_INTERVAL_MS
         );
-
-      /*
-       * Sync immediately when returning to the app.
-       */
 
       const handleFocus =
         () => {

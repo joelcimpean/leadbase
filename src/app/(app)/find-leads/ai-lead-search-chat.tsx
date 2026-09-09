@@ -35,6 +35,14 @@ import {
 const STORAGE_KEY =
   "leadbase:ai-lead-search-chat:v1";
 
+
+const PLACEHOLDER_EXAMPLES = [
+  "Find 20 Leads in Stockholm",
+  "Finde 25 Sanitärbetriebe in Stuttgart",
+  "Find 15 boutique hotels in Lisbon",
+  "Finde 30 Gartenbauer im Raum Zürich",
+] as const;
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -404,6 +412,15 @@ export function AiLeadSearchChat({
       ""
     );
 
+
+  const [
+    animatedPlaceholder,
+    setAnimatedPlaceholder,
+  ] =
+    useState(
+      ""
+    );
+
   const [
     messages,
     setMessages,
@@ -443,6 +460,156 @@ export function AiLeadSearchChat({
   const hasConversation =
     messages.length >
     0;
+
+  /* =======================================================
+     TYPEWRITER PLACEHOLDER
+  ======================================================= */
+
+  useEffect(
+    () => {
+      setAnimatedPlaceholder(
+        ""
+      );
+
+      const prefersReducedMotion =
+        window.matchMedia(
+          "(prefers-reduced-motion: reduce)"
+        ).matches;
+
+      if (
+        prefersReducedMotion
+      ) {
+        setAnimatedPlaceholder(
+          PLACEHOLDER_EXAMPLES[0]
+        );
+        return;
+      }
+
+      let exampleIndex =
+        0;
+
+      let characterIndex =
+        0;
+
+      let deleting =
+        false;
+
+      let timer:
+        number
+        | null =
+        null;
+
+      let cancelled =
+        false;
+
+      function schedule(
+        delay: number
+      ) {
+        timer =
+          window.setTimeout(
+            step,
+            delay
+          );
+      }
+
+      function step() {
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        const example =
+          PLACEHOLDER_EXAMPLES[
+            exampleIndex
+          ];
+
+        if (
+          !deleting
+        ) {
+          characterIndex =
+            Math.min(
+              example.length,
+              characterIndex + 1
+            );
+
+          setAnimatedPlaceholder(
+            example.slice(
+              0,
+              characterIndex
+            )
+          );
+
+          if (
+            characterIndex >=
+            example.length
+          ) {
+            deleting =
+              true;
+            schedule(
+              1450
+            );
+          } else {
+            schedule(
+              52
+            );
+          }
+
+          return;
+        }
+
+        characterIndex =
+          Math.max(
+            0,
+            characterIndex - 1
+          );
+
+        setAnimatedPlaceholder(
+          example.slice(
+            0,
+            characterIndex
+          )
+        );
+
+        if (
+          characterIndex ===
+          0
+        ) {
+          deleting =
+            false;
+          exampleIndex =
+            (exampleIndex + 1) %
+            PLACEHOLDER_EXAMPLES.length;
+          schedule(
+            320
+          );
+        } else {
+          schedule(
+            26
+          );
+        }
+      }
+
+      schedule(
+        450
+      );
+
+      return () => {
+        cancelled =
+          true;
+
+        if (
+          timer !==
+          null
+        ) {
+          window.clearTimeout(
+            timer
+          );
+        }
+      };
+    },
+    []
+  );
 
   /* =======================================================
      LOAD CHAT
@@ -914,7 +1081,7 @@ export function AiLeadSearchChat({
                       }
                       className="flex justify-end"
                     >
-                      <div className="max-w-[88%] rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-sm leading-6 sm:max-w-[75%]">
+                      <div className="max-w-[88%] rounded-[13px] rounded-br-[5px] border border-border bg-[#F7F8FA] px-3.5 py-2.5 text-[12.5px] leading-5 dark:bg-white/[0.035] sm:max-w-[75%]">
                         <p className="whitespace-pre-wrap break-words">
                           {
                             message.content
@@ -929,12 +1096,12 @@ export function AiLeadSearchChat({
                       }
                       className="flex items-start gap-3"
                     >
-                      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border bg-background">
+                      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[8px] border border-border bg-card text-primary">
                         <Sparkles className="size-3.5" />
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                        <p className="whitespace-pre-wrap break-words text-[12.5px] leading-5.5">
                           {
                             message.content
                           }
@@ -946,7 +1113,7 @@ export function AiLeadSearchChat({
 
               {loading ? (
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border bg-background">
+                  <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-[8px] border border-border bg-card text-primary">
                     <Loader2 className="size-3.5 animate-spin" />
                   </div>
 
@@ -982,7 +1149,7 @@ export function AiLeadSearchChat({
               : "mt-8"
           }`}
         >
-          <div className="rounded-[24px] border border-primary/10 bg-card/90 p-2 shadow-[0_12px_36px_rgba(15,23,42,0.05)] transition-all focus-within:border-primary/25 focus-within:shadow-[0_18px_48px_rgba(15,23,42,0.08)] dark:bg-card/80">
+          <div className="rounded-[15px] border border-border bg-card p-2 shadow-[var(--lb-shadow-xs)] transition-[border-color,box-shadow] focus-within:border-primary/30 focus-within:shadow-[var(--lb-focus-ring)]">
             <textarea
               value={
                 prompt
@@ -1005,9 +1172,12 @@ export function AiLeadSearchChat({
                 2
               }
               placeholder={
-                text.placeholder
+                animatedPlaceholder.length >
+                0
+                  ? animatedPlaceholder
+                  : "\u00A0"
               }
-              className="min-h-[64px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-sm leading-6 outline-none placeholder:text-muted-foreground sm:text-[15px]"
+              className="min-h-[58px] w-full resize-none bg-transparent px-3 pb-2 pt-2.5 text-[13px] leading-5 outline-none placeholder:text-muted-foreground"
             />
 
             {/* ===============================================
@@ -1034,7 +1204,7 @@ export function AiLeadSearchChat({
                         .value
                     )
                   }
-                  className="h-8 max-w-[220px] truncate rounded-full border bg-background px-3 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted/40 focus:ring-1 focus:ring-ring sm:max-w-[280px]"
+                  className="h-8 max-w-[220px] truncate rounded-[8px] border border-input bg-card px-2.5 text-[10.5px] text-muted-foreground outline-none transition-colors hover:bg-muted/50 focus:border-primary focus:ring-[3px] focus:ring-primary/10 sm:max-w-[280px]"
                 >
                   {activeCampaigns.map(
                     (
@@ -1065,7 +1235,7 @@ export function AiLeadSearchChat({
                   !campaignId
                 }
                 aria-label="Send"
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+                className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-primary text-primary-foreground shadow-[0_1px_2px_rgba(0,43,186,0.18)] transition-colors hover:bg-[#001E85] disabled:cursor-not-allowed disabled:opacity-30"
               >
                 {loading ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -1110,7 +1280,7 @@ export function AiLeadSearchChat({
                           example
                         )
                       }
-                      className="rounded-full border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="rounded-[8px] border border-border bg-card px-2.5 py-1.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
                       {
                         example

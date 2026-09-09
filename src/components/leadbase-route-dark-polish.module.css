@@ -1,0 +1,105 @@
+.route {
+  min-height: 0;
+}
+
+:global(.dark) .route {
+  background: #0b0c0e !important;
+  color: #f4f5f7 !important;
+}
+
+:global(.dark) .route [class~="bg-white"] {
+  background-color: #121316 !important;
+}
+
+:global(.dark) .route [class~="bg-[#F6F7F9]"],
+:global(.dark) .route [class~="bg-[#F7F8FA]"],
+:global(.dark) .route [class~="bg-[#FDFDFE]"] {
+  background-color: #15161a !important;
+}
+
+:global(.dark) .route [class~="bg-black/[0.045]"],
+:global(.dark) .route [class~="bg-black/[0.04]"],
+:global(.dark) .route [class~="bg-black/[0.03]"] {
+  background-color: rgba(255, 255, 255, 0.055) !important;
+}
+
+:global(.dark) .route [class~="bg-[#EAEEFB]"],
+:global(.dark) .route [class~="bg-[#EAF0FF]"],
+:global(.dark) .route [class~="bg-[#F1F4FF]"] {
+  background-color: rgba(0, 43, 186, 0.22) !important;
+}
+
+:global(.dark) .route [class~="bg-[#FDF0E3]"] {
+  background-color: rgba(154, 81, 6, 0.18) !important;
+}
+
+:global(.dark) .route [class~="bg-[#E9F0EA]"] {
+  background-color: rgba(47, 107, 58, 0.2) !important;
+}
+
+:global(.dark) .route [class~="text-[#0B0C0E]"] {
+  color: #f4f5f7 !important;
+}
+
+:global(.dark) .route [class~="text-[#40454E]"] {
+  color: #d7d9de !important;
+}
+
+:global(.dark) .route [class~="text-[#6B7078]"] {
+  color: #aeb2ba !important;
+}
+
+:global(.dark) .route [class~="text-[#9AA0A8]"],
+:global(.dark) .route [class~="text-[#B1B5BB]"] {
+  color: #8c9199 !important;
+}
+
+:global(.dark) .route [class~="border-black/[0.055]"],
+:global(.dark) .route [class~="border-black/[0.05]"],
+:global(.dark) .route [class~="border-black/[0.06]"],
+:global(.dark) .route [class~="border-black/[0.07]"],
+:global(.dark) .route [class~="border-black/[0.08]"],
+:global(.dark) .route [class~="border-black/[0.09]"],
+:global(.dark) .route [class~="border-black/[0.10]"],
+:global(.dark) .route [class~="border-black/[0.12]"],
+:global(.dark) .route [class~="border-black/[0.14]"] {
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+:global(.dark) .route [class~="divide-black/[0.05]"] > :not([hidden]) ~ :not([hidden]),
+:global(.dark) .route [class~="divide-black/[0.06]"] > :not([hidden]) ~ :not([hidden]),
+:global(.dark) .route [class~="divide-black/[0.07]"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+
+:global(.dark) .route input:not([type="checkbox"]):not([type="radio"]),
+:global(.dark) .route textarea,
+:global(.dark) .route select {
+  background-color: #15161a;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f4f5f7;
+}
+
+:global(.dark) .route input::placeholder,
+:global(.dark) .route textarea::placeholder {
+  color: #8c9199;
+}
+
+:global(.dark) .route table,
+:global(.dark) .route thead,
+:global(.dark) .route tbody,
+:global(.dark) .route tr,
+:global(.dark) .route td,
+:global(.dark) .route th {
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+:global(.dark) .route [class~="shadow-[0_1px_2px_rgba(11,12,14,0.03)]"],
+:global(.dark) .route [class~="shadow-[0_1px_2px_rgba(11,12,14,0.02)]"] {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28) !important;
+}
+
+:global(.dark) .route [class~="hover:bg-[#F7F8FA]"]:hover,
+:global(.dark) .route [class~="hover:bg-[#FDFDFE]"]:hover {
+  background-color: rgba(255, 255, 255, 0.045) !important;
+}

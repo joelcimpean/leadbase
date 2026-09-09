@@ -26,11 +26,13 @@ export type ProposalPdfData = {
   accentColor?: string | null;
   logoUrl?: string | null;
   firstTimeClient: boolean;
+  language?: "de" | "en";
   issuedAt?: string | null;
   acceptedAt?: string | null;
   acceptedByName?: string | null;
   acceptanceStatement?: string | null;
   publicToken?: string | null;
+  proposalNumber?: string | null;
 };
 
 function escapeHtml(value: string) {
@@ -55,10 +57,13 @@ function safeColor(value?: string | null) {
 
 function formatMoney(
   value: number,
-  currency: string
+  currency: string,
+  language: "de" | "en"
 ) {
   return new Intl.NumberFormat(
-    "de-DE",
+    language === "de"
+      ? "de-DE"
+      : "en-GB",
     {
       style: "currency",
       currency,
@@ -71,7 +76,8 @@ function formatMoney(
 }
 
 function formatDate(
-  value?: string | null
+  value: string | null | undefined,
+  language: "de" | "en"
 ) {
   if (!value) {
     return "-";
@@ -92,7 +98,9 @@ function formatDate(
   }
 
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language === "de"
+      ? "de-DE"
+      : "en-GB",
     {
       day: "2-digit",
       month: "2-digit",
@@ -102,7 +110,8 @@ function formatDate(
 }
 
 function formatDateTime(
-  value?: string | null
+  value: string | null | undefined,
+  language: "de" | "en"
 ) {
   if (!value) {
     return "-";
@@ -119,7 +128,9 @@ function formatDateTime(
   }
 
   return new Intl.DateTimeFormat(
-    "de-DE",
+    language === "de"
+      ? "de-DE"
+      : "en-GB",
     {
       timeZone: "Europe/Berlin",
       day: "2-digit",
@@ -226,6 +237,80 @@ function customSectionHtml(content: string) {
 function buildProposalHtml(
   data: ProposalPdfData
 ) {
+  const language:
+    "de" | "en" =
+      data.language === "en"
+        ? "en"
+        : "de";
+
+  const isGerman =
+    language === "de";
+
+  const copy =
+    isGerman
+      ? {
+          proposal: "Projektangebot",
+          validUntil: "Gültig bis",
+          issued: "Ausgestellt",
+          proposalNo: "Angebot Nr.",
+          parties: "Parteien",
+          provider: "Anbieter",
+          client: "Kunde",
+          scope: "Leistungsumfang",
+          scopeFallback: "Individuell abgestimmter Projektumfang",
+          investment: "Investition & Zeitrahmen",
+          projectPrice: "Projektpreis",
+          projectPriceNote: "vereinbarter Projektumfang",
+          timeline: "Zeitrahmen",
+          individual: "Individuell",
+          fromProjectStart: "ab Projektstart",
+          validity: "Gültigkeit",
+          acceptBy: "Annahme bis zu diesem Datum",
+          guarantee: "Geld-zurück-Garantie für Erstkunden",
+          guaranteeBody: "Sollte die erste vorgestellte Designrichtung nicht zu den Erwartungen passen, kann das Projekt vor Beginn der Umsetzung beendet werden. Bereits gezahlte Website-Honorare werden in diesem Fall zurückerstattet, sofern die Rückmeldung innerhalb von fünf Werktagen nach Präsentation schriftlich erfolgt.",
+          guaranteeItems: [
+            "Die Garantie gilt nur, solange noch keine Designrichtung freigegeben oder umgesetzt wurde.",
+            "Geänderte Anforderungen, verspätete Kunden-Inputs und Drittanbieter-Kosten sind ausgenommen.",
+            "Bei einer Rückerstattung verbleiben die vorgestellten Konzepte beim Anbieter und dürfen nicht weiterverwendet werden.",
+          ],
+          acceptance: "Annahme",
+          acceptanceIntro: "Mit der Annahme bestätigt der Kunde den oben beschriebenen Projektumfang, den Preis und die aufgeführten Rahmenbedingungen.",
+          acceptedOnline: "Verbindlich online angenommen",
+          status: "Angebotsstatus",
+          notAccepted: "Noch nicht angenommen",
+        }
+      : {
+          proposal: "Project proposal",
+          validUntil: "Valid until",
+          issued: "Issued",
+          proposalNo: "Proposal no.",
+          parties: "Parties",
+          provider: "Provider",
+          client: "Client",
+          scope: "Scope",
+          scopeFallback: "Individually agreed project scope",
+          investment: "Investment & timeline",
+          projectPrice: "Project price",
+          projectPriceNote: "agreed project scope",
+          timeline: "Timeline",
+          individual: "Individual",
+          fromProjectStart: "from project start",
+          validity: "Validity",
+          acceptBy: "Acceptance by this date",
+          guarantee: "First-client money-back guarantee",
+          guaranteeBody: "If the first proposed design direction does not meet expectations, the project can be ended before implementation begins. Website fees already paid will be refunded if written feedback is provided within five business days of the presentation.",
+          guaranteeItems: [
+            "The guarantee applies while no design direction has been approved or implemented.",
+            "Changed requirements, delayed client inputs and third-party costs are excluded.",
+            "If refunded, the presented concepts remain with the provider and may not be reused.",
+          ],
+          acceptance: "Acceptance",
+          acceptanceIntro: "By accepting, the client confirms the project scope, price and terms stated above.",
+          acceptedOnline: "Accepted online",
+          status: "Proposal status",
+          notAccepted: "Not yet accepted",
+        };
+
   const accent =
     safeColor(
       data.accentColor
@@ -237,7 +322,8 @@ function buildProposalHtml(
     );
 
   const proposalNumber =
-    data.publicToken
+    data.proposalNumber?.trim() ||
+    (data.publicToken
       ? `ANG-${(
           data.issuedAt ??
           new Date().toISOString()
@@ -245,7 +331,9 @@ function buildProposalHtml(
           .replace(/[^a-z0-9]/gi, "")
           .slice(0, 6)
           .toUpperCase()}`
-      : "ANGEBOT";
+      : isGerman
+        ? "ANGEBOT"
+        : "PROPOSAL");
 
   const scopeHtml =
     data.scope.length > 0
@@ -261,7 +349,7 @@ function buildProposalHtml(
       : `
         <tr>
           <td class="check">✓</td>
-          <td>Individuell abgestimmter Projektumfang</td>
+          <td>${escapeHtml(copy.scopeFallback)}</td>
         </tr>`;
 
   const storedCustomSections =
@@ -272,7 +360,7 @@ function buildProposalHtml(
   const customSections =
     storedCustomSections.length > 0
       ? storedCustomSections
-      : defaultProposalCustomSections("de");
+      : defaultProposalCustomSections(language);
 
   const customSectionsHtml =
     customSections
@@ -296,14 +384,15 @@ function buildProposalHtml(
     data.firstTimeClient
       ? `
         <section>
-          <div class="section-title"><span>${guaranteeNumber}.</span> GELD-ZURÜCK-GARANTIE FÜR ERSTKUNDEN</div>
-          <p>
-            Sollte die erste vorgestellte Designrichtung nicht zu den Erwartungen passen, kann das Projekt vor Beginn der Umsetzung beendet werden. Bereits gezahlte Website-Honorare werden in diesem Fall zurückerstattet, sofern die Rückmeldung innerhalb von fünf Werktagen nach Präsentation schriftlich erfolgt.
-          </p>
+          <div class="section-title"><span>${guaranteeNumber}.</span> ${escapeHtml(copy.guarantee.toUpperCase())}</div>
+          <p>${escapeHtml(copy.guaranteeBody)}</p>
           <ul>
-            <li>Die Garantie gilt nur, solange noch keine Designrichtung freigegeben oder umgesetzt wurde.</li>
-            <li>Geänderte Anforderungen, verspätete Kunden-Inputs und Drittanbieter-Kosten sind ausgenommen.</li>
-            <li>Bei einer Rückerstattung verbleiben die vorgestellten Konzepte beim Anbieter und dürfen nicht weiterverwendet werden.</li>
+            ${copy.guaranteeItems
+              .map(
+                (item) =>
+                  `<li>${escapeHtml(item)}</li>`
+              )
+              .join("")}
           </ul>
         </section>`
       : "";
@@ -314,11 +403,11 @@ function buildProposalHtml(
         <div class="acceptance accepted">
           <div class="accepted-mark">✓</div>
           <div>
-            <strong>Verbindlich online angenommen</strong>
+            <strong>${escapeHtml(copy.acceptedOnline)}</strong>
             <div>${escapeHtml(
               data.acceptedByName?.trim()
-                ? `${data.acceptedByName.trim()} · ${formatDateTime(data.acceptedAt)}`
-                : formatDateTime(data.acceptedAt)
+                ? `${data.acceptedByName.trim()} · ${formatDateTime(data.acceptedAt, language)}`
+                : formatDateTime(data.acceptedAt, language)
             )}</div>
             ${
               data.acceptanceStatement?.trim()
@@ -331,12 +420,12 @@ function buildProposalHtml(
         </div>`
       : `
         <div class="acceptance">
-          <strong>Angebotsstatus</strong>
-          <div>Noch nicht angenommen</div>
+          <strong>${escapeHtml(copy.status)}</strong>
+          <div>${escapeHtml(copy.notAccepted)}</div>
         </div>`;
 
   return `<!doctype html>
-<html lang="de">
+<html lang="${language}">
 <head>
   <meta charset="utf-8">
   <style>
@@ -599,21 +688,21 @@ function buildProposalHtml(
         : `<div class="provider-name">Joel Cimpean</div>`}
     </div>
     <div>
-      <div class="eyebrow">Gültig bis</div>
-      <div class="meta-value">${escapeHtml(formatDate(data.validUntil))}</div>
+      <div class="eyebrow">${escapeHtml(copy.validUntil)}</div>
+      <div class="meta-value">${escapeHtml(formatDate(data.validUntil, language))}</div>
     </div>
     <div>
-      <div class="eyebrow">Ausgestellt</div>
-      <div class="meta-value">${escapeHtml(formatDate(data.issuedAt ?? new Date().toISOString()))}</div>
+      <div class="eyebrow">${escapeHtml(copy.issued)}</div>
+      <div class="meta-value">${escapeHtml(formatDate(data.issuedAt ?? new Date().toISOString(), language))}</div>
     </div>
     <div>
-      <div class="eyebrow">Angebot Nr.</div>
+      <div class="eyebrow">${escapeHtml(copy.proposalNo)}</div>
       <div class="meta-value">${escapeHtml(proposalNumber)}</div>
     </div>
   </div>
 
   <div class="hero">
-    <div class="accent-eyebrow">Projektangebot</div>
+    <div class="accent-eyebrow">${escapeHtml(copy.proposal)}</div>
     <h1>${escapeHtml(data.title)}</h1>
     ${data.introText
       ? `<div class="intro">${paragraphHtml(data.introText)}</div>`
@@ -621,11 +710,11 @@ function buildProposalHtml(
   </div>
 
   <section>
-    <div class="section-title"><span>01.</span> PARTEIEN</div>
+    <div class="section-title"><span>01.</span> ${escapeHtml(copy.parties.toUpperCase())}</div>
     <div class="party-grid">
-      <div class="party-label">Anbieter</div>
+      <div class="party-label">${escapeHtml(copy.provider)}</div>
       <div class="party-value">Joel Cimpean · Webdesign & Webentwicklung · hello@joelcimpean.com</div>
-      <div class="party-label">Kunde</div>
+      <div class="party-label">${escapeHtml(copy.client)}</div>
       <div class="party-value">
         ${escapeHtml(data.clientName)}
         ${data.contactName ? `<br><span class="muted">${escapeHtml(data.contactName)}</span>` : ""}
@@ -635,27 +724,27 @@ function buildProposalHtml(
   </section>
 
   <section>
-    <div class="section-title"><span>02.</span> LEISTUNGSUMFANG</div>
+    <div class="section-title"><span>02.</span> ${escapeHtml(copy.scope.toUpperCase())}</div>
     <table class="scope-table">${scopeHtml}</table>
   </section>
 
   <section>
-    <div class="section-title"><span>03.</span> INVESTITION & ZEITRAHMEN</div>
+    <div class="section-title"><span>03.</span> ${escapeHtml(copy.investment.toUpperCase())}</div>
     <div class="metric-grid">
       <div class="metric">
-        <div class="metric-label">Projektpreis</div>
-        <div class="metric-value">${escapeHtml(formatMoney(data.price, data.currency))}</div>
-        <div class="metric-note">vereinbarter Projektumfang</div>
+        <div class="metric-label">${escapeHtml(copy.projectPrice)}</div>
+        <div class="metric-value">${escapeHtml(formatMoney(data.price, data.currency, language))}</div>
+        <div class="metric-note">${escapeHtml(copy.projectPriceNote)}</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Zeitrahmen</div>
-        <div class="metric-value" style="font-size:12pt">${escapeHtml(data.timelineText?.trim() || "Individuell")}</div>
-        <div class="metric-note">ab Projektstart</div>
+        <div class="metric-label">${escapeHtml(copy.timeline)}</div>
+        <div class="metric-value" style="font-size:12pt">${escapeHtml(data.timelineText?.trim() || copy.individual)}</div>
+        <div class="metric-note">${escapeHtml(copy.fromProjectStart)}</div>
       </div>
       <div class="metric">
-        <div class="metric-label">Gültigkeit</div>
-        <div class="metric-value" style="font-size:12pt">${escapeHtml(formatDate(data.validUntil))}</div>
-        <div class="metric-note">Annahme bis zu diesem Datum</div>
+        <div class="metric-label">${escapeHtml(copy.validity)}</div>
+        <div class="metric-value" style="font-size:12pt">${escapeHtml(formatDate(data.validUntil, language))}</div>
+        <div class="metric-note">${escapeHtml(copy.acceptBy)}</div>
       </div>
     </div>
     ${data.notes ? `<div class="note-box">${paragraphHtml(data.notes)}</div>` : ""}
@@ -667,8 +756,8 @@ function buildProposalHtml(
   ${guaranteeHtml}
 
   <section>
-    <div class="section-title"><span>${acceptanceNumber}.</span> ANNAHME</div>
-    <p>Mit der Annahme bestätigt der Kunde den oben beschriebenen Projektumfang, den Preis und die aufgeführten Rahmenbedingungen.</p>
+    <div class="section-title"><span>${acceptanceNumber}.</span> ${escapeHtml(copy.acceptance.toUpperCase())}</div>
+    <p>${escapeHtml(copy.acceptanceIntro)}</p>
     ${acceptanceHtml}
   </section>
 
@@ -679,7 +768,7 @@ function buildProposalHtml(
     </div>
     <div style="text-align:right">
       ${escapeHtml(proposalNumber)}<br>
-      ${escapeHtml(formatMoney(data.price, data.currency))}
+      ${escapeHtml(formatMoney(data.price, data.currency, language))}
     </div>
   </div>
 </body>
@@ -695,7 +784,7 @@ export async function buildProposalPdf(
   try {
     const context =
       await browser.newContext({
-        locale: "de-DE",
+        locale: data.language === "en" ? "en-GB" : "de-DE",
         serviceWorkers: "block",
       });
 
@@ -732,7 +821,8 @@ export async function buildProposalPdf(
 }
 
 export function proposalPdfFilename(
-  clientName: string
+  clientName: string,
+  language: "de" | "en" = "de"
 ) {
   const safe = clientName
     .normalize("NFKD")
@@ -741,5 +831,89 @@ export function proposalPdfFilename(
     .replace(/^-|-$/g, "")
     .slice(0, 80);
 
-  return `Angebot-${safe || "Kunde"}.pdf`;
+  return language === "de"
+    ? `Angebot-${safe || "Kunde"}.pdf`
+    : `Proposal-${safe || "Client"}.pdf`;
+}
+
+/**
+ * Generates the PDF from the real public proposal page instead of maintaining
+ * a second, simplified PDF template. This guarantees that Signature, Minimal,
+ * Kontur, Kanzlei, Prisma, Atelier and Kompakt use the exact selected design.
+ */
+export async function buildProposalPdfFromPublicProposal({
+  origin,
+  token,
+  language = "de",
+}: {
+  origin: string;
+  token: string;
+  language?: "de" | "en";
+}) {
+  const browser = await launchServerBrowser();
+
+  try {
+    const context = await browser.newContext({
+      locale: language === "en" ? "en-GB" : "de-DE",
+      serviceWorkers: "block",
+    });
+
+    try {
+      const page = await context.newPage();
+      const base = origin.replace(/\/+$/, "");
+      const publicUrl = `${base}/proposal/${encodeURIComponent(token)}?pdf=1`;
+
+      const response = await page.goto(publicUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000,
+      });
+
+      if (!response || !response.ok()) {
+        throw new Error(
+          `Public proposal page returned ${response?.status() ?? "no response"}.`,
+        );
+      }
+
+      await page.emulateMedia({ media: "print" });
+
+      await page.evaluate(async () => {
+        try {
+          await Promise.race([
+            document.fonts.ready,
+            new Promise((resolve) => setTimeout(resolve, 8_000)),
+          ]);
+        } catch {
+          // The PDF still renders with fallbacks if a remote font cannot load.
+        }
+      });
+
+      await page.addStyleTag({
+        content: `
+          @page { size: A4 portrait; margin: 0 !important; }
+          html, body { margin: 0 !important; padding: 0 !important; }
+          *, *::before, *::after {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          [data-picker], [data-noprint], .lb-proposal-print-hide {
+            display: none !important;
+          }
+        `,
+      });
+
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        preferCSSPageSize: true,
+        displayHeaderFooter: false,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      });
+
+      return Buffer.from(pdf);
+    } finally {
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+  }
 }

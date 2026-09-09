@@ -1,14 +1,13 @@
 "use client";
 
 import {
-  AlignJustify,
-  List,
-  Search,
+  Check,
   Rows3,
+  Search,
 } from "lucide-react";
+import Link from "next/link";
 
 import {
-  type ReactNode,
   useEffect,
   useMemo,
   useState,
@@ -19,14 +18,11 @@ import {
   type InboxConversationListItem,
   type InboxDensity,
 } from "./conversation-list";
+import styles from "./inbox-precision.module.css";
 
 import {
   useLanguage,
 } from "@/components/language-provider";
-
-import {
-  Input,
-} from "@/components/ui/input";
 
 /* =========================================================
    TYPES
@@ -36,6 +32,11 @@ type InboxListPaneProps = {
   conversations: InboxConversationListItem[];
   selectedLeadId?: string | null;
   view: "inbox" | "archived" | "trash";
+  counts: {
+    inbox: number;
+    archived: number;
+    trash: number;
+  };
   initialQuery?: string;
   searchPlaceholder: string;
 };
@@ -92,31 +93,21 @@ export function InboxListPane({
   conversations,
   selectedLeadId = null,
   view,
+  counts,
   initialQuery = "",
   searchPlaceholder,
 }: InboxListPaneProps) {
-  const {
-    language,
-  } =
+  const { language } =
     useLanguage();
 
   const de =
-    language ===
-    "de";
+    language === "de";
 
-  const [
-    query,
-    setQuery,
-  ] = useState(
-    initialQuery
-  );
+  const [query, setQuery] =
+    useState(initialQuery);
 
-  const [
-    density,
-    setDensity,
-  ] = useState<InboxDensity>(
-    "compact"
-  );
+  const [density, setDensity] =
+    useState<InboxDensity>("compact");
 
   useEffect(() => {
     const stored =
@@ -124,48 +115,41 @@ export function InboxListPane({
         DENSITY_STORAGE_KEY
       );
 
-    if (
-      isInboxDensity(
-        stored
-      )
-    ) {
-      setDensity(
-        stored
-      );
+    if (isInboxDensity(stored)) {
+      setDensity(stored);
     }
   }, []);
 
   function selectDensity(
     next: InboxDensity
   ) {
-    setDensity(
-      next
-    );
-
+    setDensity(next);
     window.localStorage.setItem(
       DENSITY_STORAGE_KEY,
       next
     );
   }
 
+  function cycleDensity() {
+    selectDensity(
+      density === "compact"
+        ? "minimal"
+        : density === "minimal"
+          ? "comfortable"
+          : "compact"
+    );
+  }
+
   function changeQuery(
     value: string
   ) {
-    setQuery(
-      value
-    );
+    setQuery(value);
 
-    /*
-     * Keep the URL useful without triggering a Next.js
-     * navigation/server render for every keystroke.
-     */
     const url = new URL(
       window.location.href
     );
 
-    if (
-      value.trim()
-    ) {
+    if (value.trim()) {
       url.searchParams.set(
         "q",
         value.trim()
@@ -184,169 +168,161 @@ export function InboxListPane({
   }
 
   const normalizedQuery =
-    query
-      .trim()
-      .toLowerCase();
+    query.trim().toLowerCase();
 
-  const filtered =
-    useMemo(
-      () => {
-        const source =
-          normalizedQuery
-            ? conversations.filter(
-                (
-                  conversation
-                ) =>
-                  [
-                    conversation.company,
-                    conversation.contact,
-                    conversation.email,
-                    conversation.subject,
-                    conversation.preview,
-                  ]
-                    .filter(
-                      Boolean
-                    )
-                    .join(" ")
-                    .toLowerCase()
-                    .includes(
-                      normalizedQuery
-                    )
-              )
-            : conversations;
+  const filtered = useMemo(
+    () => {
+      const source =
+        normalizedQuery
+          ? conversations.filter(
+              (conversation) =>
+                [
+                  conversation.company,
+                  conversation.contact,
+                  conversation.email,
+                  conversation.subject,
+                  conversation.preview,
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+                  .toLowerCase()
+                  .includes(normalizedQuery)
+            )
+          : conversations;
 
-        return source.map(
-          (
-            conversation
-          ) => ({
-            ...conversation,
-            href:
-              typeof window ===
-              "undefined"
-                ? conversation.href
-                : updateHrefQuery(
-                    conversation.href,
-                    query.trim()
-                  ),
-          })
-        );
-      },
-      [
-        conversations,
-        normalizedQuery,
-        query,
-      ]
-    );
+      return source.map(
+        (conversation) => ({
+          ...conversation,
+          href:
+            typeof window === "undefined"
+              ? conversation.href
+              : updateHrefQuery(
+                  conversation.href,
+                  query.trim()
+                ),
+        })
+      );
+    },
+    [
+      conversations,
+      normalizedQuery,
+      query,
+    ]
+  );
+
+  const unread =
+    filtered.filter(
+      (conversation) => conversation.unread
+    ).length;
+
+  const densityLabel =
+    density === "compact"
+      ? de
+        ? "Kompakt"
+        : "Compact"
+      : density === "comfortable"
+        ? de
+          ? "Komfortabel"
+          : "Comfortable"
+        : "Minimal";
 
   return (
     <>
-      <div className="border-b p-3 sm:p-4">
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <nav
+        className={styles.folderTabs}
+        aria-label={de ? "Postfach" : "Mailbox"}
+      >
+        <div className={styles.folderTabsInner}>
+          <MailboxTab
+            href="/inbox"
+            active={view === "inbox"}
+            label={de ? "Posteingang" : "Inbox"}
+            count={counts.inbox}
+          />
+          <MailboxTab
+            href="/inbox?view=archived"
+            active={view === "archived"}
+            label={de ? "Archiviert" : "Archived"}
+            count={counts.archived}
+          />
+          <MailboxTab
+            href="/inbox?view=trash"
+            active={view === "trash"}
+            label={de ? "Papierkorb" : "Trash"}
+            count={counts.trash}
+          />
+        </div>
+      </nav>
 
-            <Input
+      <div className={styles.listHeader}>
+        <div className={styles.searchRow}>
+          <label className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--lb-text-muted)]" />
+            <input
               value={query}
               onChange={(event) =>
-                changeQuery(
-                  event.target.value
-                )
+                changeQuery(event.target.value)
               }
-              placeholder={
-                searchPlaceholder
-              }
-              className="pl-9"
+              placeholder={searchPlaceholder}
+              className="h-[30px] 2xl:h-[34px] w-full rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface-subtle)] pl-8 2xl:pl-8.5 pr-2.5 text-[12px] 2xl:text-[13px] text-[var(--lb-text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--lb-text-muted)] focus:border-[#002BBA]/35 focus:bg-[var(--lb-surface)] focus:shadow-[0_0_0_3px_rgba(0,43,186,0.07)]"
               autoComplete="off"
               spellCheck={false}
             />
-          </div>
+          </label>
 
-          <div className="hidden shrink-0 items-center rounded-xl border bg-background/80 p-1 shadow-sm sm:flex">
-            <DensityButton
-              active={
-                density ===
-                "comfortable"
-              }
-              label={de ? "Komfortabel" : "Comfortable"}
-              onClick={() =>
-                selectDensity(
-                  "comfortable"
-                )
-              }
-            >
-              <Rows3 className="size-4" />
-            </DensityButton>
-
-            <DensityButton
-              active={
-                density ===
-                "compact"
-              }
-              label={de ? "Kompakt" : "Compact"}
-              onClick={() =>
-                selectDensity(
-                  "compact"
-                )
-              }
-            >
-              <List className="size-4" />
-            </DensityButton>
-
-            <DensityButton
-              active={
-                density ===
-                "minimal"
-              }
-              label="Minimal"
-              onClick={() =>
-                selectDensity(
-                  "minimal"
-                )
-              }
-            >
-              <AlignJustify className="size-4" />
-            </DensityButton>
-          </div>
-        </div>
-
-        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-          <span>
-            {filtered.length}{" "}
-            {filtered.length === 1
-              ? de
-                ? "Konversation"
-                : "conversation"
-              : de
-                ? "Konversationen"
-                : "conversations"}
-          </span>
+          <button
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(
+                new Event("leadbase:inbox-select")
+              )
+            }
+            className="inline-flex h-[30px] 2xl:h-[34px] shrink-0 items-center gap-1.5 rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 2xl:px-3 text-[11.5px] 2xl:text-[12.5px] font-medium text-[var(--lb-text-secondary)] transition-colors hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
+          >
+            <Check className="size-3" />
+            {de ? "Auswählen" : "Select"}
+          </button>
 
           {normalizedQuery ? (
             <button
               type="button"
-              onClick={() =>
-                changeQuery("")
-              }
-              className="font-medium text-primary transition-colors hover:text-primary/80"
+              onClick={() => changeQuery("")}
+              className="h-[30px] 2xl:h-[34px] shrink-0 rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 2xl:px-3 text-[11.5px] 2xl:text-[12.5px] font-medium text-[var(--lb-text-secondary)] hover:border-[var(--lb-border-strong)]"
             >
-              {de
-                ? "Suche löschen"
-                : "Clear search"}
+              {de ? "Leeren" : "Clear"}
             </button>
           ) : null}
         </div>
+
+        <div className={styles.listMetaRow}>
+          <span>
+            {filtered.length} {de ? "Konversationen" : "conversations"}
+            {unread > 0 ? ` · ${unread} ${de ? "ungelesen" : "unread"}` : ""}
+          </span>
+
+          <button
+            type="button"
+            onClick={cycleDensity}
+            className={styles.densityButton}
+            title={
+              de
+                ? "Darstellungsdichte wechseln"
+                : "Change display density"
+            }
+          >
+            <Rows3 className="size-3" />
+            {densityLabel}
+          </button>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {filtered.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <Search className="mx-auto size-5 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">
-              {de
-                ? "Keine Treffer"
-                : "No results"}
+          <div className="px-5 py-10 text-left">
+            <p className="text-[13px] font-medium text-[var(--lb-text)]">
+              {de ? "Keine Treffer" : "No results"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-[11.5px] leading-5 text-[var(--lb-text-muted)]">
               {de
                 ? "Suche nach Firma, Kontakt, Betreff oder Inhalt."
                 : "Search company, contact, subject or message content."}
@@ -354,12 +330,8 @@ export function InboxListPane({
           </div>
         ) : (
           <ConversationList
-            conversations={
-              filtered
-            }
-            selectedLeadId={
-              selectedLeadId
-            }
+            conversations={filtered}
+            selectedLeadId={selectedLeadId}
             view={view}
             density={density}
           />
@@ -369,31 +341,27 @@ export function InboxListPane({
   );
 }
 
-function DensityButton({
+function MailboxTab({
+  href,
   active,
   label,
-  onClick,
-  children,
+  count,
 }: {
+  href: string;
   active: boolean;
   label: string;
-  onClick: () => void;
-  children: ReactNode;
+  count: number;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`inline-flex size-8 items-center justify-center rounded-lg transition-colors ${
-        active
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+    <Link
+      href={href}
+      className={`${styles.folderTab} ${
+        active ? styles.folderTabActive : ""
       }`}
+      aria-current={active ? "page" : undefined}
     >
-      {children}
-    </button>
+      <span className="truncate">{label}</span>
+      <span className="shrink-0 font-mono text-[9.5px] 2xl:text-[10.5px]">{count}</span>
+    </Link>
   );
 }

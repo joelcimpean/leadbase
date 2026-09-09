@@ -18,6 +18,7 @@ import {
 
 import {
   sendGmailMessage,
+  sendGmailThreadFollowUp,
 } from "@/lib/gmail-send";
 
 import {
@@ -41,6 +42,11 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+
+import {
+  assertAiUsageAvailable,
+  recordAiUsage,
+} from "@/lib/ai-usage";
 
 /* =========================================================
    CONFIG
@@ -1588,6 +1594,8 @@ async function createLeadOutreachDraft({
       visual?.outreachAngle
     );
 
+  await assertAiUsageAvailable(userId);
+
   const generated =
     await generateOutreachDraft({
       companyName:
@@ -1749,6 +1757,15 @@ async function createLeadOutreachDraft({
       "Could not save outreach draft."
     );
   }
+
+  await recordAiUsage({
+    userId,
+    feature: "outreach_generation",
+    model: generated.model,
+    usage: generated.usage,
+    requestKey: `outreach-draft:${draft.id}`,
+    metadata: { leadId: lead.id, draftId: draft.id },
+  });
 
   const earlyStatuses =
     new Set([
@@ -4070,7 +4087,9 @@ export async function sendFollowUpOutreachDraft(
         status,
         subject,
         follow_up_body,
-        follow_up_sent_at
+        follow_up_sent_at,
+        gmail_message_id,
+        gmail_thread_id
       `)
       .eq(
         "id",
@@ -4362,22 +4381,43 @@ export async function sendFollowUpOutreachDraft(
 
   try {
     gmailResult =
-      await sendGmailMessage({
-        fromEmail:
-          gmailConnection.email_address,
+      draft.gmail_message_id &&
+      draft.gmail_thread_id
+        ? await sendGmailThreadFollowUp({
+            fromEmail:
+              gmailConnection.email_address,
 
-        toEmail:
-          recipientEmail,
+            toEmail:
+              recipientEmail,
 
-        subject:
-          draft.subject,
+            body:
+              draft.follow_up_body,
 
-        body:
-          draft.follow_up_body,
+            encryptedRefreshToken:
+              gmailConnection.encrypted_refresh_token,
 
-        encryptedRefreshToken:
-          gmailConnection.encrypted_refresh_token,
-      });
+            replyToGmailMessageId:
+              draft.gmail_message_id,
+
+            gmailThreadId:
+              draft.gmail_thread_id,
+          })
+        : await sendGmailMessage({
+            fromEmail:
+              gmailConnection.email_address,
+
+            toEmail:
+              recipientEmail,
+
+            subject:
+              draft.subject,
+
+            body:
+              draft.follow_up_body,
+
+            encryptedRefreshToken:
+              gmailConnection.encrypted_refresh_token,
+          });
   } catch (
     error
   ) {

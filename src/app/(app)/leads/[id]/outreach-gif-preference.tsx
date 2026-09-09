@@ -185,7 +185,7 @@ export function OutreachGifPreference({
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                 enabled
-                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  ? "bg-[#EAEEFB] text-[#002BBA] dark:bg-[#002BBA]/20 dark:text-[#8EA6FF]"
                   : "bg-muted text-muted-foreground"
               }`}
             >
@@ -217,7 +217,7 @@ export function OutreachGifPreference({
         }
         className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-60 ${
           enabled
-            ? "border-emerald-500 bg-emerald-500"
+            ? "border-[#002BBA] bg-[#002BBA]"
             : "border-border bg-muted"
         }`}
       >

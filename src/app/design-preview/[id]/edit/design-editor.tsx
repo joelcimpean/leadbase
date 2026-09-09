@@ -181,6 +181,21 @@ type RegisteredTarget = {
 
   handleMouseLeave:
     () => void;
+
+  handlePointerDown:
+    (
+      event: Event
+    ) => void;
+
+  handlePointerMove:
+    (
+      event: Event
+    ) => void;
+
+  handlePointerUp:
+    (
+      event: Event
+    ) => void;
 };
 
 /* =========================================================
@@ -1582,6 +1597,297 @@ export function DesignEditor({
               );
             };
 
+          let dragPointerId:
+            number | null =
+            null;
+
+          let dragStartClientX =
+            0;
+
+          let dragStartClientY =
+            0;
+
+          let dragStartX =
+            Number(
+              element.getAttribute(
+                "data-leadbase-editor-drag-x"
+              ) ??
+              0
+            ) ||
+            0;
+
+          let dragStartY =
+            Number(
+              element.getAttribute(
+                "data-leadbase-editor-drag-y"
+              ) ??
+              0
+            ) ||
+            0;
+
+          let dragging =
+            false;
+
+          const handlePointerDown =
+            (
+              event:
+                Event
+            ) => {
+              const pointerEvent =
+                event as PointerEvent;
+
+              if (
+                typeof pointerEvent.pointerId !==
+                  "number" ||
+                pointerEvent.button !==
+                  0
+              ) {
+                return;
+              }
+
+              event.preventDefault();
+              event.stopPropagation();
+
+              clearSelectedVisuals();
+
+              element.setAttribute(
+                "data-leadbase-editor-selected",
+                "true"
+              );
+
+              const currentUrl =
+                element.getAttribute(
+                  "data-leadbase-editor-url"
+                ) ??
+                url;
+
+              setSelectedTargetId(
+                id
+              );
+
+              populateSelectionPanel({
+                element,
+                kind,
+                imageUrl:
+                  currentUrl,
+              });
+
+              dragPointerId =
+                pointerEvent.pointerId;
+
+              dragStartClientX =
+                pointerEvent.clientX;
+
+              dragStartClientY =
+                pointerEvent.clientY;
+
+              dragStartX =
+                Number(
+                  element.getAttribute(
+                    "data-leadbase-editor-drag-x"
+                  ) ??
+                  0
+                ) ||
+                0;
+
+              dragStartY =
+                Number(
+                  element.getAttribute(
+                    "data-leadbase-editor-drag-y"
+                  ) ??
+                  0
+                ) ||
+                0;
+
+              dragging =
+                false;
+
+              try {
+                (
+                  element as
+                    HTMLElement
+                ).setPointerCapture(
+                  pointerEvent.pointerId
+                );
+              } catch {
+                // Pointer capture is optional inside the editor iframe.
+              }
+            };
+
+          const handlePointerMove =
+            (
+              event:
+                Event
+            ) => {
+              const pointerEvent =
+                event as PointerEvent;
+
+              if (
+                typeof pointerEvent.pointerId !==
+                  "number" ||
+                dragPointerId ===
+                  null ||
+                pointerEvent.pointerId !==
+                  dragPointerId
+              ) {
+                return;
+              }
+
+              const deltaX =
+                pointerEvent.clientX -
+                dragStartClientX;
+
+              const deltaY =
+                pointerEvent.clientY -
+                dragStartClientY;
+
+              if (
+                !dragging &&
+                Math.hypot(
+                  deltaX,
+                  deltaY
+                ) <
+                  4
+              ) {
+                return;
+              }
+
+              dragging =
+                true;
+
+              event.preventDefault();
+              event.stopPropagation();
+
+              const nextX =
+                Math.round(
+                  dragStartX +
+                  deltaX
+                );
+
+              const nextY =
+                Math.round(
+                  dragStartY +
+                  deltaY
+                );
+
+              const htmlElement =
+                element as
+                  HTMLElement;
+
+              htmlElement.style.translate =
+                `${nextX}px ${nextY}px`;
+
+              htmlElement.setAttribute(
+                "data-leadbase-editor-drag-x",
+                String(
+                  nextX
+                )
+              );
+
+              htmlElement.setAttribute(
+                "data-leadbase-editor-drag-y",
+                String(
+                  nextY
+                )
+              );
+
+              if (
+                activeWindow
+                  .getComputedStyle(
+                    htmlElement
+                  )
+                  .zIndex ===
+                "auto"
+              ) {
+                htmlElement.style.zIndex =
+                  "1";
+              }
+
+              positionHoverLabel(
+                element
+              );
+
+              setDirty(
+                true
+              );
+
+              setSaved(
+                false
+              );
+            };
+
+          const handlePointerUp =
+            (
+              event:
+                Event
+            ) => {
+              const pointerEvent =
+                event as PointerEvent;
+
+              if (
+                typeof pointerEvent.pointerId !==
+                  "number" ||
+                dragPointerId ===
+                  null ||
+                pointerEvent.pointerId !==
+                  dragPointerId
+              ) {
+                return;
+              }
+
+              if (
+                dragging
+              ) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                setDirty(
+                  true
+                );
+
+                setSaved(
+                  false
+                );
+              }
+
+              try {
+                (
+                  element as
+                    HTMLElement
+                ).releasePointerCapture(
+                  pointerEvent.pointerId
+                );
+              } catch {
+                // Pointer capture may already be released.
+              }
+
+              dragPointerId =
+                null;
+
+              dragging =
+                false;
+            };
+
+          element.addEventListener(
+            "pointerdown",
+            handlePointerDown
+          );
+
+          element.addEventListener(
+            "pointermove",
+            handlePointerMove
+          );
+
+          element.addEventListener(
+            "pointerup",
+            handlePointerUp
+          );
+
+          element.addEventListener(
+            "pointercancel",
+            handlePointerUp
+          );
+
           element.addEventListener(
             "click",
             handleClick
@@ -1606,6 +1912,9 @@ export function DesignEditor({
               handleClick,
               handleMouseEnter,
               handleMouseLeave,
+              handlePointerDown,
+              handlePointerMove,
+              handlePointerUp,
             }
           );
         }
@@ -1725,12 +2034,35 @@ export function DesignEditor({
             const element of
               textElements
           ) {
+            const hasOnlyInlineChildren =
+              Array.from(
+                element.children
+              ).every(
+                (
+                  child
+                ) =>
+                  ![
+                    "DIV",
+                    "SECTION",
+                    "ARTICLE",
+                    "HEADER",
+                    "FOOTER",
+                    "NAV",
+                    "MAIN",
+                    "FIGURE",
+                    "UL",
+                    "OL",
+                    "TABLE",
+                  ].includes(
+                    child.tagName
+                  )
+              );
+
             if (
               registered.has(
                 element
               ) ||
-              element.children.length >
-                0
+              !hasOnlyInlineChildren
             ) {
               continue;
             }
@@ -1907,6 +2239,26 @@ export function DesignEditor({
               target.element.removeEventListener(
                 "mouseleave",
                 target.handleMouseLeave
+              );
+
+              target.element.removeEventListener(
+                "pointerdown",
+                target.handlePointerDown
+              );
+
+              target.element.removeEventListener(
+                "pointermove",
+                target.handlePointerMove
+              );
+
+              target.element.removeEventListener(
+                "pointerup",
+                target.handlePointerUp
+              );
+
+              target.element.removeEventListener(
+                "pointercancel",
+                target.handlePointerUp
               );
             }
           };
@@ -2354,8 +2706,223 @@ export function DesignEditor({
     );
 
   /* =======================================================
+     INSERT NEW TEXT
+  ======================================================= */
+
+  function insertTextAfterSelection() {
+    const frameDocument =
+      iframeRef.current
+        ?.contentDocument;
+
+    const frameWindow =
+      iframeRef.current
+        ?.contentWindow;
+
+    if (
+      !frameDocument ||
+      !frameWindow
+    ) {
+      setError(
+        "Editor-Frame ist noch nicht bereit."
+      );
+      return;
+    }
+
+    const selected =
+      getSelectedElement();
+
+    const parent =
+      selected?.parentElement ??
+      frameDocument.body;
+
+    const text =
+      frameDocument.createElement(
+        "p"
+      );
+
+    text.textContent =
+      "Neuer Text";
+    text.style.position =
+      "relative";
+    text.style.zIndex =
+      "2";
+    text.style.maxWidth =
+      "min(680px, 90vw)";
+    text.style.margin =
+      "16px 0";
+    text.style.font =
+      "inherit";
+    text.style.color =
+      "inherit";
+    text.setAttribute(
+      "data-leadbase-editor-added",
+      "text"
+    );
+
+    if (
+      selected &&
+      selected.parentElement ===
+        parent
+    ) {
+      parent.insertBefore(
+        text,
+        selected.nextSibling
+      );
+    } else {
+      parent.appendChild(
+        text
+      );
+    }
+
+    setDirty(
+      true
+    );
+    setSaved(
+      false
+    );
+    setError(
+      null
+    );
+
+    frameWindow.setTimeout(
+      () => {
+        text.dispatchEvent(
+          new MouseEvent(
+            "click",
+            {
+              bubbles: true,
+              cancelable: true,
+              view: frameWindow,
+            }
+          )
+        );
+      },
+      100
+    );
+  }
+
+  /* =======================================================
      EDIT TEXT
   ======================================================= */
+
+  function repairSelectedTextVisibility() {
+    if (
+      selectedTargetKind !==
+        "text"
+    ) {
+      return;
+    }
+
+    const target =
+      getSelectedElement() as
+        HTMLElement | null;
+
+    if (!target) {
+      return;
+    }
+
+    target.style.height =
+      "auto";
+    target.style.maxHeight =
+      "none";
+    target.style.overflow =
+      "visible";
+    target.style.whiteSpace =
+      "normal";
+
+    const computed =
+      target.ownerDocument
+        ?.defaultView
+        ?.getComputedStyle(
+          target
+        );
+
+    if (
+      !computed ||
+      computed.zIndex ===
+        "auto"
+    ) {
+      target.style.position =
+        computed?.position ===
+          "static"
+          ? "relative"
+          : target.style.position;
+      target.style.zIndex =
+        "5";
+    }
+
+    let parent =
+      target.parentElement;
+
+    for (
+      let depth = 0;
+      parent &&
+      depth < 3;
+      depth += 1
+    ) {
+      const parentComputed =
+        parent.ownerDocument
+          ?.defaultView
+          ?.getComputedStyle(
+            parent
+          );
+
+      if (
+        parentComputed &&
+        [
+          "hidden",
+          "clip",
+        ].includes(
+          parentComputed.overflow
+        )
+      ) {
+        parent.style.overflow =
+          "visible";
+      }
+
+      if (
+        parentComputed &&
+        [
+          "hidden",
+          "clip",
+        ].includes(
+          parentComputed.overflowY
+        )
+      ) {
+        parent.style.overflowY =
+          "visible";
+      }
+
+      if (
+        parentComputed &&
+        parentComputed.height !==
+          "auto"
+      ) {
+        parent.style.minHeight =
+          "fit-content";
+      }
+
+      parent =
+        parent.parentElement;
+    }
+
+    setDirty(
+      true
+    );
+    setSaved(
+      false
+    );
+    setError(
+      null
+    );
+
+    populateSelectionPanel({
+      element:
+        target,
+      kind:
+        "text",
+    });
+  }
 
   function applySelectedText() {
     if (
@@ -2815,6 +3382,64 @@ export function DesignEditor({
       null
     );
   }
+
+  /* =======================================================
+     DELETE KEY SHORTCUT
+  ======================================================= */
+
+  useEffect(
+    () => {
+      if (
+        !selectedTargetId ||
+        !selectedTargetKind
+      ) {
+        return;
+      }
+
+      function handleDeleteKey(
+        event: KeyboardEvent
+      ) {
+        if (
+          event.key !== "Delete" &&
+          event.key !== "Backspace"
+        ) {
+          return;
+        }
+
+        const active =
+          document.activeElement;
+
+        if (
+          active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement ||
+          active instanceof HTMLSelectElement ||
+          (active instanceof HTMLElement &&
+            active.isContentEditable)
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        removeSelectedElement();
+      }
+
+      window.addEventListener(
+        "keydown",
+        handleDeleteKey
+      );
+
+      return () => {
+        window.removeEventListener(
+          "keydown",
+          handleDeleteKey
+        );
+      };
+    },
+    [
+      selectedTargetId,
+      selectedTargetKind,
+    ]
+  );
 
   /* =======================================================
      REMOVE
@@ -3638,7 +4263,13 @@ ${clone.outerHTML}`;
               srcDoc={
                 savedHtml
               }
-              sandbox="allow-same-origin"
+              sandbox={
+                savedHtml.includes(
+                  'data-leadbase-map-embed="true"'
+                )
+                  ? "allow-same-origin allow-scripts"
+                  : "allow-same-origin"
+              }
               referrerPolicy="no-referrer"
               onLoad={
                 handleFrameLoad
@@ -3657,7 +4288,8 @@ ${clone.outerHTML}`;
 
               <p className="mt-1.5 text-xs leading-5 text-white/45">
                 Klicke ein Bild oder einen Text direkt im Design an.
-                Du kannst Inhalte ändern, vergrößern, Ebenen anpassen,
+                Ziehe ausgewählte Bilder oder Texte frei an die gewünschte Position.
+                Du kannst Inhalte ändern, Ebenen/Z-Index anpassen,
                 Overflow freigeben, neue Bilder einfügen oder Elemente entfernen.
               </p>
             </div>
@@ -3758,6 +4390,16 @@ ${clone.outerHTML}`;
                       className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg bg-white px-3 text-xs font-semibold text-black"
                     >
                       Text übernehmen
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        repairSelectedTextVisibility
+                      }
+                      className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+                    >
+                      Text-Clipping automatisch reparieren
                     </button>
                   </div>
                 ) : null}
@@ -3968,6 +4610,31 @@ ${clone.outerHTML}`;
                   <p className="mt-2 text-[10px] leading-4 text-white/30">
                     Ideal für Bilder, die von einem Container abgeschnitten werden.
                   </p>
+                </div>
+
+                <div className="mt-5 border-t border-white/10 pt-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-white/80">
+                        Text hinzufügen
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-white/35">
+                        Fügt neuen Text nach der aktuellen Auswahl ein. Danach kannst du ihn direkt ziehen und platzieren.
+                      </p>
+                    </div>
+                    <Type className="size-4 text-white/35" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      insertTextAfterSelection
+                    }
+                    className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-white/10 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <Plus className="size-4" />
+                    Neuen Text einfügen
+                  </button>
                 </div>
 
                 <div className="mt-5 border-t border-white/10 pt-5">

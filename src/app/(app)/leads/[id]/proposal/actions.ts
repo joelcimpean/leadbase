@@ -29,6 +29,10 @@ import {
   normalizeProposalSections,
 } from "@/lib/proposal-sections";
 
+import {
+  normalizeProposalDesignTemplate,
+} from "@/lib/proposal-design-templates";
+
 
 const GMAIL_SEND_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
@@ -67,6 +71,14 @@ function escapeAttribute(value: string) {
   return escapeHtml(value);
 }
 
+function normalizeProposalNumberKey(value: string) {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("en-US");
+}
+
 function optionalText(
   formData: FormData,
   key: string
@@ -75,6 +87,17 @@ function optionalText(
     formData,
     key
   ) || null;
+}
+
+function proposalLanguage(
+  formData: FormData
+): "de" | "en" {
+  return text(
+    formData,
+    "proposalLanguage"
+  ) === "en"
+    ? "en"
+    : "de";
 }
 
 function money(
@@ -262,21 +285,36 @@ export async function saveProposal(
       "clientName"
     );
 
+  const proposalNumber =
+    text(
+      formData,
+      "proposalNumber"
+    );
+
   const price =
     money(
       formData,
       "price"
     );
 
+  const selectedLanguage =
+    proposalLanguage(
+      formData
+    );
+
   if (
     !leadId ||
     !title ||
     !clientName ||
+    !proposalNumber ||
+    proposalNumber.length > 64 ||
     price === null
   ) {
     redirectError(
       leadId,
-      "Bitte prüfe Titel, Kunde und Preis."
+      selectedLanguage === "de"
+        ? "Bitte prüfe Angebotsnummer, Titel, Kunde und Preis. Die Angebotsnummer darf maximal 64 Zeichen lang sein."
+        : "Please check the proposal number, title, client and price. The proposal number may contain up to 64 characters."
     );
   }
 
@@ -354,6 +392,9 @@ export async function saveProposal(
         public_token,
         status,
         revision,
+        language,
+        design_template,
+        proposal_number,
         logo_path,
         logo_url
       `)
@@ -419,6 +460,74 @@ export async function saveProposal(
 
   const admin =
     createAdminClient();
+
+  const {
+    data: reservedNumber,
+    error: reservedNumberError,
+  } = await admin
+    .from("proposal_number_registry")
+    .select("proposal_id,proposal_number")
+    .eq("user_id", user.id)
+    .eq("normalized_number", normalizeProposalNumberKey(proposalNumber))
+    .maybeSingle();
+
+  if (reservedNumberError) {
+    console.error("Could not check proposal number history:", reservedNumberError);
+    redirectError(
+      leadId,
+      selectedLanguage === "de"
+        ? "Die Angebotsnummer konnte nicht geprüft werden. Bitte führe zuerst die Phase-11B.3-SQL-Migration aus."
+        : "The proposal number could not be checked. Please run the Phase 11B.3 SQL migration first."
+    );
+  }
+
+  if (
+    reservedNumber &&
+    reservedNumber.proposal_id !== existing?.id
+  ) {
+    redirectError(
+      leadId,
+      selectedLanguage === "de"
+        ? `Die Angebotsnummer „${proposalNumber}“ wurde bereits von einem angenommenen Angebot verwendet und bleibt deshalb dauerhaft reserviert.`
+        : `The proposal number “${proposalNumber}” was already used by an accepted proposal and is therefore permanently reserved.`
+    );
+  }
+
+  const {
+    data: activeNumberRows,
+    error: activeNumberRowsError,
+  } = await admin
+    .from("proposals")
+    .select("id,proposal_number,status")
+    .eq("user_id", user.id)
+    .neq("status", "DECLINED");
+
+  if (activeNumberRowsError) {
+    console.error("Could not check active proposal numbers:", activeNumberRowsError);
+    redirectError(
+      leadId,
+      selectedLanguage === "de"
+        ? "Die Angebotsnummer konnte nicht geprüft werden. Bitte führe zuerst die Phase-11B.3-SQL-Migration aus."
+        : "The proposal number could not be checked. Please run the Phase 11B.3 SQL migration first."
+    );
+  }
+
+  const activeNumberOwner =
+    (activeNumberRows ?? []).find((row) =>
+      row.id !== existing?.id &&
+      typeof row.proposal_number === "string" &&
+      normalizeProposalNumberKey(row.proposal_number) ===
+        normalizeProposalNumberKey(proposalNumber)
+    );
+
+  if (activeNumberOwner) {
+    redirectError(
+      leadId,
+      selectedLanguage === "de"
+        ? `Die Angebotsnummer „${proposalNumber}“ wird bereits in einem anderen aktiven Angebot verwendet. Sobald dieses Angebot abgelehnt oder gelöscht wurde, kannst du die Nummer wieder verwenden.`
+        : `The proposal number “${proposalNumber}” is already used by another active proposal. You can reuse it once that proposal is declined or deleted.`
+    );
+  }
 
   if (
     removeLogo &&
@@ -572,8 +681,14 @@ export async function saveProposal(
 
     title,
 
+    proposal_number:
+      proposalNumber,
+
     client_name:
       clientName,
+
+    language:
+      selectedLanguage,
 
     contact_name:
       optionalText(
@@ -647,6 +762,14 @@ export async function saveProposal(
         "firstTimeClient"
       ) === "1",
 
+    design_template:
+      normalizeProposalDesignTemplate(
+        text(
+          formData,
+          "designTemplate"
+        )
+      ),
+
     revision:
       nextRevision,
 
@@ -694,6 +817,29 @@ export async function saveProposal(
       leadId,
       result.error.message
     );
+  }
+
+  // Phase 10N6: remember proposal branding per user so every new lead starts with it.
+  try {
+    const currentMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const previousBranding = (currentMetadata.leadbase_proposal_branding ?? {}) as { logoUrl?: unknown; logoPath?: unknown };
+    const rememberedLogoPath = payload.logo_path ?? (
+      payload.logo_url && previousBranding.logoUrl === payload.logo_url && typeof previousBranding.logoPath === "string"
+        ? previousBranding.logoPath
+        : null
+    );
+    await supabase.auth.updateUser({
+      data: {
+        ...currentMetadata,
+        leadbase_proposal_branding: {
+          accentColor: payload.accent_color,
+          logoUrl: payload.logo_url,
+          logoPath: rememberedLogoPath,
+        },
+      },
+    });
+  } catch (brandingError) {
+    console.error("Could not persist user proposal branding defaults:", brandingError);
   }
 
   revalidatePath(
@@ -777,7 +923,8 @@ export async function saveProposalAsTemplate(
       accent_color,
       logo_url,
       first_time_client,
-      custom_sections
+      custom_sections,
+      language
     `)
     .eq("lead_id", leadId)
     .eq("user_id", user.id)
@@ -847,6 +994,10 @@ export async function saveProposalAsTemplate(
     logoUrl: proposal.logo_url ?? null,
     firstTimeClient: proposal.first_time_client !== false,
     customSections,
+    language:
+      proposal.language === "en"
+        ? "en"
+        : "de",
   };
 
   const now = new Date().toISOString();
@@ -972,7 +1123,8 @@ export async function sendProposalToClient(
       title,
       client_name,
       contact_name,
-      contact_email
+      contact_email,
+      language
     `)
     .eq("user_id", user.id)
     .eq("lead_id", leadId)
@@ -1038,55 +1190,109 @@ export async function sendProposalToClient(
     proposal.public_token
   )}`;
 
-  const greeting = proposal.contact_name
-    ? `Guten Tag ${proposal.contact_name},`
-    : "Guten Tag,";
+  const isGermanProposal =
+    proposal.language !==
+    "en";
+
+  const greeting =
+    proposal.contact_name
+      ? isGermanProposal
+        ? `Guten Tag ${proposal.contact_name},`
+        : `Hello ${proposal.contact_name},`
+      : isGermanProposal
+        ? "Guten Tag,"
+        : "Hello,";
 
   const revisionSuffix =
-    Number(proposal.revision ?? 1) > 1
-      ? ` (Version ${proposal.revision})`
+    Number(
+      proposal.revision ??
+        1
+    ) > 1
+      ? isGermanProposal
+        ? ` (Version ${proposal.revision})`
+        : ` (version ${proposal.revision})`
       : "";
 
-  const body = [
-    greeting,
-    "",
-    `wie besprochen habe ich das Angebot „${proposal.title}“${revisionSuffix} für ${proposal.client_name} vorbereitet.`,
-    "",
-    "Sie können das Angebot hier in Ruhe ansehen und direkt annehmen oder ablehnen:",
-    publicUrl,
-    "",
-    "Bei Fragen oder Änderungswünschen antworten Sie mir einfach auf diese E-Mail.",
-    "",
-    "Mit freundlichen Grüßen / Kind regards,",
-    "",
-    "Joel Cimpean",
-    "hello@joelcimpean.com / joelcimpean.com",
-  ].join("\n");
+  const body =
+    isGermanProposal
+      ? [
+          greeting,
+          "",
+          `wie besprochen habe ich das Angebot „${proposal.title}“${revisionSuffix} für ${proposal.client_name} vorbereitet.`,
+          "",
+          "Sie können das Angebot hier in Ruhe ansehen und direkt annehmen oder ablehnen:",
+          publicUrl,
+          "",
+          "Bei Fragen oder Änderungswünschen antworten Sie mir einfach auf diese E-Mail.",
+          "",
+          "Mit freundlichen Grüßen,",
+          "",
+          "Joel Cimpean",
+          "hello@joelcimpean.com / joelcimpean.com",
+        ].join("\n")
+      : [
+          greeting,
+          "",
+          `as discussed, I prepared the proposal “${proposal.title}”${revisionSuffix} for ${proposal.client_name}.`,
+          "",
+          "You can review the proposal here and accept or decline it directly:",
+          publicUrl,
+          "",
+          "If you have any questions or would like changes, simply reply to this email.",
+          "",
+          "Kind regards,",
+          "",
+          "Joel Cimpean",
+          "hello@joelcimpean.com / joelcimpean.com",
+        ].join("\n");
 
-  const htmlBody = `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;line-height:1.65;color:#171717;">
-      <p>${escapeHtml(greeting)}</p>
-      <p>wie besprochen habe ich das Angebot <strong>„${escapeHtml(
-        proposal.title
-      )}“</strong>${escapeHtml(revisionSuffix)} für ${escapeHtml(
-        proposal.client_name
-      )} vorbereitet.</p>
-      <p>Sie können das Angebot hier in Ruhe ansehen und direkt annehmen oder ablehnen:</p>
-      <p style="margin:24px 0;">
-        <a href="${escapeAttribute(
-          publicUrl
-        )}" style="display:inline-block;border-radius:9px;background:#002BBA;padding:11px 16px;color:#ffffff;text-decoration:none;font-weight:600;">Angebot ansehen →</a>
-      </p>
-      <p>Bei Fragen oder Änderungswünschen antworten Sie mir einfach auf diese E-Mail.</p>
-      <p>Mit freundlichen Grüßen / Kind regards,<br><br>Joel Cimpean<br><a href="mailto:hello@joelcimpean.com" style="color:#002BBA;">hello@joelcimpean.com</a> / <a href="https://joelcimpean.com" style="color:#002BBA;">joelcimpean.com</a></p>
-    </div>
-  `;
+  const htmlBody =
+    isGermanProposal
+      ? `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;line-height:1.65;color:#171717;">
+          <p>${escapeHtml(greeting)}</p>
+          <p>wie besprochen habe ich das Angebot <strong>„${escapeHtml(
+            proposal.title
+          )}“</strong>${escapeHtml(revisionSuffix)} für ${escapeHtml(
+            proposal.client_name
+          )} vorbereitet.</p>
+          <p>Sie können das Angebot hier in Ruhe ansehen und direkt annehmen oder ablehnen:</p>
+          <p style="margin:24px 0;">
+            <a href="${escapeAttribute(
+              publicUrl
+            )}" style="display:inline-block;border-radius:9px;background:#002BBA;padding:11px 16px;color:#ffffff;text-decoration:none;font-weight:600;">Angebot ansehen →</a>
+          </p>
+          <p>Bei Fragen oder Änderungswünschen antworten Sie mir einfach auf diese E-Mail.</p>
+          <p>Mit freundlichen Grüßen,<br><br>Joel Cimpean<br><a href="mailto:hello@joelcimpean.com" style="color:#002BBA;">hello@joelcimpean.com</a> / <a href="https://joelcimpean.com" style="color:#002BBA;">joelcimpean.com</a></p>
+        </div>
+      `
+      : `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;line-height:1.65;color:#171717;">
+          <p>${escapeHtml(greeting)}</p>
+          <p>as discussed, I prepared the proposal <strong>“${escapeHtml(
+            proposal.title
+          )}”</strong>${escapeHtml(revisionSuffix)} for ${escapeHtml(
+            proposal.client_name
+          )}.</p>
+          <p>You can review the proposal here and accept or decline it directly:</p>
+          <p style="margin:24px 0;">
+            <a href="${escapeAttribute(
+              publicUrl
+            )}" style="display:inline-block;border-radius:9px;background:#002BBA;padding:11px 16px;color:#ffffff;text-decoration:none;font-weight:600;">View proposal →</a>
+          </p>
+          <p>If you have any questions or would like changes, simply reply to this email.</p>
+          <p>Kind regards,<br><br>Joel Cimpean<br><a href="mailto:hello@joelcimpean.com" style="color:#002BBA;">hello@joelcimpean.com</a> / <a href="https://joelcimpean.com" style="color:#002BBA;">joelcimpean.com</a></p>
+        </div>
+      `;
 
   try {
     await sendGmailMessage({
       fromEmail: gmailConnection.email_address,
       toEmail: recipient,
-      subject: `Ihr Angebot – ${proposal.client_name}`,
+      subject:
+        isGermanProposal
+          ? `Ihr Angebot – ${proposal.client_name}`
+          : `Your proposal – ${proposal.client_name}`,
       body,
       htmlBody,
       encryptedRefreshToken: gmailConnection.encrypted_refresh_token,

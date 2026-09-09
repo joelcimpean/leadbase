@@ -1,39 +1,17 @@
-import Link from "next/link";
-
 import {
-  ArrowRight,
-  Lightbulb,
-  MapPin,
-  Megaphone,
-  Plus,
-  Sparkles,
-  Target,
-  Users,
-} from "lucide-react";
-
-import {
-  Badge,
-} from "@/components/ui/badge";
-
-import {
-  buttonVariants,
-} from "@/components/ui/button";
-
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+  CampaignsWorkspace,
+  type CampaignWorkspaceIdea,
+  type CampaignWorkspaceRow,
+} from "./campaigns-workspace";
 
 import {
   WorkspacePageMotion,
 } from "@/components/workspace-page-motion";
 
 import {
-  acquisitionCopy,
   getCampaignIdeaCategoryLabel,
   getCampaignIdeaDescription,
   getCampaignIdeaFitLabel,
-  getCampaignStatusLabel,
   localizeCampaignStrategyText,
 } from "@/lib/acquisition-i18n";
 
@@ -50,25 +28,80 @@ import {
 } from "@/lib/supabase/server";
 
 /* =========================================================
-   STATUS
+   TYPES
 ========================================================= */
 
-function statusClass(
-  status: string
+type LeadRow = {
+  id: string;
+  campaign_id: string | null;
+  status: string | null;
+  last_contacted_at: string | null;
+  next_follow_up_at: string | null;
+  hot_lead_score: number | null;
+  hot_lead_level: string | null;
+};
+
+type IncomingMessageRow = {
+  lead_id: string | null;
+  is_automatic_reply: boolean | null;
+  reply_classification: string | null;
+  received_at: string | null;
+};
+
+type DraftRow = {
+  lead_id: string | null;
+  status: string | null;
+  sent_at: string | null;
+};
+
+const CONTACTED_STATUSES = new Set([
+  "CONTACTED",
+  "REPLIED",
+  "CALL_BOOKED",
+  "PROPOSAL",
+  "WON",
+  "LOST",
+  "DO_NOT_CONTACT",
+]);
+
+const CLOSED_FOLLOW_UP_STATUSES = new Set([
+  "WON",
+  "LOST",
+  "DO_NOT_CONTACT",
+]);
+
+const NON_HUMAN_REPLY_CLASSES = new Set([
+  "OUT_OF_OFFICE",
+  "BOUNCE",
+]);
+
+function isHumanReply(
+  message: IncomingMessageRow
 ) {
-  switch (status) {
-    case "ACTIVE":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
+  return (
+    !message.is_automatic_reply &&
+    !NON_HUMAN_REPLY_CLASSES.has(
+      message.reply_classification ?? ""
+    )
+  );
+}
 
-    case "PAUSED":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
-
-    case "ARCHIVED":
-      return "border-zinc-200 bg-zinc-100 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400";
-
-    default:
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
+function latestIso(
+  current: string | null,
+  candidate: string | null
+) {
+  if (!candidate) {
+    return current;
   }
+
+  if (!current) {
+    return candidate;
+  }
+
+  return new Date(candidate).getTime() >
+    new Date(current).getTime()
+    ? candidate
+    : current;
 }
 
 /* =========================================================
@@ -79,111 +112,368 @@ export default async function CampaignsPage() {
   const language =
     await getAppLanguage();
 
-  const text =
-    acquisitionCopy[
-      language
-    ].campaigns;
-
   const supabase =
     await createClient();
 
-  /* =======================================================
-     CAMPAIGNS
-  ======================================================= */
+  const [
+    campaignsResult,
+    leadsResult,
+    messagesResult,
+    draftsResult,
+  ] = await Promise.all([
+    supabase
+      .from("campaigns")
+      .select(`
+        id,
+        name,
+        target_industry,
+        target_geography,
+        company_size_preference,
+        target_roles,
+        outreach_angle,
+        follow_up_days,
+        status,
+        created_at
+      `)
+      .order("created_at", {
+        ascending: false,
+      }),
 
-  const {
-    data: campaigns,
-    error,
-  } = await supabase
-    .from("campaigns")
-    .select(`
-      id,
-      name,
-      target_industry,
-      target_geography,
-      company_size_preference,
-      target_roles,
-      outreach_angle,
-      follow_up_days,
-      status,
-      created_at
-    `)
-    .order("created_at", {
-      ascending: false,
-    });
+    supabase
+      .from("leads")
+      .select(`
+        id,
+        campaign_id,
+        status,
+        last_contacted_at,
+        next_follow_up_at,
+        hot_lead_score,
+        hot_lead_level
+      `),
 
-  if (error) {
+    supabase
+      .from("email_messages")
+      .select(`
+        lead_id,
+        is_automatic_reply,
+        reply_classification,
+        received_at
+      `)
+      .eq("direction", "INCOMING")
+      .order("received_at", {
+        ascending: false,
+      }),
+
+    supabase
+      .from("outreach_drafts")
+      .select(`
+        lead_id,
+        status,
+        sent_at
+      `),
+  ]);
+
+  if (campaignsResult.error) {
     console.error(
       "Could not load campaigns:",
-      error
+      campaignsResult.error
     );
   }
 
-  /* =======================================================
-     LEAD COUNTS
-  ======================================================= */
-
-  const {
-    data: campaignLeads,
-  } = await supabase
-    .from("leads")
-    .select("campaign_id")
-    .not(
-      "campaign_id",
-      "is",
-      null
+  if (leadsResult.error) {
+    console.error(
+      "Could not load campaign lead metrics:",
+      leadsResult.error
     );
+  }
 
-  const leadCounts =
-    new Map<string, number>();
+  if (messagesResult.error) {
+    console.error(
+      "Could not load campaign reply metrics:",
+      messagesResult.error
+    );
+  }
 
-  for (
-    const lead of
-    campaignLeads ?? []
-  ) {
-    if (
-      !lead.campaign_id
-    ) {
-      continue;
-    }
-
-    leadCounts.set(
-      lead.campaign_id,
-      (
-        leadCounts.get(
-          lead.campaign_id
-        ) ?? 0
-      ) + 1
+  if (draftsResult.error) {
+    console.error(
+      "Could not load campaign draft metrics:",
+      draftsResult.error
     );
   }
 
   const campaignRows =
-    campaigns ?? [];
+    campaignsResult.data ?? [];
 
-  /* =======================================================
-     CAMPAIGN IDEAS
-  ======================================================= */
+  const leadRows =
+    (leadsResult.data ?? []) as LeadRow[];
+
+  const incomingRows =
+    (messagesResult.data ?? []) as IncomingMessageRow[];
+
+  const draftRows =
+    (draftsResult.data ?? []) as DraftRow[];
+
+  const leadsByCampaign =
+    new Map<string, LeadRow[]>();
+
+  const leadById =
+    new Map<string, LeadRow>();
+
+  for (const lead of leadRows) {
+    leadById.set(
+      lead.id,
+      lead
+    );
+
+    if (!lead.campaign_id) {
+      continue;
+    }
+
+    const current =
+      leadsByCampaign.get(
+        lead.campaign_id
+      ) ?? [];
+
+    current.push(lead);
+
+    leadsByCampaign.set(
+      lead.campaign_id,
+      current
+    );
+  }
+
+  const humanReplyLeadIds =
+    new Set<string>();
+
+  const latestReplyByLead =
+    new Map<string, string>();
+
+  for (const message of incomingRows) {
+    if (
+      !message.lead_id ||
+      !isHumanReply(message)
+    ) {
+      continue;
+    }
+
+    humanReplyLeadIds.add(
+      message.lead_id
+    );
+
+    if (message.received_at) {
+      const previous =
+        latestReplyByLead.get(
+          message.lead_id
+        );
+
+      if (
+        !previous ||
+        new Date(
+          message.received_at
+        ).getTime() >
+          new Date(previous).getTime()
+      ) {
+        latestReplyByLead.set(
+          message.lead_id,
+          message.received_at
+        );
+      }
+    }
+  }
+
+  const draftsByLead =
+    new Map<string, DraftRow[]>();
+
+  for (const draft of draftRows) {
+    if (!draft.lead_id) {
+      continue;
+    }
+
+    const current =
+      draftsByLead.get(
+        draft.lead_id
+      ) ?? [];
+
+    current.push(draft);
+
+    draftsByLead.set(
+      draft.lead_id,
+      current
+    );
+  }
+
+  const now = Date.now();
+
+  const workspaceRows:
+    CampaignWorkspaceRow[] =
+    campaignRows.map(
+      (campaign) => {
+        const campaignLeads =
+          leadsByCampaign.get(
+            campaign.id
+          ) ?? [];
+
+        const contactedLeads =
+          campaignLeads.filter(
+            (lead) =>
+              Boolean(
+                lead.last_contacted_at
+              ) ||
+              CONTACTED_STATUSES.has(
+                lead.status ?? ""
+              )
+          );
+
+        const replyLeads =
+          campaignLeads.filter(
+            (lead) =>
+              humanReplyLeadIds.has(
+                lead.id
+              )
+          );
+
+        const hotLeads =
+          campaignLeads.filter(
+            (lead) =>
+              lead.hot_lead_level ===
+                "HOT" ||
+              (lead.hot_lead_score ?? 0) >=
+                70
+          );
+
+        const dueLeads =
+          campaignLeads.filter(
+            (lead) => {
+              if (
+                !lead.next_follow_up_at ||
+                CLOSED_FOLLOW_UP_STATUSES.has(
+                  lead.status ?? ""
+                )
+              ) {
+                return false;
+              }
+
+              return (
+                new Date(
+                  lead.next_follow_up_at
+                ).getTime() <= now
+              );
+            }
+          );
+
+        const draftLeadIds =
+          campaignLeads
+            .filter((lead) =>
+              (
+                draftsByLead.get(
+                  lead.id
+                ) ?? []
+              ).some(
+                (draft) =>
+                  draft.status ===
+                    "DRAFT" &&
+                  !draft.sent_at
+              )
+            )
+            .map((lead) => lead.id);
+
+        let lastActivityAt:
+          string | null = null;
+
+        for (const lead of campaignLeads) {
+          lastActivityAt = latestIso(
+            lastActivityAt,
+            lead.last_contacted_at
+          );
+
+          lastActivityAt = latestIso(
+            lastActivityAt,
+            latestReplyByLead.get(
+              lead.id
+            ) ?? null
+          );
+        }
+
+        const latestReplyLeadId =
+          replyLeads
+            .slice()
+            .sort((a, b) => {
+              const aDate =
+                latestReplyByLead.get(
+                  a.id
+                ) ?? "";
+              const bDate =
+                latestReplyByLead.get(
+                  b.id
+                ) ?? "";
+
+              return (
+                new Date(bDate).getTime() -
+                new Date(aDate).getTime()
+              );
+            })[0]?.id ?? null;
+
+        return {
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status ?? "DRAFT",
+          industry:
+            campaign.target_industry,
+          region:
+            campaign.target_geography,
+          followUpDays:
+            campaign.follow_up_days ?? 5,
+          outreachAngle:
+            campaign.outreach_angle
+              ? localizeCampaignStrategyText(
+                  campaign.outreach_angle,
+                  language
+                )
+              : null,
+          leadIds:
+            campaignLeads.map(
+              (lead) => lead.id
+            ),
+          leads:
+            campaignLeads.length,
+          contacted:
+            contactedLeads.length,
+          replies:
+            replyLeads.length,
+          hot:
+            hotLeads.length,
+          drafts:
+            draftLeadIds.length,
+          due:
+            dueLeads.length,
+          lastActivityAt,
+          firstDueLeadId:
+            dueLeads[0]?.id ?? null,
+          firstDraftLeadId:
+            draftLeadIds[0] ?? null,
+          latestReplyLeadId,
+        };
+      }
+    );
 
   const existingIndustries =
     new Set(
       campaignRows
-        .map(
-          (campaign) =>
-            campaign.target_industry
-              ?.toLowerCase()
-              .trim()
+        .map((campaign) =>
+          campaign.target_industry
+            ?.toLowerCase()
+            .trim()
         )
         .filter(
           (
             industry
           ): industry is string =>
-            Boolean(
-              industry
-            )
+            Boolean(industry)
         )
     );
 
-  const recommendedIdeas =
+  const ideas:
+    CampaignWorkspaceIdea[] =
     CAMPAIGN_IDEAS.filter(
       (idea) =>
         !existingIndustries.has(
@@ -191,378 +481,45 @@ export default async function CampaignsPage() {
             .toLowerCase()
             .trim()
         )
-    ).slice(0, 6);
+    )
+      .slice(0, 6)
+      .map((idea) => ({
+        id: idea.id,
+        name: idea.name,
+        category:
+          getCampaignIdeaCategoryLabel(
+            idea.category,
+            language
+          ),
+        fit:
+          getCampaignIdeaFitLabel(
+            idea.fit,
+            language
+          ),
+        description:
+          getCampaignIdeaDescription(
+            idea.name,
+            idea.description,
+            language
+          ),
+      }));
+
+  const unassignedCount =
+    leadRows.filter(
+      (lead) =>
+        !lead.campaign_id
+    ).length;
 
   return (
-    <div className="leadbase-workspace-page min-h-full"><WorkspacePageMotion /><div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      {/* ===================================================
-          HEADER
-      =================================================== */}
+    <div className="leadbase-route-campaigns min-h-full">
+      <WorkspacePageMotion />
 
-      <header data-workspace-reveal className="leadbase-workspace-header flex flex-col justify-between gap-5 p-5 sm:p-6 lg:flex-row lg:items-end">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">
-            {
-              text.eyebrow
-            }
-          </p>
-
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {
-              text.title
-            }
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            {
-              text.description
-            }
-          </p>
-        </div>
-
-        <Link
-          href="/campaigns/new"
-          className={buttonVariants({
-            className:
-              "w-full gap-2 sm:w-fit",
-          })}
-        >
-          <Plus className="size-4" />
-
-          {
-            text.newCampaign
-          }
-        </Link>
-      </header>
-
-      {/* ===================================================
-          CAMPAIGN IDEAS
-      =================================================== */}
-
-      {recommendedIdeas.length >
-      0 ? (
-        <section data-workspace-reveal className="mt-7 md:mt-8">
-          <div className="flex items-end justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 shrink-0" />
-
-                <h2 className="text-sm font-semibold">
-                  {
-                    text.ideasTitle
-                  }
-                </h2>
-              </div>
-
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-                {
-                  text.ideasDescription
-                }
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {recommendedIdeas.map(
-              (idea) => (
-                <Card
-                  key={
-                    idea.id
-                  }
-                  className="leadbase-workspace-card group min-w-0 transition-colors" data-lift="true"
-                >
-                  <CardContent className="flex h-full flex-col p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
-                        <Lightbulb className="size-4" />
-                      </div>
-
-                      <Badge
-                        variant="outline"
-                        className="shrink-0 font-normal"
-                      >
-                        {getCampaignIdeaFitLabel(
-                          idea.fit,
-                          language
-                        )}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-4 min-w-0">
-                      <p className="text-xs text-muted-foreground">
-                        {getCampaignIdeaCategoryLabel(
-                          idea.category,
-                          language
-                        )}
-                      </p>
-
-                      <h3 className="mt-1 break-words text-sm font-semibold">
-                        {
-                          idea.name
-                        }
-                      </h3>
-
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        {getCampaignIdeaDescription(
-                          idea.name,
-                          idea.description,
-                          language
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="mt-auto pt-5">
-                      <Link
-                        href={`/campaigns/new?idea=${idea.id}`}
-                        className="flex min-h-10 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs font-medium transition-colors hover:bg-muted"
-                      >
-                        <span>
-                          {
-                            text.useIdea
-                          }
-                        </span>
-
-                        <ArrowRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            )}
-          </div>
-        </section>
-      ) : null}
-
-      {/* ===================================================
-          YOUR CAMPAIGNS
-      =================================================== */}
-
-      <section data-workspace-reveal className="mt-8 md:mt-10">
-        <div>
-          <h2 className="text-sm font-semibold">
-            {
-              text.yourCampaigns
-            }
-          </h2>
-
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            {
-              text.yourCampaignsDescription
-            }
-          </p>
-        </div>
-
-        {campaignRows.length ===
-        0 ? (
-          <div className="leadbase-workspace-empty mt-4 flex min-h-64 items-center justify-center rounded-3xl border border-dashed px-4 py-10 sm:min-h-72">
-            <div className="max-w-sm text-center">
-              <div className="mx-auto flex size-10 items-center justify-center rounded-lg border">
-                <Megaphone className="size-4" />
-              </div>
-
-              <h3 className="mt-4 text-sm font-semibold">
-                {
-                  text.noCampaigns
-                }
-              </h3>
-
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {
-                  text.noCampaignsDescription
-                }
-              </p>
-
-              <Link
-                href="/campaigns/new"
-                className={buttonVariants({
-                  className:
-                    "mt-5 w-full gap-2 sm:w-auto",
-                })}
-              >
-                <Plus className="size-4" />
-
-                {
-                  text.createCampaign
-                }
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
-              {campaignRows.map(
-                (campaign) => {
-                  const leadCount =
-                    leadCounts.get(
-                      campaign.id
-                    ) ?? 0;
-
-                  return (
-                    <Card
-                      key={
-                        campaign.id
-                      }
-                      className="leadbase-workspace-card min-w-0"
-                    >
-                      <CardContent className="p-4 sm:p-5 xl:p-6">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
-                            <Megaphone className="size-4" />
-                          </div>
-
-                          <Badge
-                            variant="outline"
-                            className={`shrink-0 font-medium ${statusClass(
-                              campaign.status
-                            )}`}
-                          >
-                            {getCampaignStatusLabel(
-                              campaign.status,
-                              language
-                            )}
-                          </Badge>
-                        </div>
-
-                        <Link
-                          href={`/campaigns/${campaign.id}`}
-                          className="mt-4 block break-words text-base font-semibold transition-colors hover:text-muted-foreground hover:underline sm:mt-5"
-                        >
-                          {
-                            campaign.name
-                          }
-                        </Link>
-
-                        <div className="mt-5 space-y-3.5">
-                          <div className="flex min-w-0 items-start gap-2.5">
-                            <Target className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-
-                            <div className="min-w-0">
-                              <p className="text-xs text-muted-foreground">
-                                {
-                                  text.industry
-                                }
-                              </p>
-
-                              <p className="mt-0.5 break-words text-sm">
-                                {campaign.target_industry ??
-                                  text.anyIndustry}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex min-w-0 items-start gap-2.5">
-                            <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-
-                            <div className="min-w-0">
-                              <p className="text-xs text-muted-foreground">
-                                {
-                                  text.geography
-                                }
-                              </p>
-
-                              <p className="mt-0.5 break-words text-sm">
-                                {campaign.target_geography ??
-                                  text.anyLocation}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex min-w-0 items-start gap-2.5">
-                            <Users className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-
-                            <div className="min-w-0">
-                              <p className="text-xs text-muted-foreground">
-                                {
-                                  text.leads
-                                }
-                              </p>
-
-                              <p className="mt-0.5 text-sm">
-                                {
-                                  leadCount
-                                }
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {campaign.outreach_angle ? (
-                          <div className="mt-5 border-t pt-4">
-                            <p className="text-xs text-muted-foreground">
-                              {
-                                text.outreachAngle
-                              }
-                            </p>
-
-                            <p className="mt-1 line-clamp-3 break-words text-sm leading-6 sm:line-clamp-2">
-                              {localizeCampaignStrategyText(
-                                campaign.outreach_angle,
-                                language
-                              )}
-                            </p>
-                          </div>
-                        ) : null}
-
-                        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-xs text-muted-foreground">
-                          <span>
-                            {
-                              text.followUp
-                            }
-                            :{" "}
-                            {
-                              campaign.follow_up_days
-                            }{" "}
-                            {
-                              text.days
-                            }
-                          </span>
-
-                          <span>
-                            {
-                              leadCount
-                            }{" "}
-                            {leadCount ===
-                            1
-                              ? language ===
-                                "de"
-                                ? "Lead"
-                                : "lead"
-                              : language ===
-                                  "de"
-                                ? "Leads"
-                                : "leads"}
-                          </span>
-                        </div>
-
-                        <Link
-                          href={`/campaigns/${campaign.id}`}
-                          className="mt-4 flex min-h-10 items-center justify-between rounded-lg border px-3 text-xs font-medium transition-colors hover:bg-muted sm:hidden"
-                        >
-                          {
-                            text.openCampaign
-                          }
-
-                          <ArrowRight className="size-3.5" />
-                        </Link>
-                      </CardContent>
-                    </Card>
-                  );
-                }
-              )}
-            </div>
-
-            <p className="mt-4 text-xs text-muted-foreground">
-              {
-                campaignRows.length
-              }{" "}
-              {campaignRows.length ===
-              1
-                ? text.campaign
-                : text.campaigns}
-            </p>
-          </>
-        )}
-      </section>
-    </div></div>
+      <CampaignsWorkspace
+        language={language}
+        campaigns={workspaceRows}
+        ideas={ideas}
+        unassignedCount={unassignedCount}
+      />
+    </div>
   );
 }

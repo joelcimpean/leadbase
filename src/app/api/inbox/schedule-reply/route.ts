@@ -49,6 +49,8 @@ type AttachmentRequest = {
 type ScheduleReplyRequest = {
   leadId?: unknown;
   replyToMessageId?: unknown;
+  replyToGmailMessageId?: unknown;
+  gmailThreadId?: unknown;
 
   body?: unknown;
 
@@ -850,9 +852,6 @@ export async function POST(
       typeof payload.leadId !==
         "string" ||
       !payload.leadId ||
-      typeof payload.replyToMessageId !==
-        "string" ||
-      !payload.replyToMessageId ||
       typeof payload.body !==
         "string"
     ) {
@@ -865,7 +864,23 @@ export async function POST(
       payload.leadId;
 
     const replyToMessageId =
-      payload.replyToMessageId;
+      typeof payload.replyToMessageId === "string" && payload.replyToMessageId
+        ? payload.replyToMessageId
+        : null;
+
+    const replyToGmailMessageId =
+      typeof payload.replyToGmailMessageId === "string" && payload.replyToGmailMessageId
+        ? payload.replyToGmailMessageId
+        : null;
+
+    const directGmailThreadId =
+      typeof payload.gmailThreadId === "string" && payload.gmailThreadId
+        ? payload.gmailThreadId
+        : null;
+
+    if (!replyToMessageId && !(replyToGmailMessageId && directGmailThreadId)) {
+      return jsonError("No reply target was provided.");
+    }
 
     const body =
       normalizeMessage(
@@ -959,62 +974,76 @@ export async function POST(
       );
     }
 
-    const {
-      data:
-        replyTarget,
+    let resolvedReplyToMessageId = replyToMessageId;
+    let virtualTarget: {
+      outreachDraftId: string;
+      gmailMessageId: string;
+      gmailThreadId: string;
+      recipientEmail: string;
+      subject: string;
+      body: string;
+      sentAt: string;
+    } | null = null;
 
-      error:
-        replyTargetError,
-    } =
-      await supabase
-        .from(
-          "email_messages"
-        )
-        .select(`
-          id,
-          lead_id,
-          gmail_message_id,
-          gmail_thread_id
-        `)
-        .eq(
-          "id",
-          replyToMessageId
-        )
-        .eq(
-          "lead_id",
-          leadId
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .eq(
-          "direction",
-          "INCOMING"
-        )
+    if (replyToMessageId) {
+      const { data: replyTarget, error: replyTargetError } = await supabase
+        .from("email_messages")
+        .select(`id, lead_id, gmail_message_id, gmail_thread_id, direction`)
+        .eq("id", replyToMessageId)
+        .eq("lead_id", leadId)
+        .eq("user_id", user.id)
         .maybeSingle();
 
-    if (
-      replyTargetError
-    ) {
-      console.error(
-        "Could not verify scheduled reply target:",
-        replyTargetError
-      );
+      if (replyTargetError) {
+        console.error("Could not verify scheduled reply target:", replyTargetError);
+        return jsonError("Could not verify the email being replied to.", 500);
+      }
 
-      return jsonError(
-        "Could not verify the email being replied to.",
-        500
-      );
+      if (!replyTarget) resolvedReplyToMessageId = null;
     }
 
-    if (
-      !replyTarget
-    ) {
-      return jsonError(
-        "The email being replied to could not be found.",
-        404
-      );
+    if (!resolvedReplyToMessageId && replyToGmailMessageId && directGmailThreadId) {
+      const { data: draftTarget, error: draftTargetError } = await supabase
+        .from("outreach_drafts")
+        .select(`
+          id, subject, body, sent_at, sent_to, gmail_message_id, gmail_thread_id,
+          follow_up_body, follow_up_sent_at, follow_up_sent_to,
+          gmail_follow_up_message_id, gmail_follow_up_thread_id
+        `)
+        .eq("user_id", user.id)
+        .eq("lead_id", leadId)
+        .eq("status", "SENT")
+        .not("sent_at", "is", null)
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (draftTargetError) {
+        console.error("Could not verify scheduled outreach target:", draftTargetError);
+        return jsonError("Could not verify the outreach thread.", 500);
+      }
+
+      const isInitial = draftTarget?.gmail_message_id === replyToGmailMessageId && draftTarget?.gmail_thread_id === directGmailThreadId;
+      const isFollowUp = draftTarget?.gmail_follow_up_message_id === replyToGmailMessageId && draftTarget?.gmail_follow_up_thread_id === directGmailThreadId;
+      const recipientEmail = isFollowUp ? (draftTarget?.follow_up_sent_to ?? draftTarget?.sent_to) : draftTarget?.sent_to;
+      const sourceBody = isFollowUp ? draftTarget?.follow_up_body : draftTarget?.body;
+      const sentAt = isFollowUp ? draftTarget?.follow_up_sent_at : draftTarget?.sent_at;
+
+      if (draftTarget && (isInitial || isFollowUp) && recipientEmail && sourceBody && sentAt) {
+        virtualTarget = {
+          outreachDraftId: draftTarget.id,
+          gmailMessageId: replyToGmailMessageId,
+          gmailThreadId: directGmailThreadId,
+          recipientEmail,
+          subject: draftTarget.subject ?? "",
+          body: sourceBody,
+          sentAt,
+        };
+      }
+    }
+
+    if (!resolvedReplyToMessageId && !virtualTarget) {
+      return jsonError("The email being replied to could not be found.", 404);
     }
 
     const {
@@ -1029,7 +1058,7 @@ export async function POST(
           "gmail_connections"
         )
         .select(
-          "scopes"
+          "email_address, scopes"
         )
         .eq(
           "user_id",
@@ -1062,6 +1091,40 @@ export async function POST(
         "Gmail send permission is missing.",
         403
       );
+    }
+
+    if (!resolvedReplyToMessageId && virtualTarget) {
+      const { data: materializedTarget, error: materializeError } = await supabase
+        .from("email_messages")
+        .upsert(
+          {
+            user_id: user.id,
+            lead_id: leadId,
+            outreach_draft_id: virtualTarget.outreachDraftId,
+            gmail_message_id: virtualTarget.gmailMessageId,
+            gmail_thread_id: virtualTarget.gmailThreadId,
+            direction: "OUTGOING",
+            from_name: "Joel Cimpean",
+            from_email: gmailConnection.email_address,
+            to_email: virtualTarget.recipientEmail,
+            subject: virtualTarget.subject,
+            body_text: virtualTarget.body,
+            attachments: [],
+            received_at: virtualTarget.sentAt,
+            is_unread: false,
+            read_at: virtualTarget.sentAt,
+          },
+          { onConflict: "user_id,gmail_message_id" }
+        )
+        .select("id")
+        .single();
+
+      if (materializeError || !materializedTarget) {
+        console.error("Could not materialize scheduled outreach target:", materializeError);
+        return jsonError("Could not prepare the outreach thread for scheduling.", 500);
+      }
+
+      resolvedReplyToMessageId = materializedTarget.id;
     }
 
     const {
@@ -1145,7 +1208,7 @@ export async function POST(
             leadId,
 
           reply_to_email_message_id:
-            replyToMessageId,
+            resolvedReplyToMessageId,
 
           status:
             "SCHEDULED",

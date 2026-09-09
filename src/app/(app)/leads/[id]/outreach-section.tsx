@@ -21,10 +21,6 @@ import {
 } from "./generate-outreach-button";
 
 import {
-  LeadEmailHistory,
-} from "./lead-email-history";
-
-import {
   OutreachGifPreference,
 } from "./outreach-gif-preference";
 
@@ -2404,12 +2400,6 @@ export async function OutreachSection({
         )}
       </CardContent>
       </Card>
-
-      <LeadEmailHistory
-        leadId={
-          leadId
-        }
-      />
     </>
   );
 }

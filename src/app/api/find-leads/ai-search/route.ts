@@ -19,6 +19,11 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    assertAiUsageAvailable,
+    recordAiUsage,
+  } from "@/lib/ai-usage";
   
   /* =========================================================
      CONFIG
@@ -602,12 +607,13 @@ import {
         apiKey,
       });
   
+    const model =
+      process.env.OPENAI_LEAD_SEARCH_MODEL ??
+      "gpt-5-mini";
+
     const response =
       await openai.responses.parse({
-        model:
-          process.env
-            .OPENAI_LEAD_SEARCH_MODEL ??
-          "gpt-5-mini",
+        model,
   
         reasoning: {
           effort:
@@ -757,6 +763,13 @@ import {
   
       clarificationQuestion:
         result.clarificationQuestion.trim(),
+
+      _model: model,
+      _usage: {
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        totalTokens: response.usage?.total_tokens ?? 0,
+      },
     };
   }
   
@@ -987,6 +1000,8 @@ import {
       >;
   
     try {
+      await assertAiUsageAvailable(user.id);
+
       intent =
         await interpretPrompt({
           prompt,
@@ -1021,6 +1036,14 @@ import {
       );
     }
   
+    await recordAiUsage({
+      userId: user.id,
+      feature: "ai_lead_search",
+      model: intent._model,
+      usage: intent._usage,
+      metadata: { campaignId, prompt: prompt.slice(0, 240) },
+    });
+
     /* =======================================================
        CLARIFICATION
     ======================================================= */

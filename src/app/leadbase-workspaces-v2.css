@@ -1,0 +1,469 @@
+/* =========================================================
+   LEADBASE CORE WORKSPACES — PHASE 10E
+   Uses the approved dashboard as visual source of truth.
+
+   This stylesheet is deliberately route-scoped so business logic
+   and non-Leadbase public pages are unaffected.
+========================================================= */
+
+/* ---------------------------------------------------------
+   GLOBAL WORKSPACE HEADER LANGUAGE
+--------------------------------------------------------- */
+
+.leadbase-route-leads > header > div > p:first-child,
+.leadbase-workspace-page .leadbase-workspace-header > div > p:first-child,
+.leadbase-workspace-page .leadbase-workspace-header > p:first-child,
+.leadbase-route-settings > header > p:first-child {
+  font-family: var(--font-geist-mono), "Geist Mono", monospace !important;
+  font-size: 8.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: .10em !important;
+  line-height: 1.2 !important;
+  text-transform: uppercase !important;
+  color: var(--primary) !important;
+}
+
+.leadbase-route-leads > header h1,
+.leadbase-workspace-page .leadbase-workspace-header h1,
+.leadbase-route-settings > header h1 {
+  font-size: 29px !important;
+  font-weight: 650 !important;
+  line-height: .98 !important;
+  letter-spacing: -.04em !important;
+}
+
+.leadbase-route-leads > header p:last-child,
+.leadbase-workspace-page .leadbase-workspace-header p:last-child,
+.leadbase-route-settings > header p:last-child {
+  font-size: 11px !important;
+  line-height: 1.55 !important;
+}
+
+/* ---------------------------------------------------------
+   LEADS
+--------------------------------------------------------- */
+
+.leadbase-route-leads {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-leads-table .leadbase-leads-controls {
+  border: 1px solid var(--lb-border);
+  border-radius: 13px;
+  background: var(--lb-surface);
+  padding: 8px;
+  box-shadow: var(--lb-shadow-xs);
+}
+
+.leadbase-leads-table .leadbase-leads-controls input {
+  height: 34px;
+  border-color: transparent;
+  background: var(--lb-surface-subtle);
+}
+
+.leadbase-leads-table .leadbase-leads-controls input:focus-visible {
+  border-color: var(--primary);
+  background: var(--lb-surface);
+}
+
+.leadbase-leads-table .leadbase-leads-filter-panel {
+  box-shadow: var(--lb-shadow-xs);
+}
+
+.leadbase-leads-table .leadbase-leads-bulk {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  backdrop-filter: blur(12px);
+}
+
+.leadbase-leads-table .leadbase-lead-group {
+  /*
+   * Drag/drop insertion indicators intentionally sit a few pixels
+   * outside the group boundary. Phase 10E's overflow:hidden clipped
+   * them completely and made manual sorting feel broken.
+   */
+  overflow: visible !important;
+  isolation: isolate;
+}
+
+.leadbase-leads-table .leadbase-lead-group:hover {
+  border-color: var(--lb-border-strong) !important;
+  box-shadow: var(--lb-shadow-xs) !important;
+}
+
+.leadbase-leads-table .leadbase-lead-row {
+  min-height: 56px;
+}
+
+.leadbase-leads-table .leadbase-lead-row:hover {
+  background: #F8F9FA !important;
+}
+
+.dark .leadbase-leads-table .leadbase-lead-row:hover {
+  background: rgba(255,255,255,.035) !important;
+}
+
+.leadbase-leads-table .leadbase-leads-table-shell table {
+  font-size: 11.5px;
+}
+
+.leadbase-leads-table .leadbase-leads-table-shell th {
+  background: #FAFAFB;
+}
+
+.dark .leadbase-leads-table .leadbase-leads-table-shell th {
+  background: rgba(255,255,255,.025);
+}
+
+/* ---------------------------------------------------------
+   FIND LEADS
+--------------------------------------------------------- */
+
+.leadbase-route-find-leads {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-find-leads .leadbase-workspace-header {
+  margin-bottom: 10px !important;
+}
+
+.leadbase-find-leads-chat {
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+.leadbase-find-leads-chat [class*="max-w-3xl"] {
+  max-width: 860px !important;
+}
+
+.leadbase-find-leads-chat textarea::placeholder {
+  color: #7B8088;
+}
+
+.leadbase-route-find-leads [data-workspace-reveal] {
+  scroll-margin-top: 10px;
+}
+
+/* ---------------------------------------------------------
+   LEAD DETAIL
+--------------------------------------------------------- */
+
+.leadbase-route-lead-detail {
+  padding-top: 16px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-lead-detail .leadbase-workspace-header {
+  padding: 14px 16px !important;
+}
+
+.leadbase-route-lead-detail [data-slot="card"] {
+  border-color: var(--lb-border) !important;
+  box-shadow: var(--lb-shadow-xs) !important;
+}
+
+.leadbase-route-lead-detail [data-slot="card-header"] {
+  padding-top: 14px !important;
+  padding-bottom: 0 !important;
+}
+
+.leadbase-route-lead-detail [data-slot="card-content"] {
+  padding-top: 12px !important;
+  padding-bottom: 14px !important;
+}
+
+.leadbase-route-lead-detail h2 {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+/* ---------------------------------------------------------
+   CAMPAIGNS
+--------------------------------------------------------- */
+
+.leadbase-route-campaigns {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-campaigns .leadbase-workspace-header {
+  margin-bottom: 10px !important;
+}
+
+.leadbase-route-campaigns .leadbase-campaign-grid .leadbase-workspace-card,
+.leadbase-route-campaigns .leadbase-campaign-ideas .leadbase-workspace-card {
+  border-radius: 14px !important;
+  border-color: var(--lb-border) !important;
+  box-shadow: var(--lb-shadow-xs) !important;
+}
+
+.leadbase-route-campaigns .leadbase-campaign-grid .leadbase-workspace-card:hover,
+.leadbase-route-campaigns .leadbase-campaign-ideas .leadbase-workspace-card:hover {
+  border-color: var(--lb-border-strong) !important;
+  transform: none !important;
+}
+
+.leadbase-route-campaigns .leadbase-campaign-grid [class*="size-9"],
+.leadbase-route-campaigns .leadbase-campaign-ideas [class*="size-9"] {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 8px !important;
+}
+
+.leadbase-route-campaign-detail {
+  padding-top: 16px !important;
+}
+
+.leadbase-route-campaign-detail section {
+  margin-top: 14px !important;
+}
+
+/* ---------------------------------------------------------
+   INBOX
+--------------------------------------------------------- */
+
+.leadbase-route-inbox .leadbase-inbox-header {
+  min-height: 64px !important;
+  padding: 10px 16px !important;
+}
+
+.leadbase-route-inbox .leadbase-inbox-folders {
+  min-height: 36px !important;
+  padding: 4px 10px !important;
+}
+
+.leadbase-route-inbox .leadbase-inbox-list-panel {
+  width: 330px !important;
+  background: #FBFBFC !important;
+}
+
+.dark .leadbase-route-inbox .leadbase-inbox-list-panel {
+  background: #0E0F12 !important;
+}
+
+.leadbase-route-inbox .leadbase-inbox-list-panel button,
+.leadbase-route-inbox .leadbase-inbox-list-panel a {
+  border-radius: 9px !important;
+}
+
+.leadbase-route-inbox .leadbase-inbox-thread-panel > div {
+  max-width: 860px !important;
+  padding-top: 16px !important;
+  padding-left: 20px !important;
+  padding-right: 20px !important;
+}
+
+.leadbase-route-inbox textarea {
+  border-radius: 10px !important;
+}
+
+/* ---------------------------------------------------------
+   PROJECTS
+--------------------------------------------------------- */
+
+.leadbase-route-projects {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-projects .leadbase-project-metrics > * {
+  min-height: 72px;
+}
+
+.leadbase-route-projects .leadbase-project-grid .leadbase-workspace-card {
+  border-radius: 14px !important;
+  box-shadow: var(--lb-shadow-xs) !important;
+}
+
+.leadbase-route-projects .leadbase-project-grid .leadbase-workspace-card:hover {
+  border-color: var(--lb-border-strong) !important;
+}
+
+.leadbase-route-projects .leadbase-project-grid h3,
+.leadbase-route-projects .leadbase-project-grid p {
+  letter-spacing: -.01em;
+}
+
+/* ---------------------------------------------------------
+   NOTIFICATIONS
+--------------------------------------------------------- */
+
+.leadbase-route-notifications {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-notifications .leadbase-workspace-header {
+  margin-bottom: 10px !important;
+}
+
+.leadbase-route-notifications .leadbase-notification-summary .leadbase-workspace-stat {
+  border-radius: 0 !important;
+  padding: 11px 13px !important;
+}
+
+.leadbase-route-notifications .leadbase-workspace-table {
+  margin-top: 12px !important;
+}
+
+.leadbase-route-notifications .leadbase-workspace-table > * {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+/* ---------------------------------------------------------
+   ANALYTICS
+--------------------------------------------------------- */
+
+.leadbase-route-analytics {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-analytics .leadbase-workspace-header {
+  margin-bottom: 10px !important;
+}
+
+.leadbase-route-analytics .leadbase-analytics-metric {
+  border-radius: 13px !important;
+  box-shadow: var(--lb-shadow-xs) !important;
+}
+
+.leadbase-route-analytics section {
+  margin-top: 12px !important;
+}
+
+.leadbase-route-analytics [class*="grid"][class*="gap-3"] {
+  gap: 10px !important;
+}
+
+/* ---------------------------------------------------------
+   SETTINGS
+--------------------------------------------------------- */
+
+.leadbase-route-settings {
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-settings [data-slot="card"] {
+  border-radius: 14px !important;
+  margin-top: 11px !important;
+}
+
+.leadbase-route-settings [data-slot="card-header"] {
+  padding: 14px 15px 0 !important;
+}
+
+.leadbase-route-settings [data-slot="card-content"] {
+  padding: 12px 15px 14px !important;
+}
+
+/* ---------------------------------------------------------
+   FORMS / EDITORS / PROPOSALS
+--------------------------------------------------------- */
+
+.leadbase-route-form,
+.leadbase-route-proposal-builder,
+.leadbase-route-project-detail,
+.leadbase-route-scheduled {
+  padding-top: 16px !important;
+  padding-bottom: 18px !important;
+}
+
+.leadbase-route-form [data-slot="card"],
+.leadbase-route-proposal-builder [data-slot="card"],
+.leadbase-route-project-detail [data-slot="card"],
+.leadbase-route-scheduled [data-slot="card"] {
+  border-radius: 14px !important;
+  box-shadow: var(--lb-shadow-xs) !important;
+}
+
+.leadbase-route-proposal-builder textarea {
+  min-height: 72px !important;
+}
+
+/* ---------------------------------------------------------
+   SECONDARY UI
+--------------------------------------------------------- */
+
+.leadbase-workspace-page [role="dialog"],
+.leadbase-route-settings [role="dialog"] {
+  font-size: 12.5px;
+}
+
+.leadbase-workspace-page [data-slot="badge"],
+.leadbase-route-settings [data-slot="badge"] {
+  min-height: 18px;
+}
+
+.leadbase-workspace-page [data-slot="button"],
+.leadbase-route-settings [data-slot="button"] {
+  font-weight: 550;
+}
+
+/* ---------------------------------------------------------
+   VIEWPORT-FIRST DESKTOP
+--------------------------------------------------------- */
+
+@media (min-width: 1280px) and (max-height: 900px) {
+  .leadbase-route-leads,
+  .leadbase-workspace-page,
+  .leadbase-route-settings {
+    padding-top: 14px !important;
+    padding-bottom: 14px !important;
+  }
+
+  .leadbase-route-leads > header h1,
+  .leadbase-workspace-page .leadbase-workspace-header h1,
+  .leadbase-route-settings > header h1 {
+    font-size: 27px !important;
+  }
+
+  .leadbase-route-campaigns section,
+  .leadbase-route-projects section,
+  .leadbase-route-analytics section {
+    margin-top: 10px !important;
+  }
+
+  .leadbase-leads-table .leadbase-lead-row {
+    min-height: 50px;
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+  }
+
+  .leadbase-route-inbox .leadbase-inbox-header {
+    min-height: 58px !important;
+  }
+
+  .leadbase-route-inbox .leadbase-inbox-folders {
+    min-height: 34px !important;
+  }
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE SAFETY
+--------------------------------------------------------- */
+
+@media (max-width: 767px) {
+  .leadbase-route-inbox .leadbase-inbox-list-panel {
+    width: 100% !important;
+  }
+
+  .leadbase-route-projects .leadbase-project-metrics > * + * {
+    border-top: 1px solid var(--lb-border);
+  }
+}
+
+
+/* Drag & drop visibility — insertion lines must sit above adjacent groups. */
+.leadbase-leads-table .leadbase-lead-group:has([draggable="true"]) {
+  position: relative;
+}
+
+.leadbase-leads-table .leadbase-lead-row {
+  position: relative;
+}

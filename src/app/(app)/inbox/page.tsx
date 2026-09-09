@@ -5,12 +5,9 @@ import {
   Archive,
   ArrowLeft,
   ArrowUpRight,
-  ChevronDown,
   Download,
   FileText,
-  Inbox,
   Mail,
-  MailCheck,
   MailOpen,
   Paperclip,
   RotateCcw,
@@ -58,6 +55,8 @@ import {
   SyncInboxButton,
 } from "./sync-button";
 
+import styles from "./inbox-precision.module.css";
+
 import {
   Badge,
 } from "@/components/ui/badge";
@@ -66,9 +65,6 @@ import {
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
 
-import {
-  Separator,
-} from "@/components/ui/separator";
 
 import {
   WorkspacePageMotion,
@@ -240,6 +236,14 @@ type Conversation = {
     | null;
 
   replyToMessageId:
+    | string
+    | null;
+
+  replyToGmailMessageId:
+    | string
+    | null;
+
+  replyGmailThreadId:
     | string
     | null;
 
@@ -1035,8 +1039,14 @@ export default async function InboxPage({
           subject,
           body,
           sent_at,
+          sent_to,
+          gmail_message_id,
+          gmail_thread_id,
           follow_up_body,
           follow_up_sent_at,
+          follow_up_sent_to,
+          gmail_follow_up_message_id,
+          gmail_follow_up_thread_id,
 
           lead:leads (
             id,
@@ -1759,6 +1769,18 @@ export default async function InboxPage({
             ?.id ??
           null,
 
+        replyToGmailMessageId:
+          latestIncoming?.gmail_message_id ??
+          draft.gmail_follow_up_message_id ??
+          draft.gmail_message_id ??
+          null,
+
+        replyGmailThreadId:
+          latestIncoming?.gmail_thread_id ??
+          draft.gmail_follow_up_thread_id ??
+          draft.gmail_thread_id ??
+          null,
+
         replyRecipientName:
           latestIncoming
             ?.from_name ??
@@ -1768,6 +1790,8 @@ export default async function InboxPage({
         replyRecipientEmail:
           latestIncoming
             ?.from_email ??
+          draft.follow_up_sent_to ??
+          draft.sent_to ??
           contact?.email ??
           null,
 
@@ -2265,6 +2289,14 @@ export default async function InboxPage({
         replyToMessageId:
           latestIncoming.id,
 
+        replyToGmailMessageId:
+          latestIncoming.gmail_message_id ??
+          null,
+
+        replyGmailThreadId:
+          latestIncoming.gmail_thread_id ??
+          null,
+
         replyRecipientName:
           latestIncoming
             .from_name ??
@@ -2555,621 +2587,332 @@ export default async function InboxPage({
      UI
   ======================================================= */
 
+  const openReplyCount =
+    folderConversations.filter(
+      (conversation) => conversation.unread
+    ).length;
+
   return (
-    <div className="leadbase-inbox-page flex h-full min-w-0 flex-1 flex-col overflow-hidden"><WorkspacePageMotion />
-      {/* ===================================================
-          HEADER
-      =================================================== */}
+    <div className={`${styles.page} leadbase-route-inbox`}>
+      <WorkspacePageMotion />
 
       <header
-        className={`leadbase-inbox-header shrink-0 items-start justify-between gap-4 border-b px-4 py-5 sm:px-6 md:flex md:items-end md:gap-6 md:px-8 md:py-7 lg:px-10 ${
-          mobileThreadOpen
-            ? "hidden"
-            : "flex"
+        className={`${styles.pageHeader} ${
+          mobileThreadOpen ? styles.hideOnMobile : ""
         }`}
       >
         <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">
-            {
-              text.eyebrow
-            }
-          </p>
+          <div className={styles.eyebrow}>
+            {language === "de" ? "Kommunikation" : "Communication"}
+          </div>
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {
-              text.title
-            }
-          </h1>
-
-          <p className="mt-2 hidden text-sm text-muted-foreground sm:block">
-            {
-              text.description
-            }
-          </p>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>{text.title}</h1>
+            <span className={styles.titleMeta}>
+              {inboxCount} {language === "de" ? "Konversationen" : "conversations"}
+              {" · "}
+              {openReplyCount} {language === "de" ? "Antwort offen" : "open reply"}
+            </span>
+          </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {currentView ===
-            "trash" &&
-          trashCount >
-            0 ? (
-            <form
-              action={
-                emptyTrash
-              }
+        <div className={styles.headerActions}>
+          {gmailReadReady ? (
+            <div className={styles.gmailStatus}>
+              <span className={styles.gmailStatusDot} />
+              Gmail · {language === "de" ? "verbunden" : "connected"}
+            </div>
+          ) : (
+            <Link
+              href="/settings#connections"
+              className={`${styles.gmailStatus} ${styles.gmailStatusDisconnected}`}
             >
-              <PendingSubmitButton
-                pendingText={
-                  language ===
-                    "de"
-                    ? "Leert..."
-                    : "Emptying..."
-                }
-                className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-              >
-                <Trash2 className="size-4" />
+              <span className={styles.gmailStatusDotDisconnected} />
+              {language === "de" ? "Gmail verbinden" : "Connect Gmail"}
+              <ArrowUpRight className="size-3" />
+            </Link>
+          )}
 
-                <span className="hidden sm:inline">
-                  {
-                    text.emptyTrash
-                  }
-                </span>
+          {currentView === "trash" && trashCount > 0 ? (
+            <form action={emptyTrash}>
+              <PendingSubmitButton
+                pendingText={language === "de" ? "Leert..." : "Emptying..."}
+                className="inline-flex h-[31px] items-center gap-1.5 rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 text-[10.5px] font-medium text-[var(--lb-text-secondary)] hover:border-[var(--lb-border-strong)]"
+              >
+                <Trash2 className="size-3" />
+                <span className="hidden lg:inline">{text.emptyTrash}</span>
               </PendingSubmitButton>
             </form>
           ) : null}
 
           <SyncInboxButton
-            disabled={
-              !gmailReadReady
-            }
+            disabled={!gmailReadReady}
+            compact
           />
         </div>
       </header>
 
-      {/* ===================================================
-          STATUS BANNERS
-      =================================================== */}
-
-      {syncStatus ===
-      "done" ? (
+      {syncStatus === "done" ? (
         <InboxStatusBanner
-          cleanupHref={
-            cleanStatusHref
-          }
+          cleanupHref={cleanStatusHref}
           message={
-            newReplies >
-            0
-              ? newReplies ===
-                1
+            newReplies > 0
+              ? newReplies === 1
                 ? text.syncOne
-                : text.syncMany.replace(
-                    "{count}",
-                    String(
-                      newReplies
-                    )
-                  )
+                : text.syncMany.replace("{count}", String(newReplies))
               : text.upToDate
           }
         />
       ) : null}
 
-      {replyStatus ===
-      "sent" ? (
+      {replyStatus === "sent" ? (
         <InboxStatusBanner
-          cleanupHref={
-            cleanStatusHref
-          }
-          message={
-            text.replySent
-          }
+          cleanupHref={cleanStatusHref}
+          message={text.replySent}
         />
       ) : null}
-
-      {/* ===================================================
-          GMAIL ERRORS
-      =================================================== */}
 
       {!gmailReadReady ? (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 sm:px-6 md:px-8 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-          <AlertCircle className="size-3.5 shrink-0" />
-
-          {
-            text.gmailReadRequired
-          }
+        <div className="flex shrink-0 items-center gap-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-[10.5px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertCircle className="size-3 shrink-0" />
+          <span className="min-w-0 flex-1">{text.gmailReadRequired}</span>
+          <Link
+            href="/settings#connections"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] border border-amber-300/80 bg-white/80 px-2.5 font-medium text-amber-900 transition-colors hover:bg-white dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-200 dark:hover:bg-amber-950"
+          >
+            {language === "de" ? "Zu Verbindungen" : "Open connections"}
+            <ArrowUpRight className="size-3" />
+          </Link>
         </div>
       ) : null}
 
-      {syncStatus ===
-      "quota" ? (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 sm:px-6 md:px-8 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-          <AlertCircle className="size-3.5 shrink-0" />
-
-          {language ===
-          "de"
-            ? "Gmail hat das kurzfristige API-Limit erreicht. Leadbase pausiert den Sync automatisch für ein paar Minuten und versucht es danach wieder."
-            : "Gmail reached its short-term API quota. Leadbase pauses syncing for a few minutes and will try again automatically."}
+      {syncStatus === "quota" ? (
+        <div className="flex shrink-0 items-center gap-2 rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-[10.5px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+          <AlertCircle className="size-3 shrink-0" />
+          {language === "de"
+            ? "Gmail hat das kurzfristige API-Limit erreicht. Der Sync pausiert kurz und versucht es automatisch erneut."
+            : "Gmail reached its short-term API quota. Sync pauses briefly and retries automatically."}
         </div>
       ) : null}
 
-      {syncStatus ===
-      "error" ? (
-        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 sm:px-6 md:px-8 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
-          <AlertCircle className="size-3.5 shrink-0" />
-
-          {
-            text.syncFailed
-          }
+      {syncStatus === "error" ? (
+        <div className="flex shrink-0 items-center gap-2 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-[10.5px] text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+          <AlertCircle className="size-3 shrink-0" />
+          {text.syncFailed}
         </div>
       ) : null}
 
-      {/* ===================================================
-          FOLDERS
-      =================================================== */}
-
-      <div
-        className={`leadbase-inbox-folders shrink-0 items-center gap-1 overflow-x-auto border-b px-3 py-2 sm:px-4 md:flex md:px-6 ${
-          mobileThreadOpen
-            ? "hidden"
-            : "flex"
-        }`}
-      >
-        <FolderTab
-          href="/inbox"
-          active={
-            currentView ===
-            "inbox"
-          }
-          label={
-            text.inbox
-          }
-          count={
-            inboxCount
-          }
-          icon={
-            Inbox
-          }
-        />
-
-        <FolderTab
-          href="/inbox?view=archived"
-          active={
-            currentView ===
-            "archived"
-          }
-          label={
-            text.archived
-          }
-          count={
-            archivedCount
-          }
-          icon={
-            Archive
-          }
-        />
-
-        <FolderTab
-          href="/inbox?view=trash"
-          active={
-            currentView ===
-            "trash"
-          }
-          label={
-            text.trash
-          }
-          count={
-            trashCount
-          }
-          icon={
-            Trash2
-          }
-        />
-      </div>
-
-      {/* ===================================================
-          BODY
-      =================================================== */}
-
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* =================================================
-            CONVERSATION LIST
-        ================================================= */}
-
+      <div className={styles.workspace}>
         <aside
-          className={`leadbase-inbox-list-panel w-full shrink-0 flex-col border-r md:flex md:w-[390px] ${
-            mobileThreadOpen
-              ? "hidden"
-              : "flex"
+          className={`${styles.listPanel} ${
+            mobileThreadOpen ? styles.hideOnMobile : ""
           }`}
         >
           <InboxListPane
-            conversations={
-              conversationListItems
-            }
-            selectedLeadId={
-              requestedLeadId ||
-              null
-            }
-            view={
-              currentView
-            }
-            initialQuery={
-              rawQuery
-            }
-            searchPlaceholder={
-              searchPlaceholder
-            }
+            conversations={conversationListItems}
+            selectedLeadId={selected?.leadId ?? null}
+            view={currentView}
+            counts={{
+              inbox: inboxCount,
+              archived: archivedCount,
+              trash: trashCount,
+            }}
+            initialQuery={rawQuery}
+            searchPlaceholder={searchPlaceholder}
           />
         </aside>
 
-        {/* =================================================
-            THREAD
-        ================================================= */}
-
         <main
-          className={`leadbase-inbox-thread-panel min-w-0 flex-1 overflow-y-auto md:block ${
-            mobileThreadOpen
-              ? "block"
-              : "hidden"
+          className={`${styles.threadPanel} ${
+            mobileThreadOpen ? "" : styles.threadHiddenOnMobile
           }`}
         >
           {selected ? (
-            <div className="mx-auto w-full max-w-4xl px-4 pb-5 sm:px-6 sm:pb-6 md:px-8 md:py-8 lg:px-12 lg:py-10">
-              {/* ===========================================
-                  MOBILE / THREAD HEADER
-              =========================================== */}
-
-              <div className="sticky top-0 z-30 -mx-4 mb-6 border-b bg-background/95 px-4 pb-4 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:static md:mx-0 md:mb-0 md:border-b-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-                <div className="mb-4 flex items-center justify-between gap-3 md:hidden">
+            <>
+              <div className={styles.threadHeader}>
+                <div className="mb-2 md:hidden">
                   <Link
-                    href={
-                      inboxListHref
-                    }
-                    className="inline-flex h-9 items-center gap-2 rounded-lg px-2 text-sm font-medium transition-colors hover:bg-muted"
+                    href={inboxListHref}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-[8px] px-1.5 text-[11px] font-medium text-[var(--lb-text-secondary)] hover:bg-[var(--lb-surface-subtle)]"
                   >
-                    <ArrowLeft className="size-5" />
-
-                    {
-                      text.inbox
-                    }
+                    <ArrowLeft className="size-4" />
+                    {text.inbox}
                   </Link>
-
-                  <span className="text-xs text-muted-foreground">
-                    {
-                      selected.timeline
-                        .length
-                    }{" "}
-                    {selected.timeline
-                      .length ===
-                    1
-                      ? text.message
-                      : text.messages}
-                  </span>
                 </div>
 
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+                <div className={styles.threadHeaderTop}>
                   <div className="min-w-0">
-                    <Badge
-                      variant="outline"
-                      className={
-                        messageStatusClass(
-                          selected.status
-                        )
-                      }
-                    >
-                      {selected.status ===
-                      "Replied"
-                        ? text.replyReceived
-                        : text.emailSent}
-                    </Badge>
+                    <div className={styles.threadKicker}>
+                      <span className="rounded-[6px] bg-[#EAEEFB] px-1.5 py-[2px] text-[#002BBA]">
+                        {selected.status === "Replied" ? text.replyReceived : text.emailSent}
+                      </span>
+                      <span>
+                        {selected.timeline.length} {selected.timeline.length === 1 ? text.message : text.messages} · Thread
+                      </span>
+                    </div>
 
-                    <h2 className="mt-4 break-words text-xl font-semibold">
-                      {
-                        selected.subject
-                      }
-                    </h2>
+                    <h2 className={styles.threadSubject}>{selected.subject}</h2>
 
-                    <p className="mt-2 break-words text-sm text-muted-foreground">
-                      {selected.contact} ·{" "}
-                      {selected.company}
-                    </p>
+                    <div className={styles.threadMeta}>
+                      <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[6px] bg-[#EAEEFB] font-mono text-[7px] font-medium text-[#002BBA]">
+                        {getInitials(selected.contact || selected.company)}
+                      </span>
+                      <span className="shrink-0">{selected.contact}</span>
+                      <span className="h-2.5 w-px shrink-0 bg-[var(--lb-border-strong)]" />
+                      <span className={styles.threadMetaText}>{selected.company}</span>
+                    </div>
                   </div>
 
-                  {/* =======================================
-                      ACTIONS
-                  ======================================= */}
-
-                  <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
-                    {currentView !==
-                    "trash" ? (
-                      selected.unread ? (
-                        <form
-                          action={
-                            markLeadConversationReadFromForm.bind(
-                              null,
-                              selected.leadId
-                            )
-                          }
-                        >
-                          <PendingSubmitButton
-                            pendingText=""
-                            title={
-                              text.markAsRead
-                            }
-                            aria-label={
-                              text.markAsRead
-                            }
-                            className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-                          >
-                            <MailOpen className="size-4" />
-
-                            <span className="hidden sm:inline">
-                              {
-                                text.read
-                              }
-                            </span>
-                          </PendingSubmitButton>
-                        </form>
-                      ) : selected.replyToMessageId ? (
-                        <form
-                          action={
-                            markLeadConversationUnreadFromForm.bind(
-                              null,
-                              selected.leadId
-                            )
-                          }
-                        >
-                          <PendingSubmitButton
-                            pendingText=""
-                            title={
-                              text.markAsUnread
-                            }
-                            aria-label={
-                              text.markAsUnread
-                            }
-                            className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
-                          >
-                            <Mail className="size-4" />
-
-                            <span className="hidden sm:inline">
-                              {
-                                text.unread
-                              }
-                            </span>
-                          </PendingSubmitButton>
-                        </form>
-                      ) : null
-                    ) : null}
-
-                    {currentView ===
-                    "inbox" ? (
-                      <form
-                        action={
-                          archiveConversationAndReturnToInbox.bind(
-                            null,
-                            selected.leadId
-                          )
-                        }
-                      >
+                  <div className={styles.threadActions}>
+                    {currentView !== "trash" && selected.unread ? (
+                      <form action={markLeadConversationReadFromForm.bind(null, selected.leadId)}>
                         <PendingSubmitButton
                           pendingText=""
-                          title={
-                            text.archive
-                          }
-                          aria-label={
-                            text.archive
-                          }
-                          className="inline-flex size-9 items-center justify-center rounded-md border bg-background hover:bg-muted"
+                          title={text.markAsRead}
+                          aria-label={text.markAsRead}
+                          className="inline-flex size-8 items-center justify-center rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
                         >
-                          <Archive className="size-4" />
+                          <MailOpen className="size-3.5" />
+                        </PendingSubmitButton>
+                      </form>
+                    ) : currentView !== "trash" && selected.replyToMessageId ? (
+                      <form action={markLeadConversationUnreadFromForm.bind(null, selected.leadId)}>
+                        <PendingSubmitButton
+                          pendingText=""
+                          title={text.markAsUnread}
+                          aria-label={text.markAsUnread}
+                          className="inline-flex size-8 items-center justify-center rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
+                        >
+                          <Mail className="size-3.5" />
                         </PendingSubmitButton>
                       </form>
                     ) : null}
 
-                    {currentView ===
-                    "archived" ? (
-                      <form
-                        action={
-                          restoreLeadConversation.bind(
-                            null,
-                            selected.leadId
-                          )
-                        }
-                      >
+                    {currentView === "inbox" ? (
+                      <form action={archiveConversationAndReturnToInbox.bind(null, selected.leadId)}>
                         <PendingSubmitButton
                           pendingText=""
-                          className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                          title={text.archive}
+                          aria-label={text.archive}
+                          className="inline-flex size-8 items-center justify-center rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
                         >
-                          <RotateCcw className="size-4" />
-
-                          <span className="hidden sm:inline">
-                            {
-                              text.restore
-                            }
-                          </span>
+                          <Archive className="size-3.5" />
                         </PendingSubmitButton>
                       </form>
                     ) : null}
 
-                    {currentView !==
-                    "trash" ? (
-                      <form
-                        action={
-                          moveLeadConversationToTrash.bind(
-                            null,
-                            selected.leadId
-                          )
-                        }
-                      >
+                    {currentView === "archived" ? (
+                      <form action={restoreLeadConversation.bind(null, selected.leadId)}>
                         <PendingSubmitButton
                           pendingText=""
-                          title={
-                            text.moveToTrash
-                          }
-                          aria-label={
-                            text.moveToTrash
-                          }
-                          className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-red-600"
+                          title={text.restore}
+                          aria-label={text.restore}
+                          className="inline-flex size-8 items-center justify-center rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
                         >
-                          <Trash2 className="size-4" />
+                          <RotateCcw className="size-3.5" />
+                        </PendingSubmitButton>
+                      </form>
+                    ) : null}
+
+                    {currentView !== "trash" ? (
+                      <form action={moveLeadConversationToTrash.bind(null, selected.leadId)}>
+                        <PendingSubmitButton
+                          pendingText=""
+                          title={text.moveToTrash}
+                          aria-label={text.moveToTrash}
+                          className="inline-flex size-8 items-center justify-center rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:border-[var(--lb-border-strong)] hover:bg-[#FDF0E3] hover:text-[#9A5106]"
+                        >
+                          <Trash2 className="size-3.5" />
                         </PendingSubmitButton>
                       </form>
                     ) : (
                       <>
-                        <form
-                          action={
-                            restoreLeadConversation.bind(
-                              null,
-                              selected.leadId
-                            )
-                          }
-                        >
+                        <form action={restoreLeadConversation.bind(null, selected.leadId)}>
                           <PendingSubmitButton
                             pendingText=""
-                            className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                            title={text.restore}
+                            aria-label={text.restore}
+                            className="inline-flex size-8 items-center justify-center rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:bg-[var(--lb-surface-subtle)]"
                           >
-                            <RotateCcw className="size-4" />
-
-                            <span className="hidden sm:inline">
-                              {
-                                text.restore
-                              }
-                            </span>
+                            <RotateCcw className="size-3.5" />
                           </PendingSubmitButton>
                         </form>
-
-                        <form
-                          action={
-                            permanentlyDeleteLeadConversation.bind(
-                              null,
-                              selected.leadId
-                            )
-                          }
-                        >
+                        <form action={permanentlyDeleteLeadConversation.bind(null, selected.leadId)}>
                           <PendingSubmitButton
                             pendingText=""
-                            title={
-                              text.deletePermanently
-                            }
-                            aria-label={
-                              text.deletePermanently
-                            }
-                            className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-background px-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/40"
+                            title={text.deletePermanently}
+                            aria-label={text.deletePermanently}
+                            className="inline-flex size-8 items-center justify-center rounded-[9px] border border-red-200 bg-[var(--lb-surface)] text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/40"
                           >
-                            <XCircle className="size-4" />
-
-                            <span className="hidden sm:inline">
-                              {
-                                text.deletePermanently
-                              }
-                            </span>
+                            <XCircle className="size-3.5" />
                           </PendingSubmitButton>
                         </form>
                       </>
                     )}
 
                     <Link
-                      href={
-                        openLeadHref
-                      }
-                      className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+                      href={openLeadHref}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 text-[10.5px] font-medium text-[var(--lb-text-secondary)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
                     >
-                      <span className="hidden sm:inline">
-                        {
-                          text.openLead
-                        }
-                      </span>
-
-                      <ArrowUpRight className="size-4" />
+                      <span className="hidden lg:inline">{text.openLead}</span>
+                      <ArrowUpRight className="size-3" />
                     </Link>
                   </div>
                 </div>
               </div>
 
-              <Separator className="hidden md:my-8 md:block" />
-
-              {/* =================================================
-                  MESSAGES
-              ================================================= */}
-
-              <div className="space-y-4 md:space-y-6">
-                {selected.timeline.map(
-                  (
-                    message
-                  ) => (
+              <div className={styles.threadScroll}>
+                <div className={styles.messageStack}>
+                  {selected.timeline.map((message) => (
                     <MessageCard
-                      key={
-                        message.id
-                      }
-                      message={
-                        message
-                      }
-                      conversationSubject={
-                        selected.subject
-                      }
-                      language={
-                        language
-                      }
-                      defaultOpen={
-                        message.id ===
-                        newestIncomingMessageId
-                      }
+                      key={message.id}
+                      message={message}
+                      conversationSubject={selected.subject}
+                      language={language}
+                      defaultOpen={message.id === newestIncomingMessageId}
                       bounceResolved={
-                        message.classification ===
-                          "BOUNCE" &&
+                        message.classification === "BOUNCE" &&
                         selected.timeline.some(
-                          (
-                            laterMessage
-                          ) =>
-                            laterMessage.direction ===
-                              "outgoing" &&
-                            timestamp(
-                              laterMessage.date
-                            ) >
-                              timestamp(
-                                message.date
-                              )
+                          (laterMessage) =>
+                            laterMessage.direction === "outgoing" &&
+                            timestamp(laterMessage.date) > timestamp(message.date)
                         )
                       }
                     />
-                  )
-                )}
+                  ))}
+                </div>
               </div>
 
-              {/* =================================================
-                  REPLY
-              ================================================= */}
-
-              {currentView !==
-                "trash" &&
-              selected.replyToMessageId &&
+              {currentView !== "trash" &&
               selected.replyRecipientEmail &&
+              (selected.replyToMessageId ||
+                (selected.replyToGmailMessageId && selected.replyGmailThreadId)) &&
               gmailSendReady ? (
-                <ReplyComposer
-                  leadId={
-                    selected.leadId
-                  }
-                  replyToMessageId={
-                    selected.replyToMessageId
-                  }
-                  recipientName={
-                    selected.replyRecipientName ??
-                    selected.replyRecipientEmail
-                  }
-                  recipientEmail={
-                    selected.replyRecipientEmail
-                  }
-                />
+                <div className={styles.composerDock}>
+                  <ReplyComposer
+                    variant="dock"
+                    leadId={selected.leadId}
+                    replyToMessageId={selected.replyToMessageId}
+                    replyToGmailMessageId={selected.replyToGmailMessageId}
+                    gmailThreadId={selected.replyGmailThreadId}
+                    recipientName={
+                      selected.replyRecipientName ?? selected.replyRecipientEmail
+                    }
+                    recipientEmail={selected.replyRecipientEmail}
+                  />
+                </div>
               ) : null}
-            </div>
+            </>
           ) : (
-            <div className="flex h-full items-center justify-center px-8">
-              <div className="text-center">
-                <Inbox className="mx-auto size-6 text-muted-foreground" />
-
-                <p className="mt-4 text-sm font-medium">
-                  {
-                    text.noConversationSelected
-                  }
+            <div className={styles.emptyThread}>
+              <div className="text-left">
+                <p className="text-[12px] font-medium text-[var(--lb-text)]">
+                  {text.noConversationSelected}
+                </p>
+                <p className="mt-1 text-[10.5px] text-[var(--lb-text-muted)]">
+                  {language === "de"
+                    ? "Wähle links eine Konversation aus."
+                    : "Choose a conversation on the left."}
                 </p>
               </div>
             </div>
@@ -3177,57 +2920,6 @@ export default async function InboxPage({
         </main>
       </div>
     </div>
-  );
-}
-
-/* =========================================================
-   FOLDER TAB
-========================================================= */
-
-function FolderTab({
-  href,
-  active,
-  label,
-  count,
-  icon: Icon,
-}: {
-  href: string;
-
-  active: boolean;
-
-  label: string;
-
-  count: number;
-
-  icon:
-    React.ElementType;
-}) {
-  return (
-    <Link
-      href={
-        href
-      }
-      className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
-        active
-          ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/15"
-          : "text-muted-foreground hover:bg-primary/[0.055] hover:text-foreground"
-      }`}
-    >
-      <Icon className="size-4" />
-
-      {
-        label
-      }
-
-      {count >
-      0 ? (
-        <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {
-            count
-          }
-        </span>
-      ) : null}
-    </Link>
   );
 }
 
@@ -3301,114 +2993,70 @@ function MessageCard({
 
   return (
     <details
-      open={
-        defaultOpen
-      }
-      className="group overflow-hidden rounded-xl border bg-card"
+      open={defaultOpen}
+      className={styles.messageCard}
     >
-      <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3.5 transition-colors hover:bg-muted/35 sm:px-5 [&::-webkit-details-marker]:hidden">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
-          {outgoing ? (
-            <MailCheck className="size-3.5" />
-          ) : (
-            <Inbox className="size-3.5" />
-          )}
+      <summary className={styles.messageSummary}>
+        <div className={styles.messageAvatar}>
+          {getInitials(message.sender)}
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="truncate text-sm font-medium">
-              {
-                message.sender
-              }
-            </p>
+        <div className="min-w-0">
+          <div className={styles.messageSenderRow}>
+            <p className={styles.messageSender}>{message.sender}</p>
 
-            <span className="text-[11px] text-muted-foreground">
+            <span className={styles.messageRole}>
               {outgoing
-                ? language ===
-                    "de"
-                  ? "Du"
-                  : "You"
-                : language ===
-                    "de"
-                  ? "Kunde"
-                  : "Customer"}
+                ? language === "de"
+                  ? "Du · gesendet"
+                  : "You · sent"
+                : language === "de"
+                  ? "Kunde · erhalten"
+                  : "Customer · received"}
             </span>
 
-            {!outgoing &&
-            intelligenceMeta ? (
+            {!outgoing && intelligenceMeta ? (
               <Badge
                 variant="outline"
-                className={`h-5 rounded-full px-2 text-[9px] font-semibold ${intelligenceMeta.className}`}
+                className={`h-auto rounded-[6px] border-0 px-1.5 py-[2px] font-mono text-[7.5px] font-medium uppercase tracking-[.05em] ${intelligenceMeta.className}`}
               >
-                {
-                  intelligenceMeta.label
-                }
+                {intelligenceMeta.label}
               </Badge>
             ) : null}
 
-            {!outgoing &&
-            message.automaticReply ? (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
-                {language ===
-                "de"
-                  ? "Automatisch"
-                  : "Automatic"}
+            {!outgoing && message.automaticReply ? (
+              <span className="rounded-[6px] bg-black/[0.05] px-1.5 py-[2px] font-mono text-[7.5px] uppercase tracking-[.05em] text-[var(--lb-text-muted)] dark:bg-white/[0.07]">
+                {language === "de" ? "Automatisch" : "Automatic"}
               </span>
             ) : null}
 
             {bounceResolved ? (
-              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-700 dark:text-emerald-300">
-                {language ===
-                "de"
-                  ? "Behoben"
-                  : "Resolved"}
+              <span className="rounded-[6px] bg-[#E9F0EA] px-1.5 py-[2px] font-mono text-[7.5px] uppercase tracking-[.05em] text-[#2F6B3A]">
+                {language === "de" ? "Behoben" : "Resolved"}
               </span>
             ) : null}
-
-            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-              {formatFullDate(
-                message.date,
-                language
-              )}
-            </span>
           </div>
 
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {
-              message.email
-            }
-          </p>
+          <p className={styles.messageEmail}>{message.email}</p>
 
           {differentSubject ? (
-            <p className="mt-2 truncate text-xs font-medium">
-              {
-                message.subject
-              }
+            <p className="mt-1 truncate text-[9.5px] font-medium text-[var(--lb-text-secondary)]">
+              {message.subject}
             </p>
           ) : null}
 
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground group-open:hidden">
-            {
-              preview
-            }
-            {message.body
-              .replace(
-                /\s+/g,
-                " "
-              )
-              .trim()
-              .length >
-            preview.length
-              ? "…"
-              : ""}
+          <p className={`${styles.messagePreview} group-open:hidden`}>
+            {preview}
+            {message.body.replace(/\s+/g, " ").trim().length > preview.length ? "…" : ""}
           </p>
         </div>
 
-        <ChevronDown className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        <span className={styles.messageDate}>
+          {formatFullDate(message.date, language)}
+        </span>
       </summary>
 
-      <div className="border-t">
+      <div className={styles.messageBodyWrap}>
         {differentSubject ? (
           <div className="border-b bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground sm:px-5">
             {
@@ -3538,7 +3186,7 @@ function MessageCard({
           </div>
         ) : null}
 
-        <div className="break-words whitespace-pre-wrap px-4 py-4 text-sm leading-7 sm:px-5 sm:py-5">
+        <div className={`${styles.messageBody} break-words whitespace-pre-wrap`}>
           {
             message.body
           }

@@ -349,7 +349,7 @@ export default async function CampaignDetailPage({
     );
 
   return (
-    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page leadbase-route-campaign-detail mx-auto min-h-full w-full max-w-[1400px] px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5">
       <WorkspacePageMotion />
       {/* ===================================================
           BACK

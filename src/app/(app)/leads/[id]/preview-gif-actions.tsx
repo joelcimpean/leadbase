@@ -409,8 +409,8 @@ export function PreviewGifActions({
     loading
   ) {
     return (
-      <div className="mt-2 inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-[11px] text-muted-foreground">
-        <Loader2 className="size-3 animate-spin" />
+      <div className="flex min-h-[44px] min-w-0 items-center gap-2.5 rounded-[10px] border border-black/[0.07] bg-[#FBFBFC] px-3 text-[10.5px] text-[#6B7078] dark:border-white/[0.08] dark:bg-white/[0.025]">
+        <Loader2 className="size-3.5 animate-spin" />
 
         {
           text.label
@@ -420,26 +420,26 @@ export function PreviewGifActions({
   }
 
   return (
-    <div className="mt-2 max-w-[620px] overflow-hidden rounded-xl border bg-muted/10">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Film className="size-3.5 text-muted-foreground" />
+    <div className="min-w-0 overflow-hidden rounded-[10px] border border-black/[0.07] bg-[#FBFBFC] dark:border-white/[0.08] dark:bg-white/[0.025]">
+      <div className="flex min-h-[44px] flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Film className="size-3.5 shrink-0 text-[#002BBA]" />
 
-          <p className="text-xs font-semibold">
+          <p className="whitespace-nowrap text-[11.5px] font-medium">
             {
               text.label
             }
           </p>
 
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            className={`shrink-0 rounded-[6px] px-1.5 py-[2px] font-mono text-[8px] uppercase tracking-[0.05em] ${
               status ===
               "READY"
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                ? "bg-[#EAEEFB] text-[#002BBA] dark:bg-[#002BBA]/20 dark:text-[#8EA6FF]"
                 : status ===
                     "FAILED"
                   ? "bg-red-500/10 text-red-700 dark:text-red-300"
-                  : "bg-muted text-muted-foreground"
+                  : "bg-black/[0.05] text-[#6B7078] dark:bg-white/[0.06]"
             }`}
           >
             {status ===
@@ -452,7 +452,7 @@ export function PreviewGifActions({
           </span>
 
           {sizeLabel ? (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="truncate text-[9.5px] text-[#6B7078]">
               {
                 sizeLabel
               }
@@ -460,7 +460,7 @@ export function PreviewGifActions({
           ) : null}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           {gifUrl ? (
             <button
               type="button"
@@ -472,7 +472,7 @@ export function PreviewGifActions({
                     !current
                 )
               }
-              className="inline-flex h-8 items-center gap-1 rounded-md border bg-background px-2.5 text-[11px] font-medium transition-colors hover:bg-muted"
+              className="inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[10.5px] font-medium text-[#002BBA] transition-colors hover:bg-[#EAEEFB] hover:text-[#001E85]"
             >
               {
                 text.preview
@@ -496,7 +496,7 @@ export function PreviewGifActions({
             onClick={() =>
               void generate()
             }
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-[11px] font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-7 items-center gap-1.5 rounded-[8px] border border-black/[0.08] bg-white px-2.5 text-[10.5px] font-medium text-[#40454E] transition-colors hover:border-black/[0.15] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.10] dark:bg-[#15161A] dark:text-white"
           >
             {generating ? (
               <Loader2 className="size-3 animate-spin" />
@@ -517,14 +517,14 @@ export function PreviewGifActions({
 
       {gifUrl &&
       expanded ? (
-        <div className="border-t p-3">
+        <div className="border-t border-black/[0.07] p-2.5 dark:border-white/[0.08]">
           <a
             href={
               shareUrl
             }
             target="_blank"
             rel="noopener noreferrer"
-            className="block overflow-hidden rounded-lg border bg-white"
+            className="block overflow-hidden rounded-[9px] border border-black/[0.08] bg-white dark:border-white/[0.10]"
           >
             <img
               src={
@@ -550,7 +550,7 @@ export function PreviewGifActions({
               }
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[11px] font-medium underline-offset-4 hover:underline"
+              className="rounded-[7px] px-1.5 py-1 text-[10.5px] font-medium text-[#002BBA] transition-colors hover:bg-[#EAEEFB] hover:text-[#001E85]"
             >
               {
                 text.open

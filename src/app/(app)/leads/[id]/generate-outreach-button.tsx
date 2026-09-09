@@ -74,15 +74,11 @@ function SubmitButton({
     <Button
       type="submit"
       size="sm"
-      variant={
-        hasDraft
-          ? "outline"
-          : "default"
-      }
+      variant="default"
       disabled={
         pending
       }
-      className="h-9 gap-2"
+      className="h-9 gap-2 rounded-[9px] bg-[#002BBA] px-3 text-white shadow-none transition-colors hover:bg-[#00229A]"
     >
       {pending ? (
         <>

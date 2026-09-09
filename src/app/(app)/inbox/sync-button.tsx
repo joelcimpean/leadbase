@@ -30,8 +30,10 @@ import {
 
 export function SyncInboxButton({
   disabled = false,
+  compact = false,
 }: {
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
     <form
@@ -40,9 +42,8 @@ export function SyncInboxButton({
       }
     >
       <SyncButtonContent
-        disabled={
-          disabled
-        }
+        disabled={disabled}
+        compact={compact}
       />
     </form>
   );
@@ -54,8 +55,10 @@ export function SyncInboxButton({
 
 function SyncButtonContent({
   disabled,
+  compact,
 }: {
   disabled: boolean;
+  compact: boolean;
 }) {
   const {
     language,
@@ -80,13 +83,21 @@ function SyncButtonContent({
         disabled ||
         pending
       }
-      className="gap-2"
+      className={
+        compact
+          ? "h-[31px] gap-1.5 rounded-[9px] border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 text-[10.5px] font-medium text-[var(--lb-text-secondary)] shadow-none hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)]"
+          : "gap-2"
+      }
     >
       <RefreshCw
         className={
           pending
-            ? "size-4 animate-spin"
-            : "size-4"
+            ? compact
+              ? "size-3 animate-spin"
+              : "size-4 animate-spin"
+            : compact
+              ? "size-3"
+              : "size-4"
         }
       />
 

@@ -93,6 +93,76 @@ function getMoney(
   return value;
 }
 
+function getInternalReturnTo(
+  formData: FormData
+) {
+  const value = getText(
+    formData,
+    "returnTo"
+  );
+
+  if (
+    !value ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+
+const PROJECT_MEDIA_BUCKET =
+  "project-media";
+
+const PROJECT_MEDIA_MAX_BYTES =
+  6 * 1024 * 1024;
+
+const PROJECT_MEDIA_TYPES =
+  new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ]);
+
+function safeProjectMediaFileName(
+  name: string
+) {
+  return (
+    name
+      .toLowerCase()
+      .replace(
+        /[^a-z0-9._-]+/g,
+        "-"
+      )
+      .replace(
+        /^-+|-+$/g,
+        ""
+      ) ||
+    "project-image"
+  );
+}
+
+function getProjectMediaFile(
+  formData: FormData
+) {
+  const value =
+    formData.get(
+      "projectMedia"
+    );
+
+  if (
+    !(value instanceof File) ||
+    value.size <= 0
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
 /* =========================================================
    CREATE
 ========================================================= */
@@ -185,6 +255,31 @@ export async function createProject(
       "notes"
     );
 
+  const mediaFile =
+    getProjectMediaFile(
+      formData
+    );
+
+  const mediaMode =
+    getText(
+      formData,
+      "mediaMode"
+    ) ===
+      "logo"
+      ? "logo"
+      : "cover";
+
+  const sourceProposalId =
+    getOptionalText(
+      formData,
+      "sourceProposalId"
+    );
+
+  const returnTo =
+    getInternalReturnTo(
+      formData
+    );
+
   if (
     !clientName ||
     !projectName
@@ -209,7 +304,29 @@ export async function createProject(
     );
   }
 
+  if (
+    mediaFile &&
+    (
+      mediaFile.size >
+        PROJECT_MEDIA_MAX_BYTES ||
+      !PROJECT_MEDIA_TYPES.has(
+        mediaFile.type
+      )
+    )
+  ) {
+    redirect(
+      `/projects/new?error=${encodeURIComponent(
+        mediaFile.size >
+          PROJECT_MEDIA_MAX_BYTES
+          ? "Image must be smaller than 6 MB"
+          : "Unsupported image type"
+      )}`
+    );
+  }
+
   const {
+    data:
+      createdProject,
     error,
   } =
     await supabase
@@ -247,10 +364,21 @@ export async function createProject(
           completedAt,
 
         notes,
-      });
+
+        source_proposal_id:
+          sourceProposalId,
+
+        media_mode:
+          mediaMode,
+      })
+      .select(
+        "id"
+      )
+      .single();
 
   if (
-    error
+    error ||
+    !createdProject
   ) {
     console.error(
       "Could not create project:",
@@ -259,9 +387,139 @@ export async function createProject(
 
     redirect(
       `/projects/new?error=${encodeURIComponent(
-        error.message
+        error?.message ??
+          "Project could not be created"
       )}`
     );
+  }
+
+  if (
+    mediaFile
+  ) {
+    const mediaPath =
+      `${user.id}/${createdProject.id}/${Date.now()}-${safeProjectMediaFileName(
+        mediaFile.name
+      )}`;
+
+    const {
+      error:
+        uploadError,
+    } =
+      await supabase.storage
+        .from(
+          PROJECT_MEDIA_BUCKET
+        )
+        .upload(
+          mediaPath,
+          mediaFile,
+          {
+            contentType:
+              mediaFile.type,
+            upsert:
+              false,
+          }
+        );
+
+    if (
+      uploadError
+    ) {
+      console.error(
+        "Could not upload project image:",
+        uploadError
+      );
+
+      await supabase
+        .from(
+          "client_projects"
+        )
+        .delete()
+        .eq(
+          "id",
+          createdProject.id
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      redirect(
+        `/projects/new?error=${encodeURIComponent(
+          uploadError.message
+        )}`
+      );
+    }
+
+    const {
+      data:
+        publicUrlData,
+    } =
+      supabase.storage
+        .from(
+          PROJECT_MEDIA_BUCKET
+        )
+        .getPublicUrl(
+          mediaPath
+        );
+
+    const {
+      error:
+        mediaUpdateError,
+    } =
+      await supabase
+        .from(
+          "client_projects"
+        )
+        .update({
+          media_url:
+            publicUrlData.publicUrl,
+          media_path:
+            mediaPath,
+          media_mode:
+            mediaMode,
+          updated_at:
+            new Date()
+              .toISOString(),
+        })
+        .eq(
+          "id",
+          createdProject.id
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+    if (
+      mediaUpdateError
+    ) {
+      await supabase.storage
+        .from(
+          PROJECT_MEDIA_BUCKET
+        )
+        .remove([
+          mediaPath,
+        ]);
+
+      await supabase
+        .from(
+          "client_projects"
+        )
+        .delete()
+        .eq(
+          "id",
+          createdProject.id
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      redirect(
+        `/projects/new?error=${encodeURIComponent(
+          mediaUpdateError.message
+        )}`
+      );
+    }
   }
 
   revalidatePath(
@@ -271,6 +529,18 @@ export async function createProject(
   revalidatePath(
     "/"
   );
+
+  if (
+    returnTo
+  ) {
+    revalidatePath(
+      returnTo
+    );
+
+    redirect(
+      returnTo
+    );
+  }
 
   redirect(
     "/projects"
@@ -374,6 +644,11 @@ export async function updateProject(
       "notes"
     );
 
+  const returnTo =
+    getInternalReturnTo(
+      formData
+    );
+
   if (
     !projectId ||
     !clientName ||
@@ -465,11 +740,27 @@ export async function updateProject(
   );
 
   revalidatePath(
+    `/projects/${projectId}`
+  );
+
+  revalidatePath(
     "/"
   );
 
+  if (
+    returnTo
+  ) {
+    revalidatePath(
+      returnTo
+    );
+
+    redirect(
+      returnTo
+    );
+  }
+
   redirect(
-    "/projects"
+    `/projects/${projectId}`
   );
 }
 
@@ -500,6 +791,27 @@ export async function deleteProject(
   }
 
   const {
+    data:
+      existingProject,
+  } =
+    await supabase
+      .from(
+        "client_projects"
+      )
+      .select(
+        "media_path"
+      )
+      .eq(
+        "id",
+        projectId
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+  const {
     error,
   } =
     await supabase
@@ -525,6 +837,31 @@ export async function deleteProject(
     );
 
     return;
+  }
+
+  if (
+    existingProject?.media_path
+  ) {
+    const {
+      error:
+        storageError,
+    } =
+      await supabase.storage
+        .from(
+          "project-media"
+        )
+        .remove([
+          existingProject.media_path,
+        ]);
+
+    if (
+      storageError
+    ) {
+      console.error(
+        "Could not remove project media:",
+        storageError
+      );
+    }
   }
 
   revalidatePath(

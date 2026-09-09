@@ -64,6 +64,18 @@ type SendGmailReplyInput = {
   attachments?: GmailAttachment[];
 };
 
+type SendGmailThreadFollowUpInput = {
+  fromEmail: string;
+  toEmail: string;
+  body: string;
+  encryptedRefreshToken: string;
+  replyToGmailMessageId: string;
+  gmailThreadId: string;
+  ccEmails?: string[];
+  bccEmails?: string[];
+  attachments?: GmailAttachment[];
+};
+
 type GmailHeader = {
   name?: string | null;
   value?: string | null;
@@ -953,6 +965,133 @@ export async function sendGmailMessageWithAttachments({
     threadId:
       response.data.threadId ??
       null,
+  };
+}
+
+/* =========================================================
+   SEND OUTBOUND FOLLOW-UP IN EXISTING THREAD
+
+   Unlike sendGmailReply(), this keeps an explicit recipient.
+   That matters when replying to our own originally-sent email:
+   the parent message's From header is Joel, not the lead.
+========================================================= */
+
+export async function sendGmailThreadFollowUp({
+  fromEmail,
+  toEmail,
+  body,
+  encryptedRefreshToken,
+  replyToGmailMessageId,
+  gmailThreadId,
+  ccEmails = [],
+  bccEmails = [],
+  attachments = [],
+}: SendGmailThreadFollowUpInput) {
+  const gmail =
+    createAuthenticatedGmailClient(
+      encryptedRefreshToken
+    );
+
+  const parentResponse =
+    await gmail.users.messages.get({
+      userId:
+        "me",
+      id:
+        replyToGmailMessageId,
+      format:
+        "metadata",
+      metadataHeaders: [
+        "Subject",
+        "Message-ID",
+        "References",
+      ],
+    });
+
+  const headers =
+    parentResponse.data
+      .payload
+      ?.headers ??
+    [];
+
+  const parentSubject =
+    getHeader(
+      headers,
+      "Subject"
+    );
+
+  const parentMessageId =
+    getHeader(
+      headers,
+      "Message-ID"
+    );
+
+  const parentReferences =
+    getHeader(
+      headers,
+      "References"
+    );
+
+  if (!parentSubject) {
+    throw new Error(
+      "The original outreach email has no subject."
+    );
+  }
+
+  if (!parentMessageId) {
+    throw new Error(
+      "The original outreach email has no RFC Message-ID."
+    );
+  }
+
+  const references =
+    [
+      parentReferences,
+      parentMessageId,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+  const raw =
+    createRawReply({
+      fromEmail,
+      toEmail,
+      ccEmails,
+      bccEmails,
+      subject:
+        parentSubject,
+      body,
+      inReplyTo:
+        parentMessageId,
+      references,
+      attachments,
+    });
+
+  const response =
+    await gmail.users.messages.send({
+      userId:
+        "me",
+      requestBody: {
+        raw,
+        threadId:
+          gmailThreadId,
+      },
+    });
+
+  if (!response.data.id) {
+    throw new Error(
+      "Gmail did not return a message ID for the follow-up."
+    );
+  }
+
+  return {
+    messageId:
+      response.data.id,
+    threadId:
+      response.data.threadId ??
+      gmailThreadId,
+    toEmail,
+    subject:
+      parentSubject,
   };
 }
 

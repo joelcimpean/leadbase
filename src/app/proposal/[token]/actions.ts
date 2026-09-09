@@ -21,7 +21,7 @@ import {
 } from "@/lib/persistent-notifications";
 
 import {
-  buildProposalPdf,
+  buildProposalPdfFromPublicProposal,
   proposalPdfFilename,
 } from "@/lib/proposal-pdf";
 
@@ -40,8 +40,13 @@ import {
 const GMAIL_SEND_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
 
-const ACCEPTANCE_STATEMENT =
-  "Ich akzeptiere dieses Angebot verbindlich.";
+function acceptanceStatement(
+  language: "de" | "en"
+) {
+  return language === "de"
+    ? "Ich akzeptiere dieses Angebot verbindlich."
+    : "I accept this proposal as binding.";
+}
 
 function text(
   formData: FormData,
@@ -54,6 +59,15 @@ function text(
     "string"
     ? value.trim()
     : "";
+}
+
+
+function normalizeAcceptanceName(value: string) {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("de-DE");
 }
 
 function cleanError(
@@ -80,6 +94,14 @@ function scopeItems(
           item.trim().length > 0
       )
     : [];
+}
+
+function requestOrigin(requestHeaders: { get(name: string): string | null }) {
+  const forwardedHost = requestHeaders.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || requestHeaders.get("host") || "localhost:3000";
+  const forwardedProto = requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const protocol = forwardedProto || (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+  return `${protocol}://${host}`;
 }
 
 function publicPath(
@@ -154,6 +176,7 @@ export async function acceptProposal(
         status,
         revision,
         title,
+        proposal_number,
         client_name,
         contact_name,
         contact_email,
@@ -169,6 +192,7 @@ export async function acceptProposal(
         accent_color,
         logo_url,
         first_time_client,
+        language,
         created_at,
         accepted_at,
         accepted_by_name,
@@ -188,6 +212,37 @@ export async function acceptProposal(
       )
     );
   }
+
+  const proposalLanguage:
+    "de" | "en" =
+      proposal.language === "en"
+        ? "en"
+        : "de";
+
+  const expectedAcceptanceName =
+    proposal.contact_name?.trim() ||
+    proposal.client_name.trim();
+
+  if (
+    !expectedAcceptanceName ||
+    normalizeAcceptanceName(acceptedByName) !==
+      normalizeAcceptanceName(expectedAcceptanceName)
+  ) {
+    redirect(
+      publicPath(
+        token,
+        "error=acceptance-name-mismatch"
+      )
+    );
+  }
+
+  const isGermanProposal =
+    proposalLanguage === "de";
+
+  const acceptedStatement =
+    acceptanceStatement(
+      proposalLanguage
+    );
 
   if (
     proposal.status ===
@@ -224,7 +279,7 @@ export async function acceptProposal(
           accepted_by_name:
             acceptedByName,
           acceptance_statement:
-            ACCEPTANCE_STATEMENT,
+            acceptedStatement,
           accepted_user_agent:
             acceptedUserAgent,
           declined_at:
@@ -392,75 +447,51 @@ export async function acceptProposal(
     }
 
     const pdf =
-      await buildProposalPdf({
-        title:
-          proposal.title,
-        clientName:
-          proposal.client_name,
-        contactName:
-          proposal.contact_name,
-        websiteUrl:
-          proposal.website_url,
-        introText:
-          proposal.intro_text,
-        scope:
-          scopeItems(
-            proposal.scope
-          ),
-        timelineText:
-          proposal.timeline_text,
-        price:
-          Number(
-            proposal.price ?? 0
-          ),
-        currency:
-          proposal.currency ??
-          "EUR",
-        validUntil:
-          proposal.valid_until,
-        notes:
-          proposal.notes,
-        customSections:
-          normalizeProposalSections(
-            proposal.custom_sections
-          ),
-        accentColor:
-          proposal.accent_color,
-        logoUrl:
-          proposal.logo_url,
-        firstTimeClient:
-          proposal.first_time_client !==
-          false,
-        issuedAt:
-          proposal.created_at,
-        acceptedAt,
-        acceptedByName:
-          effectiveAcceptedByName,
-        acceptanceStatement:
-          ACCEPTANCE_STATEMENT,
-        publicToken:
-          proposal.public_token,
+      await buildProposalPdfFromPublicProposal({
+        origin: requestOrigin(requestHeaders),
+        token,
+        language: proposalLanguage,
       });
 
     const greeting =
       proposal.contact_name
-        ? `Guten Tag ${proposal.contact_name},`
-        : "Guten Tag,";
+        ? isGermanProposal
+          ? `Guten Tag ${proposal.contact_name},`
+          : `Hello ${proposal.contact_name},`
+        : isGermanProposal
+          ? "Guten Tag,"
+          : "Hello,";
 
-    const body = [
-      greeting,
-      "",
-      `vielen Dank für die verbindliche Annahme des Angebots „${proposal.title}“ durch ${effectiveAcceptedByName}.`,
-      "",
-      "Im Anhang finden Sie die bestätigte Angebots-PDF für Ihre Unterlagen.",
-      "",
-      "Ich melde mich separat mit den nächsten Schritten zum Projektstart.",
-      "",
-      "Mit freundlichen Grüßen / Kind regards,",
-      "",
-      "Joel Cimpean",
-      "hello@joelcimpean.com / joelcimpean.com",
-    ].join("\n");
+    const body =
+      isGermanProposal
+        ? [
+            greeting,
+            "",
+            `vielen Dank für die verbindliche Annahme des Angebots „${proposal.title}“ durch ${effectiveAcceptedByName}.`,
+            "",
+            "Im Anhang finden Sie die bestätigte Angebots-PDF für Ihre Unterlagen.",
+            "",
+            "Ich melde mich separat mit den nächsten Schritten zum Projektstart.",
+            "",
+            "Mit freundlichen Grüßen,",
+            "",
+            "Joel Cimpean",
+            "hello@joelcimpean.com / joelcimpean.com",
+          ].join("\n")
+        : [
+            greeting,
+            "",
+            `thank you for accepting the proposal “${proposal.title}” as ${effectiveAcceptedByName}.`,
+            "",
+            "The confirmed proposal PDF is attached for your records.",
+            "",
+            "I will follow up separately with the next steps for the project start.",
+            "",
+            "Kind regards,",
+            "",
+            "Joel Cimpean",
+            "hello@joelcimpean.com / joelcimpean.com",
+          ].join("\n");
 
     await sendGmailMessageWithAttachments({
       fromEmail:
@@ -468,13 +499,16 @@ export async function acceptProposal(
       toEmail:
         proposal.contact_email,
       subject:
-        `Bestätigung Ihres Angebots – ${proposal.client_name}`,
+        isGermanProposal
+          ? `Bestätigung Ihres Angebots – ${proposal.client_name}`
+          : `Proposal confirmation – ${proposal.client_name}`,
       body,
       attachments: [
         {
           filename:
             proposalPdfFilename(
-              proposal.client_name
+              proposal.client_name,
+              proposalLanguage
             ),
           contentType:
             "application/pdf",

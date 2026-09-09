@@ -18,7 +18,8 @@ type ProposalActionButtonProps = {
   pendingLabel: string;
   variant?:
     | "primary"
-    | "secondary";
+    | "secondary"
+    | "rail-secondary";
   accentColor?: string;
 };
 
@@ -33,6 +34,10 @@ export function ProposalActionButton({
 
   const primary =
     variant === "primary";
+
+  const railSecondary =
+    variant ===
+    "rail-secondary";
 
   const style: CSSProperties =
     primary
@@ -52,15 +57,17 @@ export function ProposalActionButton({
       aria-busy={pending}
       style={style}
       className={[
-        "inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60",
-        primary
-          ? "hover:opacity-90"
-          : "border-black/15 bg-white text-zinc-900 hover:bg-zinc-50",
+        "inline-flex items-center justify-center gap-2 border font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        railSecondary
+          ? "h-8 w-full rounded-[9px] border-black/[0.12] bg-white px-2 text-[10.5px] text-[#6B6660] hover:border-black/[0.26] hover:text-[#14161A]"
+          : primary
+            ? "h-10 rounded-full px-4 text-[11.5px] text-white hover:opacity-90"
+            : "h-10 rounded-full border-black/[0.14] bg-white px-4 text-[11.5px] text-[#6B6660] hover:border-black/[0.30] hover:text-[#14161A]",
       ].join(" ")}
     >
       {pending ? (
         <>
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className="size-3.5 animate-spin" />
           {pendingLabel}
         </>
       ) : (

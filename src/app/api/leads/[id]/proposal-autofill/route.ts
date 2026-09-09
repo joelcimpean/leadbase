@@ -17,6 +17,11 @@ import {
 } from "@/lib/supabase/server";
 
 import {
+  assertAiUsageAvailable,
+  recordAiUsage,
+} from "@/lib/ai-usage";
+
+import {
   assessProposalEmailHistory,
   filterProposalHistoryForAi,
 } from "@/lib/proposal-email-history";
@@ -230,6 +235,8 @@ export async function POST(
       );
     }
 
+    await assertAiUsageAvailable(user.id);
+
     const openai =
       new OpenAI({ apiKey });
 
@@ -302,6 +309,18 @@ ${conversation}
         "Proposal autofill returned no structured result."
       );
     }
+
+    await recordAiUsage({
+      userId: user.id,
+      feature: "proposal_autofill",
+      model: MODEL,
+      usage: {
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        totalTokens: response.usage?.total_tokens ?? 0,
+      },
+      metadata: { leadId },
+    });
 
     return NextResponse.json({
       ok: true,

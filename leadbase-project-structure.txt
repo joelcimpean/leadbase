@@ -1,242 +1,337 @@
-public
-public/file.svg
-public/globe.svg
-public/next.svg
-public/vercel.svg
-public/window.svg
-src
-src/app
-src/app/(app)
-src/app/(app)/actions.ts
-src/app/(app)/analytics
-src/app/(app)/analytics/page.tsx
-src/app/(app)/campaigns
-src/app/(app)/campaigns/[id]
-src/app/(app)/campaigns/[id]/campaign-actions.tsx
-src/app/(app)/campaigns/[id]/delete-campaign-dialog.tsx
-src/app/(app)/campaigns/[id]/edit
-src/app/(app)/campaigns/[id]/edit/page.tsx
-src/app/(app)/campaigns/[id]/page.tsx
-src/app/(app)/campaigns/actions.ts
-src/app/(app)/campaigns/new
-src/app/(app)/campaigns/new/page.tsx
-src/app/(app)/campaigns/new/submit-button.tsx
-src/app/(app)/campaigns/page.tsx
-src/app/(app)/find-leads
-src/app/(app)/find-leads/actions.tsx
-src/app/(app)/find-leads/ai-lead-search-chat.tsx
-src/app/(app)/find-leads/candidate-actions-buttons.tsx
-src/app/(app)/find-leads/candidate-actions.ts
-src/app/(app)/find-leads/page.tsx
-src/app/(app)/find-leads/search-form.tsx
-src/app/(app)/inbox
-src/app/(app)/inbox/actions.ts
-src/app/(app)/inbox/conversation-list.tsx
-src/app/(app)/inbox/inbox-data.ts
-src/app/(app)/inbox/inbox-thread.tsx
-src/app/(app)/inbox/mark-conversation-read.tsx
-src/app/(app)/inbox/page.tsx
-src/app/(app)/inbox/reply-composer.tsx
-src/app/(app)/inbox/status-banner.tsx
-src/app/(app)/inbox/sync-button.tsx
-src/app/(app)/layout.tsx
-src/app/(app)/leads
-src/app/(app)/leads/[id]
-src/app/(app)/leads/[id]/analyze-button.tsx
-src/app/(app)/leads/[id]/delete-lead-dialog.tsx
-src/app/(app)/leads/[id]/edit
-src/app/(app)/leads/[id]/edit/page.tsx
-src/app/(app)/leads/[id]/generate-outreach-button.tsx
-src/app/(app)/leads/[id]/layout.tsx
-src/app/(app)/leads/[id]/lead-email-history.tsx
-src/app/(app)/leads/[id]/localized-visual-analysis.tsx
-src/app/(app)/leads/[id]/outreach-generation.ts
-src/app/(app)/leads/[id]/outreach-section.tsx
-src/app/(app)/leads/[id]/page.tsx
-src/app/(app)/leads/[id]/preview-gif-actions.tsx
-src/app/(app)/leads/[id]/redesign-preview-actions.tsx
-src/app/(app)/leads/[id]/send-email-button.tsx
-src/app/(app)/leads/[id]/send-follow-up-button.tsx
-src/app/(app)/leads/actions.ts
-src/app/(app)/leads/analysis-actions.ts
-src/app/(app)/leads/bulk-actions.ts
-src/app/(app)/leads/lead-hot-score-badge.tsx
-src/app/(app)/leads/lead-hot-score-indicator.tsx
-src/app/(app)/leads/lead-preview-visits-button.tsx
-src/app/(app)/leads/leads-table.tsx
-src/app/(app)/leads/new
-src/app/(app)/leads/new/page.tsx
-src/app/(app)/leads/new/submit-button.tsx
-src/app/(app)/leads/outreach-actions.ts
-src/app/(app)/leads/page.tsx
-src/app/(app)/page.tsx
-src/app/(app)/projects
-src/app/(app)/projects/[id]
-src/app/(app)/projects/[id]/edit
-src/app/(app)/projects/[id]/edit/page.tsx
-src/app/(app)/projects/actions.ts
-src/app/(app)/projects/new
-src/app/(app)/projects/new/page.tsx
-src/app/(app)/projects/page.tsx
-src/app/(app)/scheduled
-src/app/(app)/scheduled/page.tsx
-src/app/(app)/settings
-src/app/(app)/settings/actions.ts
-src/app/(app)/settings/lead-search-reset.tsx
-src/app/(app)/settings/page.tsx
-src/app/api
-src/app/api/concept
-src/app/api/concept/[slug]
-src/app/api/concept/[slug]/visit
-src/app/api/concept/[slug]/visit/route.ts
-src/app/api/concept/[slug]/visits
-src/app/api/concept/[slug]/visits/route.ts
-src/app/api/cron
-src/app/api/cron/scheduled-emails
-src/app/api/cron/scheduled-emails/route.ts
-src/app/api/design-preview
-src/app/api/design-preview/[id]
-src/app/api/design-preview/[id]/route.ts
-src/app/api/find-leads
-src/app/api/find-leads/ai-search
-src/app/api/find-leads/ai-search/route.ts
-src/app/api/google
-src/app/api/google/gmail
-src/app/api/google/gmail/callback
-src/app/api/google/gmail/callback/route.ts
-src/app/api/google/gmail/connect
-src/app/api/google/gmail/connect/route.ts
-src/app/api/google/gmail/test-send
-src/app/api/google/gmail/test-send/route.ts
-src/app/api/health
-src/app/api/health/supabase
-src/app/api/health/supabase/route.ts
-src/app/api/inbox
-src/app/api/inbox/attachment
-src/app/api/inbox/attachment/route.ts
-src/app/api/inbox/generate-reply
-src/app/api/inbox/generate-reply/route.ts
-src/app/api/inbox/reply
-src/app/api/inbox/reply/route.ts
-src/app/api/inbox/schedule-reply
-src/app/api/inbox/schedule-reply/route.ts
-src/app/api/integrations
-src/app/api/integrations/maxibestof
-src/app/api/integrations/maxibestof/callback
-src/app/api/integrations/maxibestof/callback/route.ts
-src/app/api/integrations/maxibestof/connect
-src/app/api/integrations/maxibestof/connect/route.ts
-src/app/api/integrations/maxibestof/test
-src/app/api/integrations/maxibestof/test/route.ts
-src/app/api/leads
-src/app/api/leads/[id]
-src/app/api/leads/[id]/localize-visual-analysis
-src/app/api/leads/[id]/localize-visual-analysis/route.ts
-src/app/api/leads/[id]/preview-gif
-src/app/api/leads/[id]/preview-gif/route.ts
-src/app/api/leads/[id]/redesign-preview
-src/app/api/leads/[id]/redesign-preview/route.ts
-src/app/api/leads/[id]/redesign-preview/share
-src/app/api/leads/[id]/redesign-preview/share/route.ts
-src/app/api/leads/[id]/redesign-v2
-src/app/api/leads/[id]/redesign-v2/route.ts
-src/app/api/leads/hot-scores
-src/app/api/leads/hot-scores/route.ts
-src/app/api/leads/preview-visits-summary
-src/app/api/leads/preview-visits-summary/route.ts
-src/app/api/pexels
-src/app/api/pexels/search
-src/app/api/pexels/search/route.ts
-src/app/api/settings
-src/app/api/settings/reset-lead-search
-src/app/api/settings/reset-lead-search/route.ts
-src/app/concept
-src/app/concept/[slug]
-src/app/concept/[slug]/customer-design-frame.tsx
-src/app/concept/[slug]/page.tsx
-src/app/concept/[slug]/track
-src/app/concept/[slug]/track/route.ts
-src/app/design-preview
-src/app/design-preview/[id]
-src/app/design-preview/[id]/edit
-src/app/design-preview/[id]/edit/design-editor.tsx
-src/app/design-preview/[id]/edit/page.tsx
-src/app/design-preview/[id]/legacy-design-preview.tsx
-src/app/design-preview/[id]/page.tsx
-src/app/design-preview/[id]/static-design-frame.tsx
-src/app/favicon.ico
-src/app/globals.css
-src/app/layout.tsx
-src/app/login
-src/app/login/actions.ts
-src/app/login/page.tsx
-src/app/preview
-src/app/preview/[token]
-src/app/preview/[token]/page.tsx
-src/app/preview/[token]/preview-motion.tsx
-src/app/preview/[token]/preview-renderer.tsx
-src/components
-src/components/app-background-tasks.tsx
-src/components/app-notifications.tsx
-src/components/app-sidebar.tsx
-src/components/inbox-auto-sync.tsx
-src/components/industry-autocomplete.tsx
-src/components/language-provider.tsx
-src/components/language-selector.tsx
-src/components/pending-submit-button.tsx
-src/components/theme-provider.tsx
-src/components/theme-selector.tsx
-src/components/ui
-src/components/ui/alert-dialog.tsx
-src/components/ui/badge.tsx
-src/components/ui/button.tsx
-src/components/ui/card.tsx
-src/components/ui/dropdown-menu.tsx
-src/components/ui/input.tsx
-src/components/ui/label.tsx
-src/components/ui/separator.tsx
-src/components/ui/table.tsx
-src/components/ui/textarea.tsx
-src/lib
-src/lib/acquisition-i18n.ts
-src/lib/campaign-ideas.ts
-src/lib/design-mockup-engine.ts
-src/lib/email-message-classification.ts
-src/lib/email-quality.ts
-src/lib/follow-up-worker.ts
-src/lib/gmail-oauth.ts
-src/lib/gmail-send.ts
-src/lib/gmail-sync.ts
-src/lib/hot-lead-score.ts
-src/lib/i18n-server.ts
-src/lib/i18n.ts
-src/lib/inbox-i18n.ts
-src/lib/leads-i18n.ts
-src/lib/maxibestof-oauth.ts
-src/lib/maxibestof-research.ts
-src/lib/outreach-generation.ts
-src/lib/outreach-quality.ts
-src/lib/preview-gif.ts
-src/lib/redesign-art-direction.ts
-src/lib/redesign-preview.ts
-src/lib/redesign-site-intelligence.ts
-src/lib/redesign-source.ts
-src/lib/reply-generation.ts
-src/lib/reply-intelligence.ts
-src/lib/server-browser.ts
-src/lib/smart-follow-up.ts
-src/lib/sol-static-design-engine.ts
-src/lib/stock-images.ts
-src/lib/supabase
-src/lib/supabase/admin.ts
-src/lib/supabase/client.ts
-src/lib/supabase/server.ts
-src/lib/utils.ts
-src/lib/v0-redesign-engine.ts
-src/lib/visual-analysis-localization.ts
-src/lib/visual-website-analysis.ts
-src/lib/website-analysis.ts
-src/lib/website-screenshot.ts
-src/proxy.ts
-src/types
-src/types/gifenc.d.ts
+.
+├── .DS_Store
+├── .cursor
+│   └── mcp.json
+├── .env.local
+├── .gitignore
+├── AGENTS.md
+├── CLAUDE.md
+├── README.md
+├── clear
+├── components.json
+├── env-keys.txt
+├── eslint.config.mjs
+├── leadbase-files.txt
+├── next-env.d.ts
+├── next.config.ts
+├── package-info.txt
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── project-structure.txt
+├── public
+│   ├── email
+│   │   ├── cta-design-preview-de.png
+│   │   └── cta-design-preview-en.png
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   └── window.svg
+├── src
+│   ├── app
+│   │   ├── (app)
+│   │   │   ├── actions.ts
+│   │   │   ├── analytics
+│   │   │   │   └── page.tsx
+│   │   │   ├── campaigns
+│   │   │   │   ├── [id]
+│   │   │   │   │   ├── campaign-actions.tsx
+│   │   │   │   │   ├── delete-campaign-dialog.tsx
+│   │   │   │   │   ├── edit
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── actions.ts
+│   │   │   │   ├── new
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── submit-button.tsx
+│   │   │   │   └── page.tsx
+│   │   │   ├── find-leads
+│   │   │   │   ├── actions.tsx
+│   │   │   │   ├── ai-lead-search-chat.tsx
+│   │   │   │   ├── candidate-actions-buttons.tsx
+│   │   │   │   ├── candidate-actions.ts
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── search-form.tsx
+│   │   │   ├── inbox
+│   │   │   │   ├── actions.ts
+│   │   │   │   ├── conversation-list.tsx
+│   │   │   │   ├── inbox-data.ts
+│   │   │   │   ├── inbox-list-pane.tsx
+│   │   │   │   ├── inbox-thread.tsx
+│   │   │   │   ├── mark-conversation-read.tsx
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── reply-composer.tsx
+│   │   │   │   ├── status-banner.tsx
+│   │   │   │   └── sync-button.tsx
+│   │   │   ├── layout.tsx
+│   │   │   ├── leads
+│   │   │   │   ├── [id]
+│   │   │   │   │   ├── analyze-button.tsx
+│   │   │   │   │   ├── call-prep
+│   │   │   │   │   │   ├── call-prep-client.tsx
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── competitors
+│   │   │   │   │   │   ├── competitor-snapshot-client.tsx
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── delete-lead-dialog.tsx
+│   │   │   │   │   ├── edit
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── generate-outreach-button.tsx
+│   │   │   │   │   ├── layout.tsx
+│   │   │   │   │   ├── lead-email-history.tsx
+│   │   │   │   │   ├── localized-visual-analysis.tsx
+│   │   │   │   │   ├── outreach-generation.ts
+│   │   │   │   │   ├── outreach-gif-preference.tsx
+│   │   │   │   │   ├── outreach-section.tsx
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   ├── preview-gif-actions.tsx
+│   │   │   │   │   ├── proposal
+│   │   │   │   │   │   ├── actions.ts
+│   │   │   │   │   │   ├── copy-proposal-link.tsx
+│   │   │   │   │   │   ├── page.tsx
+│   │   │   │   │   │   └── proposal-branding-fields.tsx
+│   │   │   │   │   ├── redesign-preview-actions.tsx
+│   │   │   │   │   ├── send-email-button.tsx
+│   │   │   │   │   └── send-follow-up-button.tsx
+│   │   │   │   ├── actions.ts
+│   │   │   │   ├── analysis-actions.ts
+│   │   │   │   ├── bulk-actions.ts
+│   │   │   │   ├── bulk-outreach-schedule-dialog.tsx
+│   │   │   │   ├── lead-hot-score-badge.tsx
+│   │   │   │   ├── lead-hot-score-indicator.tsx
+│   │   │   │   ├── lead-preview-visits-button.tsx
+│   │   │   │   ├── leads-table.tsx
+│   │   │   │   ├── new
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── submit-button.tsx
+│   │   │   │   ├── outreach-actions.ts
+│   │   │   │   └── page.tsx
+│   │   │   ├── notifications
+│   │   │   │   ├── actions.ts
+│   │   │   │   └── page.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── projects
+│   │   │   │   ├── [id]
+│   │   │   │   │   └── edit
+│   │   │   │   │       └── page.tsx
+│   │   │   │   ├── actions.ts
+│   │   │   │   ├── new
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── page.tsx
+│   │   │   ├── reminders
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── reminders-client.tsx
+│   │   │   ├── scheduled
+│   │   │   │   └── page.tsx
+│   │   │   └── settings
+│   │   │       ├── actions.ts
+│   │   │       ├── lead-search-reset.tsx
+│   │   │       └── page.tsx
+│   │   ├── api
+│   │   │   ├── concept
+│   │   │   │   └── [slug]
+│   │   │   │       ├── current-snapshot
+│   │   │   │       │   └── route.ts
+│   │   │   │       ├── visit
+│   │   │   │       │   └── route.ts
+│   │   │   │       └── visits
+│   │   │   │           └── route.ts
+│   │   │   ├── cron
+│   │   │   │   └── scheduled-emails
+│   │   │   │       └── route.ts
+│   │   │   ├── design-preview
+│   │   │   │   └── [id]
+│   │   │   │       └── route.ts
+│   │   │   ├── find-leads
+│   │   │   │   └── ai-search
+│   │   │   │       └── route.ts
+│   │   │   ├── google
+│   │   │   │   └── gmail
+│   │   │   │       ├── callback
+│   │   │   │       │   └── route.ts
+│   │   │   │       ├── connect
+│   │   │   │       │   └── route.ts
+│   │   │   │       └── test-send
+│   │   │   │           └── route.ts
+│   │   │   ├── health
+│   │   │   │   └── supabase
+│   │   │   │       └── route.ts
+│   │   │   ├── inbox
+│   │   │   │   ├── attachment
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── generate-reply
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── reply
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── schedule-reply
+│   │   │   │       └── route.ts
+│   │   │   ├── integrations
+│   │   │   │   └── maxibestof
+│   │   │   │       ├── callback
+│   │   │   │       │   └── route.ts
+│   │   │   │       ├── connect
+│   │   │   │       │   └── route.ts
+│   │   │   │       └── test
+│   │   │   │           └── route.ts
+│   │   │   ├── leads
+│   │   │   │   ├── [id]
+│   │   │   │   │   ├── call-prep
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── competitors
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── localize-visual-analysis
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── preview-gif
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── proposal-autofill
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── redesign-preview
+│   │   │   │   │   │   ├── route.ts
+│   │   │   │   │   │   └── share
+│   │   │   │   │   │       └── route.ts
+│   │   │   │   │   └── redesign-v2
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── hot-scores
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── preview-visits-summary
+│   │   │   │       └── route.ts
+│   │   │   ├── pexels
+│   │   │   │   └── search
+│   │   │   │       └── route.ts
+│   │   │   ├── productivity
+│   │   │   │   └── route.ts
+│   │   │   ├── projects
+│   │   │   │   └── [id]
+│   │   │   │       └── media
+│   │   │   │           └── route.ts
+│   │   │   ├── reminders
+│   │   │   │   └── route.ts
+│   │   │   └── settings
+│   │   │       └── reset-lead-search
+│   │   │           └── route.ts
+│   │   ├── concept
+│   │   │   └── [slug]
+│   │   │       ├── concept-preview-experience.tsx
+│   │   │       ├── customer-design-frame.tsx
+│   │   │       ├── page.tsx
+│   │   │       └── track
+│   │   │           └── route.ts
+│   │   ├── design-preview
+│   │   │   └── [id]
+│   │   │       ├── edit
+│   │   │       │   ├── design-editor.tsx
+│   │   │       │   └── page.tsx
+│   │   │       ├── legacy-design-preview.tsx
+│   │   │       ├── page.tsx
+│   │   │       └── static-design-frame.tsx
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── login
+│   │   │   ├── actions.ts
+│   │   │   └── page.tsx
+│   │   ├── notifications
+│   │   │   └── open
+│   │   │       └── route.ts
+│   │   ├── preview
+│   │   │   └── [token]
+│   │   │       ├── page.tsx
+│   │   │       ├── preview-motion.tsx
+│   │   │       └── preview-renderer.tsx
+│   │   └── proposal
+│   │       └── [token]
+│   │           ├── actions.ts
+│   │           ├── page.tsx
+│   │           ├── pdf
+│   │           │   └── route.ts
+│   │           ├── proposal-acceptance-flow.tsx
+│   │           └── proposal-action-button.tsx
+│   ├── components
+│   │   ├── activity-heartbeat.tsx
+│   │   ├── app-background-tasks.tsx
+│   │   ├── app-notifications.tsx
+│   │   ├── app-sidebar.tsx
+│   │   ├── background-task-dock.tsx
+│   │   ├── dashboard-motion.tsx
+│   │   ├── dashboard-productivity.tsx
+│   │   ├── inbox-auto-sync.tsx
+│   │   ├── industry-autocomplete.tsx
+│   │   ├── language-provider.tsx
+│   │   ├── language-selector.tsx
+│   │   ├── leadbase-interaction-motion.tsx
+│   │   ├── notification-realtime-bridge.tsx
+│   │   ├── pending-submit-button.tsx
+│   │   ├── project-media-uploader.tsx
+│   │   ├── proposal-ai-autofill-button.tsx
+│   │   ├── proposal-sections-builder.tsx
+│   │   ├── theme-provider.tsx
+│   │   ├── theme-selector.tsx
+│   │   ├── ui
+│   │   │   ├── alert-dialog.tsx
+│   │   │   ├── badge.tsx
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   ├── dropdown-menu.tsx
+│   │   │   ├── input.tsx
+│   │   │   ├── label.tsx
+│   │   │   ├── separator.tsx
+│   │   │   ├── table.tsx
+│   │   │   └── textarea.tsx
+│   │   └── workspace-page-motion.tsx
+│   ├── lib
+│   │   ├── acquisition-i18n.ts
+│   │   ├── call-prep.ts
+│   │   ├── campaign-ideas.ts
+│   │   ├── design-mockup-engine.ts
+│   │   ├── email-message-classification.ts
+│   │   ├── email-quality.ts
+│   │   ├── follow-up-worker.ts
+│   │   ├── gmail-oauth.ts
+│   │   ├── gmail-send.ts
+│   │   ├── gmail-sync.ts
+│   │   ├── hot-lead-score.ts
+│   │   ├── i18n-server.ts
+│   │   ├── i18n.ts
+│   │   ├── inbox-i18n.ts
+│   │   ├── leads-i18n.ts
+│   │   ├── maxibestof-oauth.ts
+│   │   ├── maxibestof-research.ts
+│   │   ├── outreach-email-html.ts
+│   │   ├── outreach-generation.ts
+│   │   ├── outreach-preview-gif.ts
+│   │   ├── outreach-quality.ts
+│   │   ├── persistent-notifications.ts
+│   │   ├── preview-gif.ts
+│   │   ├── proposal-email-history.ts
+│   │   ├── proposal-pdf.ts
+│   │   ├── proposal-project.ts
+│   │   ├── proposal-sections.ts
+│   │   ├── public-preview-current-snapshot.ts
+│   │   ├── redesign-art-direction.ts
+│   │   ├── redesign-preview.ts
+│   │   ├── redesign-site-intelligence.ts
+│   │   ├── redesign-source.ts
+│   │   ├── reply-generation.ts
+│   │   ├── reply-intelligence.ts
+│   │   ├── server-browser.ts
+│   │   ├── smart-follow-up.ts
+│   │   ├── sol-static-design-engine.ts
+│   │   ├── stock-images.ts
+│   │   ├── supabase
+│   │   │   ├── admin.ts
+│   │   │   ├── client.ts
+│   │   │   └── server.ts
+│   │   ├── utils.ts
+│   │   ├── v0-redesign-engine.ts
+│   │   ├── visual-analysis-localization.ts
+│   │   ├── visual-website-analysis.ts
+│   │   ├── website-analysis.ts
+│   │   └── website-screenshot.ts
+│   ├── proxy.ts
+│   └── types
+│       └── gifenc.d.ts
+├── tsconfig.json
+└── tsconfig.tsbuildinfo
+
+98 directories, 237 files

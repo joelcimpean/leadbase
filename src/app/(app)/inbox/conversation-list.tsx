@@ -11,6 +11,7 @@ import {
 
 import {
   type PointerEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -133,10 +134,10 @@ function messageStatusClass(
     status ===
     "Replied"
   ) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
+    return "h-auto rounded-[6px] border-0 bg-[#E9F0EA] px-1.5 py-[2px] font-mono text-[8.5px] font-medium uppercase tracking-[.05em] text-[#2F6B3A] dark:bg-emerald-950/40 dark:text-emerald-300";
   }
 
-  return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300";
+  return "h-auto rounded-[6px] border-0 bg-black/[0.05] px-1.5 py-[2px] font-mono text-[8.5px] font-medium uppercase tracking-[.05em] text-[var(--lb-text-secondary)] dark:bg-white/[0.07] dark:text-[#C7CAD0]";
 }
 
 function replyClassificationMeta(
@@ -244,6 +245,26 @@ export function ConversationList({
     inboxCopy[
       language
     ].list;
+
+  useEffect(() => {
+    const startSelection = () => {
+      setSelectedIds(new Set());
+      setMessage(null);
+      setSelectionMode(true);
+    };
+
+    window.addEventListener(
+      "leadbase:inbox-select",
+      startSelection
+    );
+
+    return () => {
+      window.removeEventListener(
+        "leadbase:inbox-select",
+        startSelection
+      );
+    };
+  }, []);
 
   const [
     selectionMode,
@@ -1449,175 +1470,85 @@ export function ConversationList({
       </div>
 
       {/* ===================================================
-          DESKTOP BULK ACTION BAR
+          DESKTOP SELECTION TOOLBAR
       =================================================== */}
 
-      <div className="hidden min-h-11 items-center gap-2 border-b bg-background px-3 py-2 md:flex">
-        {!selectionMode ? (
-          <>
+      {selectionMode ? (
+        <div className="hidden min-h-[38px] 2xl:min-h-[42px] items-center gap-1.5 2xl:gap-2 border-b border-[var(--lb-border)] bg-[var(--lb-surface-subtle)] px-2 md:flex">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={closeSelectionMode}
+            className="flex size-7 shrink-0 items-center justify-center rounded-[8px] text-[var(--lb-text-muted)] transition-colors hover:bg-[var(--lb-surface)] hover:text-[var(--lb-text)] disabled:opacity-50"
+            aria-label={text.cancelSelection}
+            title={text.cancelSelection}
+          >
+            <X className="size-3.5" />
+          </button>
+
+          <span className="min-w-0 flex-1 truncate text-[11.5px] 2xl:text-[12.5px] font-medium text-[var(--lb-text-secondary)]">
+            {selectedIds.size} {text.selected}
+          </span>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={toggleSelectAll}
+            className="h-7 2xl:h-8 shrink-0 rounded-[8px] px-2 2xl:px-2.5 text-[10.5px] 2xl:text-[11.5px] font-medium text-[var(--lb-text-secondary)] transition-colors hover:bg-[var(--lb-surface)] disabled:opacity-50"
+          >
+            {allSelected
+              ? (language === "de" ? "Auswahl aufheben" : "Clear selection")
+              : (language === "de" ? "Alle auswählen" : "Select all")}
+          </button>
+
+          {view === "inbox" ? (
             <button
               type="button"
-              onClick={
-                startSelectionMode
-              }
-              className="inline-flex h-8 items-center gap-2 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+              disabled={busy || selectedIds.size === 0}
+              onClick={() => void runBulkAction("archive")}
+              className="flex size-7 shrink-0 items-center justify-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] transition-colors hover:border-[var(--lb-border-strong)] hover:text-[var(--lb-text)] disabled:opacity-35"
+              aria-label={text.archiveSelected}
+              title={text.archiveSelected}
             >
-              <Check className="size-3.5" />
-
-              {
-                text.select
-              }
-            </button>
-
-            <span className="text-[11px] text-muted-foreground">
-              {visibleConversations.length}{" "}
-              {visibleConversations.length ===
-              1
-                ? "Konversation"
-                : "Konversationen"}
-            </span>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              disabled={
-                busy
-              }
-              onClick={
-                closeSelectionMode
-              }
-              className="flex size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-muted disabled:opacity-50"
-              aria-label={
-                text.cancelSelection
-              }
-            >
-              <X className="size-4" />
-            </button>
-
-            <p className="min-w-0 text-xs font-medium">
-              {
-                selectedIds.size
-              }{" "}
-              {
-                text.selected
-              }
-            </p>
-
-            <button
-              type="button"
-              disabled={
-                busy
-              }
-              onClick={
-                toggleSelectAll
-              }
-              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
-            >
-              <Check className="size-3.5" />
-
-              {allSelected
-                ? text.clear
-                : text.all}
-            </button>
-
-            <div className="ml-auto flex items-center gap-1">
-              {view ===
-              "inbox" ? (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    selectedIds.size ===
-                      0
-                  }
-                  onClick={() =>
-                    void runBulkAction(
-                      "archive"
-                    )
-                  }
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
-                >
-                  {busy &&
-                  busyAction ===
-                    "archive" ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Archive className="size-3.5" />
-                  )}
-
-                  {
-                    text.archive
-                  }
-                </button>
+              {busy && busyAction === "archive" ? (
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    selectedIds.size ===
-                      0
-                  }
-                  onClick={() =>
-                    void runBulkAction(
-                      "restore"
-                    )
-                  }
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
-                >
-                  {busy &&
-                  busyAction ===
-                    "restore" ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RotateCcw className="size-3.5" />
-                  )}
-
-                  {language ===
-                  "de"
-                    ? "Wiederherstellen"
-                    : "Restore"}
-                </button>
+                <Archive className="size-3.5" />
               )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || selectedIds.size === 0}
+              onClick={() => void runBulkAction("restore")}
+              className="flex size-7 shrink-0 items-center justify-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] transition-colors hover:border-[var(--lb-border-strong)] hover:text-[var(--lb-text)] disabled:opacity-35"
+              aria-label={text.restoreSelected}
+              title={text.restoreSelectedToInbox}
+            >
+              {busy && busyAction === "restore" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="size-3.5" />
+              )}
+            </button>
+          )}
 
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  selectedIds.size ===
-                    0
-                }
-                onClick={() =>
-                  void runBulkAction(
-                    view ===
-                    "trash"
-                      ? "delete"
-                      : "trash"
-                  )
-                }
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-red-600 disabled:opacity-40"
-              >
-                {busy &&
-                (
-                  busyAction ===
-                    "trash" ||
-                  busyAction ===
-                    "delete"
-                ) ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="size-3.5" />
-                )}
-
-                {view ===
-                "trash"
-                  ? text.deleteSelectedPermanently
-                  : text.deleteSelected}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+          <button
+            type="button"
+            disabled={busy || selectedIds.size === 0}
+            onClick={() => void runBulkAction(view === "trash" ? "delete" : "trash")}
+            className="flex size-7 shrink-0 items-center justify-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] transition-colors hover:bg-[#FDF0E3] hover:text-[#9A5106] disabled:opacity-35"
+            aria-label={view === "trash" ? text.deleteSelectedPermanently : text.deleteSelected}
+            title={view === "trash" ? text.deleteSelectedPermanently : text.moveSelectedToTrash}
+          >
+            {busy && (busyAction === "trash" || busyAction === "delete") ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="size-3.5" />
+            )}
+          </button>
+        </div>
+      ) : null}
 
       {/* ===================================================
           THREADS
@@ -1643,7 +1574,7 @@ export function ConversationList({
               key={
                 conversation.leadId
               }
-              className="relative overflow-hidden border-b"
+              className="relative overflow-hidden border-b border-[var(--lb-border)] last:border-b-0"
             >
               {view ===
               "inbox" ? (
@@ -1724,21 +1655,24 @@ export function ConversationList({
                       ? "none"
                       : undefined,
                 }}
-                className={`relative flex cursor-pointer bg-background outline-none transition-[background-color,transform] duration-150 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring md:translate-x-0 ${
+                className={`relative flex cursor-pointer bg-[var(--lb-surface)] outline-none transition-[background-color,transform] duration-150 hover:bg-[var(--lb-surface-subtle)] focus-visible:ring-2 focus-visible:ring-[#002BBA]/35 md:translate-x-0 ${
                   density === "comfortable"
-                    ? "gap-3 px-4 py-4"
+                    ? "gap-2.5 px-2.5 py-3 2xl:gap-3 2xl:px-3 2xl:py-3.5"
                     : density === "compact"
-                      ? "gap-3 px-4 py-3"
-                      : "gap-2.5 px-4 py-2.5"
+                      ? "gap-2.5 px-2.5 py-2.5 2xl:gap-3 2xl:px-3 2xl:py-3"
+                      : "gap-2 px-2.5 py-2 2xl:gap-2.5 2xl:px-3 2xl:py-2.5"
                 } ${
                   selected
-                    ? "bg-muted/70"
-                    : selectedLeadId ===
-                        conversation.leadId
-                      ? "md:bg-muted/70"
+                    ? "bg-[#F1F4FF]"
+                    : selectedLeadId === conversation.leadId
+                      ? "md:bg-[#F1F4FF]"
                       : ""
                 }`}
               >
+                {selectedLeadId === conversation.leadId && !selectionMode ? (
+                  <span className="absolute inset-y-0 left-0 w-[3px] bg-[#002BBA]" aria-hidden="true" />
+                ) : null}
+
                 {selectionMode ? (
                   <div className="flex size-9 shrink-0 items-center justify-center">
                     <div
@@ -1755,10 +1689,14 @@ export function ConversationList({
                   </div>
                 ) : (
                   <div
-                    className={`flex shrink-0 items-center justify-center rounded-full border bg-background font-semibold ${
+                    className={`flex shrink-0 items-center justify-center rounded-[8px] border-0 font-mono font-medium ${
+                      selectedLeadId === conversation.leadId
+                        ? "bg-[#002BBA] text-white"
+                        : "bg-[var(--lb-surface-subtle)] text-[var(--lb-text-muted)]"
+                    } ${
                       density === "minimal"
-                        ? "size-7 text-[10px]"
-                        : "size-9 text-xs"
+                        ? "size-7 text-[8px] 2xl:size-8 2xl:text-[9px]"
+                        : "size-7 text-[8px] 2xl:size-8 2xl:text-[9px]"
                     }`}
                   >
                     {
@@ -1770,18 +1708,18 @@ export function ConversationList({
                 <div className="min-w-0 flex-1">
                   <div className="flex justify-between gap-3">
                     <p
-                      className={`truncate text-sm ${
+                      className={`truncate text-[12.5px] leading-4 2xl:text-[13.5px] 2xl:leading-5 ${
                         conversation.unread
                           ? "font-semibold"
                           : "font-medium"
-                      }`}
+                      } text-[var(--lb-text)]`}
                     >
                       {
                         conversation.company
                       }
                     </p>
 
-                    <span className="shrink-0 text-[11px] text-muted-foreground sm:text-xs">
+                    <span className="shrink-0 font-mono text-[9.5px] 2xl:text-[10.5px] text-[var(--lb-text-muted)]">
                       {
                         conversation.lastTimeLabel
                       }
@@ -1789,41 +1727,9 @@ export function ConversationList({
                   </div>
 
                   {density !== "minimal" ? (
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    <p className="mt-0.5 truncate text-[10.5px] leading-4 2xl:text-[11.5px] 2xl:leading-5 text-[var(--lb-text-muted)]">
                       {
                         conversation.contact
-                      }
-                    </p>
-                  ) : null}
-
-                  <p
-                    className={`${
-                      density === "comfortable"
-                        ? "mt-2.5"
-                        : density === "compact"
-                          ? "mt-1.5"
-                          : "mt-0.5"
-                    } truncate text-sm ${
-                      conversation.unread
-                        ? "font-semibold"
-                        : ""
-                    }`}
-                  >
-                    {
-                      conversation.subject
-                    }
-                  </p>
-
-                  {density === "comfortable" ? (
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                      {
-                        conversation.preview
-                      }
-                    </p>
-                  ) : density === "compact" ? (
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {
-                        conversation.preview
                       }
                     </p>
                   ) : null}
@@ -1831,20 +1737,16 @@ export function ConversationList({
                   <div
                     className={`${
                       density === "comfortable"
-                        ? "mt-3"
+                        ? "mt-2"
                         : density === "compact"
-                          ? "mt-2"
-                          : "mt-1.5"
-                    } flex flex-wrap items-center gap-2`}
+                          ? "mt-1.5"
+                          : "mt-1"
+                    } flex min-w-0 items-center gap-1.5`}
                   >
                     {density !== "minimal" ? (
                       <Badge
                         variant="outline"
-                        className={
-                          messageStatusClass(
-                            conversation.status
-                          )
-                        }
+                        className={messageStatusClass(conversation.status)}
                       >
                         {getInboxMessageStatusLabel(
                           conversation.status,
@@ -1856,12 +1758,12 @@ export function ConversationList({
                     {density !== "minimal" && conversation.replyClassification ? (
                       <Badge
                         variant="outline"
-                        className={
+                        className={`h-auto rounded-[6px] border-0 px-1.5 py-[2px] font-mono text-[8.5px] 2xl:text-[9px] font-medium uppercase tracking-[.05em] ${
                           replyClassificationMeta(
                             conversation.replyClassification,
                             language
                           ).className
-                        }
+                        }`}
                       >
                         {
                           replyClassificationMeta(
@@ -1872,24 +1774,31 @@ export function ConversationList({
                       </Badge>
                     ) : null}
 
-                    {conversation.unread ? (
-                      <>
-                        <span className="size-2 rounded-full bg-blue-500" />
+                    <p
+                      className={`min-w-0 flex-1 truncate text-[11.5px] leading-4 2xl:text-[12.5px] 2xl:leading-5 text-[var(--lb-text-secondary)] ${
+                        conversation.unread ? "font-medium" : ""
+                      }`}
+                    >
+                      {conversation.subject}
+                    </p>
 
-                        {conversation.unreadCount >
-                        1 ? (
-                          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                            {
-                              conversation.unreadCount
-                            }{" "}
-                            {
-                              text.new
-                            }
-                          </span>
-                        ) : null}
-                      </>
+                    {conversation.unread ? (
+                      <span
+                        className="size-1.5 shrink-0 rounded-full bg-[#002BBA]"
+                        aria-label={inboxCopy[language].page.unread}
+                      />
                     ) : null}
                   </div>
+
+                  {density === "comfortable" ? (
+                    <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 2xl:text-[11.5px] 2xl:leading-5 text-[var(--lb-text-muted)]">
+                      {conversation.preview}
+                    </p>
+                  ) : density === "compact" ? (
+                    <p className="mt-0.5 truncate text-[10.5px] leading-4 2xl:text-[11.5px] 2xl:leading-5 text-[var(--lb-text-muted)]">
+                      {conversation.preview}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>

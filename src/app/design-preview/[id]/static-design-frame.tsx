@@ -7,6 +7,10 @@ import {
   useState,
 } from "react";
 
+import {
+  initializeLeadbasePreviewMotionRuntime,
+} from "@/lib/leadbase-preview-motion-runtime";
+
 /* =========================================================
    CONFIG
 ========================================================= */
@@ -193,6 +197,66 @@ function unlockDocumentScroll(
 }
 
 /* =========================================================
+   DISABLE INTERACTIONS INSIDE PREVIEW
+
+   The preview remains scrollable, but links/buttons/forms do
+   not navigate, submit, open popups, or trigger customer-side
+   actions while Joel is reviewing the generated concept.
+========================================================= */
+
+function disablePreviewInteractions(
+  document:
+    Document
+) {
+  const block = (
+    event:
+      Event
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+
+  document.addEventListener(
+    "click",
+    block,
+    true
+  );
+
+  document.addEventListener(
+    "submit",
+    block,
+    true
+  );
+
+  document.addEventListener(
+    "auxclick",
+    block,
+    true
+  );
+
+  return () => {
+    document.removeEventListener(
+      "click",
+      block,
+      true
+    );
+
+    document.removeEventListener(
+      "submit",
+      block,
+      true
+    );
+
+    document.removeEventListener(
+      "auxclick",
+      block,
+      true
+    );
+  };
+}
+
+/* =========================================================
    COMPONENT
 ========================================================= */
 
@@ -215,6 +279,21 @@ export function StaticDesignFrame({
       null
     );
 
+  const interactionCleanupRef =
+    useRef<(() => void) | null>(
+      null
+    );
+
+  const motionCleanupRef =
+    useRef<(() => void) | null>(
+      null
+    );
+
+  const motionModeRef =
+    useRef(
+      false
+    );
+
   const animationFrameRef =
     useRef<number | null>(
       null
@@ -231,6 +310,14 @@ export function StaticDesignFrame({
   ] =
     useState(
       DEFAULT_HEIGHT
+    );
+
+  const [
+    motionMode,
+    setMotionMode,
+  ] =
+    useState(
+      false
     );
 
   /* =======================================================
@@ -253,6 +340,23 @@ export function StaticDesignFrame({
 
         mutationObserverRef.current =
           null;
+
+        interactionCleanupRef
+          .current
+          ?.();
+
+        interactionCleanupRef.current =
+          null;
+
+        motionCleanupRef
+          .current
+          ?.();
+
+        motionCleanupRef.current =
+          null;
+
+        motionModeRef.current =
+          false;
 
         if (
           animationFrameRef.current !==
@@ -288,6 +392,12 @@ export function StaticDesignFrame({
   const updateHeight =
     useCallback(
       () => {
+        if (
+          motionModeRef.current
+        ) {
+          return;
+        }
+
         const iframe =
           iframeRef.current;
 
@@ -400,20 +510,50 @@ export function StaticDesignFrame({
             return;
           }
 
-          /* ===============================================
-             REMOVE ROOT SCROLL LOCK
-          =============================================== */
+          const hasMotion =
+            Boolean(
+              document.querySelector(
+                ".leadbase-motion-reveal"
+              )
+            );
 
-          unlockDocumentScroll(
-            document
+          motionModeRef.current =
+            hasMotion;
+
+          setMotionMode(
+            hasMotion
           );
 
-          /* ===============================================
-             INITIAL MEASUREMENT
-          =============================================== */
+          interactionCleanupRef.current =
+            disablePreviewInteractions(
+              document
+            );
 
-          scheduleHeightUpdate();
+          if (
+            hasMotion
+          ) {
+            motionCleanupRef.current =
+              initializeLeadbasePreviewMotionRuntime({
+                iframe,
+                document,
+                smoothWheel:
+                  true,
+              });
+          } else {
+            /* =============================================
+               STATIC VARIANTS STILL USE FULL-PAGE HEIGHT
+            ============================================= */
 
+            unlockDocumentScroll(
+              document
+            );
+
+            scheduleHeightUpdate();
+          }
+
+          if (
+            !hasMotion
+          ) {
           /* ===============================================
              RESIZE OBSERVER
           =============================================== */
@@ -567,6 +707,7 @@ export function StaticDesignFrame({
               timeout
             );
           }
+          }
         } catch (
           error
         ) {
@@ -612,7 +753,13 @@ export function StaticDesignFrame({
       srcDoc={
         html
       }
-      sandbox="allow-same-origin allow-forms allow-popups"
+      sandbox={
+        html.includes(
+          'data-leadbase-map-embed="true"'
+        )
+          ? "allow-same-origin allow-scripts allow-forms allow-popups"
+          : "allow-same-origin allow-forms allow-popups"
+      }
       referrerPolicy="no-referrer"
       onLoad={
         handleLoad
@@ -620,7 +767,9 @@ export function StaticDesignFrame({
       className="block w-full border-0 bg-white"
       style={{
         height:
-          `${frameHeight}px`,
+          motionMode
+            ? "100dvh"
+            : `${frameHeight}px`,
 
         minHeight:
           "100dvh",

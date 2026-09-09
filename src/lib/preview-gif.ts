@@ -46,7 +46,7 @@ const LOAD_TIMEOUT_MS =
   20_000;
 
 const STABILIZE_MS =
-  1_500;
+  1_200;
 
 /*
  * Keep the visual travel the user already liked.
@@ -245,20 +245,55 @@ export async function generatePreviewGif(
         "preview-gif",
     });
 
-    await page.goto(
-      previewUrl,
-      {
-        waitUntil:
-          "networkidle",
+    try {
+      await page.goto(
+        previewUrl,
+        {
+          // networkidle is intentionally avoided here. Client previews can
+          // keep fonts/images/analytics active and Chromium may otherwise
+          // exhaust serverless resources before the page is considered idle.
+          waitUntil:
+            "domcontentloaded",
+          timeout:
+            LOAD_TIMEOUT_MS,
+        }
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "";
 
-        timeout:
-          LOAD_TIMEOUT_MS,
+      if (
+        !message.includes(
+          "ERR_INSUFFICIENT_RESOURCES"
+        )
+      ) {
+        throw error;
       }
-    );
+
+      // One clean retry is substantially cheaper than spawning several
+      // Chromium instances in parallel.
+      await sleep(
+        750
+      );
+
+      await page.goto(
+        previewUrl,
+        {
+          waitUntil:
+            "domcontentloaded",
+          timeout:
+            LOAD_TIMEOUT_MS,
+        }
+      );
+    }
 
     await page.waitForSelector(
       "iframe",
       {
+        state:
+          "attached",
         timeout:
           LOAD_TIMEOUT_MS,
       }

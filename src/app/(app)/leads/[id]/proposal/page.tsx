@@ -1,10 +1,13 @@
 import Link from "next/link";
 
 import {
+  AlertCircle,
   ArrowLeft,
+  Eye,
   ExternalLink,
   FileText,
   FolderKanban,
+  Save,
   Send,
 } from "lucide-react";
 
@@ -32,12 +35,45 @@ import {
 } from "@/components/pending-submit-button";
 
 import {
+  ExternalFormSubmitButton,
+} from "@/components/external-form-submit-button";
+
+
+import {
   ProposalAiAutofillButton,
 } from "@/components/proposal-ai-autofill-button";
 
 import {
   ProposalSectionsBuilder,
 } from "@/components/proposal-sections-builder";
+
+import {
+  ProposalBuilderTabs,
+} from "@/components/proposal-builder-tabs";
+
+import {
+  ProposalScopeEditor,
+} from "@/components/proposal-scope-editor";
+
+import {
+  ProposalLivePreview,
+} from "@/components/proposal-live-preview";
+
+import {
+  ProposalDesignTemplatePicker,
+} from "@/components/proposal-design-template-picker";
+
+import {
+  normalizeProposalDesignTemplate,
+} from "@/lib/proposal-design-templates";
+
+import {
+  ProposalReadinessCard,
+} from "@/components/proposal-readiness-card";
+
+import {
+  ProposalLanguageSwitch,
+} from "./proposal-language-switch";
 
 import {
   buttonVariants,
@@ -94,6 +130,7 @@ type ProposalPageProps = {
     templateSaved?: string;
     templateDeleted?: string;
     proposalSent?: string;
+    proposalLanguage?: string;
   }>;
 };
 
@@ -212,6 +249,21 @@ export default async function ProposalPage({
     notFound();
   }
 
+  const userProposalBranding = (user.user_metadata?.leadbase_proposal_branding ?? {}) as {
+    accentColor?: unknown;
+    logoUrl?: unknown;
+  };
+
+  const userDefaultAccentColor =
+    typeof userProposalBranding.accentColor === "string" && /^#[0-9A-F]{6}$/i.test(userProposalBranding.accentColor)
+      ? userProposalBranding.accentColor.toUpperCase()
+      : "#002BBA";
+
+  const userDefaultLogoUrl =
+    typeof userProposalBranding.logoUrl === "string" && userProposalBranding.logoUrl.trim()
+      ? userProposalBranding.logoUrl.trim()
+      : null;
+
   const {
     data: lead,
     error: leadError,
@@ -276,6 +328,9 @@ export default async function ProposalPage({
         accent_color,
         logo_url,
         first_time_client,
+        design_template,
+        proposal_number,
+        language,
         pdf_emailed_at,
         pdf_email_error,
         delivery_email_error,
@@ -380,8 +435,27 @@ export default async function ProposalPage({
       lead.primary_contact
     );
 
+  const requestedProposalLanguage =
+    query.proposalLanguage === "de" ||
+    query.proposalLanguage === "en"
+      ? query.proposalLanguage
+      : null;
+
+  const storedProposalLanguage =
+    proposal?.language === "en"
+      ? "en"
+      : proposal?.language === "de"
+        ? "de"
+        : null;
+
+  const proposalLanguage:
+    "de" | "en" =
+      requestedProposalLanguage ??
+      storedProposalLanguage ??
+      language;
+
   const isGerman =
-    language === "de";
+    proposalLanguage === "de";
 
   const companyName =
     company?.name ?? "";
@@ -412,10 +486,10 @@ export default async function ProposalPage({
     : proposal?.title ?? defaultTitle;
 
   const scope = selectedPayload
-    ? templateScope(selectedPayload.scope, companyName, contactName) || formatDefaultScope(language)
+    ? templateScope(selectedPayload.scope, companyName, contactName) || formatDefaultScope(proposalLanguage)
     : Array.isArray(proposal?.scope)
       ? proposal.scope.join("\n")
-      : formatDefaultScope(language);
+      : formatDefaultScope(proposalLanguage);
 
   const activeIntro = selectedPayload
     ? materializeTemplateText(selectedPayload.introText, companyName, contactName)
@@ -447,16 +521,21 @@ export default async function ProposalPage({
         : "50% deposit before project start, remaining balance after approval.");
 
   const activeAccentColor = selectedPayload
-    ? templateString(selectedPayload.accentColor) || "#002BBA"
-    : proposal?.accent_color ?? "#002BBA";
+    ? templateString(selectedPayload.accentColor) || userDefaultAccentColor
+    : proposal?.accent_color ?? userDefaultAccentColor;
 
   const activeLogoUrl = selectedPayload
-    ? templateString(selectedPayload.logoUrl) || null
-    : proposal?.logo_url ?? null;
+    ? templateString(selectedPayload.logoUrl) || userDefaultLogoUrl
+    : proposal?.logo_url ?? userDefaultLogoUrl;
 
   const activeFirstTimeClient = selectedPayload
     ? selectedPayload.firstTimeClient !== false
     : proposal?.first_time_client ?? true;
+
+  const activeDesignTemplate =
+    normalizeProposalDesignTemplate(
+      proposal?.design_template
+    );
 
   const storedCustomSections =
     normalizeProposalSections(
@@ -471,7 +550,7 @@ export default async function ProposalPage({
       }))
     : storedCustomSections.length > 0
       ? storedCustomSections
-      : defaultProposalCustomSections(language);
+      : defaultProposalCustomSections(proposalLanguage);
 
   const publicPath =
     proposal?.public_token
@@ -484,655 +563,706 @@ export default async function ProposalPage({
     proposal?.status ===
     "ACCEPTED";
 
+  const scopeLines =
+    scope
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const displayedStatus =
+    proposal?.status ?? "DRAFT";
+
+  const isDraft =
+    !proposal ||
+    displayedStatus === "DRAFT";
+
+  const proposalStatusLabel =
+    isAccepted
+      ? isGerman
+        ? "Angenommen"
+        : "Accepted"
+      : isDraft
+        ? isGerman
+          ? "Entwurf"
+          : "Draft"
+        : displayedStatus;
+
+  const contactSummary =
+    [
+      contactName,
+      proposal?.contact_email ??
+        contact?.email ??
+        "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+  const formattedPrice =
+    new Intl.NumberFormat(
+      isGerman
+        ? "de-DE"
+        : "en-US",
+      {
+        maximumFractionDigits: 2,
+      }
+    ).format(activePrice || 0);
+
+  const ownerName =
+    user.user_metadata?.full_name ||
+    user.user_metadata?.name ||
+    "Joel Cimpean";
+
   return (
-    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1040px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
+    <div className="flex h-full min-h-[720px] w-full flex-col overflow-hidden bg-[#F6F7F9] px-[26px] py-6 text-[#0B0C0E] dark:bg-[#0C0D10] dark:text-white">
       <WorkspacePageMotion />
-      <Link
-        href={`/leads/${encodeURIComponent(
-          id
-        )}`}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        {isGerman
-          ? "Zurück zum Lead"
-          : "Back to lead"}
-      </Link>
 
-      <header data-workspace-reveal className="leadbase-workspace-header mt-5 flex flex-col gap-4 p-5 sm:mt-6 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-        <div>
-          <p className="text-sm text-muted-foreground">
+      {/* HEADER */}
+      <header className="shrink-0">
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/leads/${encodeURIComponent(id)}`}
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-[#6B7078] transition-colors hover:text-[#0B0C0E] dark:hover:text-white"
+          >
+            <ArrowLeft className="size-[13px]" />
             {isGerman
-              ? "Proposal Builder"
-              : "Proposal builder"}
-          </p>
+              ? "Zurück zum Lead"
+              : "Back to lead"}
+          </Link>
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {proposal
-              ? isGerman
-                ? "Angebot bearbeiten"
-                : "Edit proposal"
-              : isGerman
-                ? "Angebot erstellen"
-                : "Create proposal"}
-          </h1>
+          <div className="h-3 w-px bg-black/[0.14] dark:bg-white/[0.14]" />
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            {isGerman
-              ? "Kundendaten und Projektwert werden aus dem Lead übernommen. Speichere den Entwurf und öffne anschließend die öffentliche Proposal-Seite."
-              : "Customer data and project value are prefilled from the lead. Save the draft, then open the public proposal page."}
-          </p>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#002BBA]">
+            Proposal Builder
+          </div>
         </div>
 
-        {publicPath ? (
-          <div className="flex flex-wrap gap-2">
-            <CopyProposalLink
-              path={publicPath}
-              label={
-                isGerman
-                  ? "Link kopieren"
-                  : "Copy link"
-              }
-              copiedLabel={
-                isGerman
-                  ? "Kopiert"
-                  : "Copied"
-              }
+        <div className="mt-2.5 flex items-end justify-between gap-6">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <h1 className="m-0 text-[42px] font-semibold leading-none tracking-[-0.035em]">
+                {proposal
+                  ? isGerman
+                    ? "Angebot bearbeiten"
+                    : "Edit proposal"
+                  : isGerman
+                    ? "Angebot erstellen"
+                    : "Create proposal"}
+              </h1>
+
+              <span className="rounded-[6px] bg-black/[0.05] px-[9px] py-[3px] font-mono text-[9.5px] uppercase tracking-[0.08em] text-[#40454E] dark:bg-white/[0.06] dark:text-[#B9BDC5]">
+                {proposalStatusLabel}
+              </span>
+            </div>
+
+            <p className="mt-[9px] max-w-[820px] text-[13.5px] text-[#6B7078] text-pretty">
+              {isGerman
+                ? "Kundendaten und Projektwert werden aus dem Lead übernommen. Speichere den Entwurf und öffne anschließend die öffentliche Angebotsseite."
+                : "Customer data and project value are taken from the lead. Save the draft and then open the public proposal page."}
+            </p>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <ProposalLanguageSwitch
+              language={proposalLanguage}
+              disabled={isAccepted}
             />
 
-            <Link
-              href={publicPath}
-              target="_blank"
-              className={buttonVariants({
-                className:
-                  "gap-2",
-              })}
+            {publicPath ? (
+              <Link
+                href={publicPath}
+                target="_blank"
+                className="inline-flex h-[34px] items-center gap-[7px] rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
+              >
+                <Eye className="size-3.5 opacity-60" />
+                {isGerman
+                  ? "Angebotsseite"
+                  : "Proposal page"}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title={isGerman ? "Nach dem ersten Speichern verfügbar" : "Available after the first save"}
+                className="inline-flex h-[34px] items-center gap-[7px] rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#6B7078] opacity-60 dark:border-white/[0.10] dark:bg-[#111216]"
+              >
+                <Eye className="size-3.5 opacity-60" />
+                {isGerman
+                  ? "Angebotsseite"
+                  : "Proposal page"}
+              </button>
+            )}
+
+            <ExternalFormSubmitButton
+              formId="proposal-builder-form"
+              disabled={isAccepted}
+              pendingText={
+                isGerman
+                  ? "Speichert…"
+                  : "Saving…"
+              }
+              className="inline-flex h-[34px] items-center gap-[7px] rounded-[10px] bg-[#002BBA] px-[14px] text-[13px] font-medium text-white shadow-[0_1px_2px_rgba(0,43,186,0.30)] transition-colors hover:bg-[#00229A] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <ExternalLink className="size-4" />
+              <Save className="size-3.5" />
+
               {isGerman
-                ? "Vorschau öffnen"
-                : "Open preview"}
-            </Link>
+                ? "Angebot speichern"
+                : "Save proposal"}
+            </ExternalFormSubmitButton>
           </div>
-        ) : null}
+        </div>
       </header>
 
-      {query.saved === "1" ? (
-        <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          {query.reopened === "1"
-            ? isGerman
-              ? `Überarbeitetes Angebot gespeichert. Die vorherige Ablehnung wurde zurückgesetzt – der Kunde kann Version ${proposal?.revision ?? 2} wieder annehmen oder ablehnen.`
-              : `Revised proposal saved. The previous decline was reset – the client can accept or decline version ${proposal?.revision ?? 2} again.`
-            : isGerman
-              ? "Angebot gespeichert. Der öffentliche Proposal-Link ist jetzt verfügbar."
-              : "Proposal saved. The public proposal link is now available."}
+      {/* STATUS MESSAGES */}
+      {(query.saved === "1" || query.proposalSent === "1" || query.templateSaved === "1" || query.templateDeleted === "1" || query.error || isAccepted) ? (
+        <div className={`mt-3 shrink-0 rounded-[10px] border px-3 py-2 text-[11.5px] ${query.error ? "border-red-200 bg-red-50 text-red-700" : "border-black/[0.08] bg-white text-[#40454E] dark:border-white/[0.08] dark:bg-[#111216] dark:text-[#B9BDC5]"}`}>
+          {query.error
+            ? query.error
+            : isAccepted
+              ? isGerman
+                ? "Dieses Angebot wurde angenommen. Die Inhalte sind gesperrt, damit der angenommene Stand erhalten bleibt."
+                : "This proposal has been accepted. Editing is locked to preserve the accepted version."
+              : query.proposalSent === "1"
+                ? isGerman
+                  ? "Angebot wurde per Gmail an den Kunden gesendet."
+                  : "Proposal was sent to the client via Gmail."
+                : query.templateSaved === "1"
+                  ? isGerman
+                    ? "Vorlage gespeichert."
+                    : "Template saved."
+                  : query.templateDeleted === "1"
+                    ? isGerman
+                      ? "Vorlage gelöscht."
+                      : "Template deleted."
+                    : isGerman
+                      ? "Angebot gespeichert."
+                      : "Proposal saved."}
         </div>
       ) : null}
 
-      {query.proposalSent === "1" ? (
-        <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          {isGerman
-            ? "Angebot wurde per Gmail an den Kunden gesendet."
-            : "Proposal was sent to the client via Gmail."}
-        </div>
-      ) : null}
+      {/* CONTEXT STRIP */}
+      <section className="mt-[14px] flex shrink-0 overflow-hidden rounded-[16px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(11,12,14,0.03)] dark:border-white/[0.08] dark:bg-[#111216]">
+        <ProposalMetric className="flex-[1.7]" label={isGerman ? "Kunde" : "Client"}>
+          <div className="truncate text-[14px] font-semibold tracking-[-0.015em]">
+            {companyName || "—"}
+          </div>
+          <div className="truncate text-[11.5px] text-[#6B7078]">
+            {contactSummary || "—"}
+          </div>
+        </ProposalMetric>
 
-      {query.templateSaved === "1" ? (
-        <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          {isGerman
-            ? "Vorlage gespeichert. Du kannst sie jetzt bei anderen Leads laden."
-            : "Template saved. You can now load it for other leads."}
-        </div>
-      ) : null}
+        <ProposalDivider />
 
-      {query.templateDeleted === "1" ? (
-        <div className="mt-6 rounded-xl border px-4 py-3 text-sm text-muted-foreground">
-          {isGerman ? "Vorlage gelöscht." : "Template deleted."}
-        </div>
-      ) : null}
-
-      {query.error ? (
-        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-          {query.error}
-        </div>
-      ) : null}
-
-      {isAccepted ? (
-        <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
-          {isGerman
-            ? proposal?.pdf_emailed_at
-              ? "Dieses Angebot wurde angenommen. Die Bestätigungs-PDF wurde an den Kunden gesendet. Änderungen sind gesperrt, damit der angenommene Stand erhalten bleibt."
-              : "Dieses Angebot wurde angenommen. Die Inhalte sind jetzt gesperrt, damit der angenommene Stand erhalten bleibt."
-            : proposal?.pdf_emailed_at
-              ? "This proposal has been accepted and the confirmation PDF was emailed to the client. Editing is locked to preserve the accepted version."
-              : "This proposal has been accepted. Editing is locked to preserve the accepted version."}
-          {proposal?.pdf_email_error ? (
-            <span className="mt-1 block text-xs">
-              PDF-Mail: {proposal.pdf_email_error}
+        <ProposalMetric className="flex-1 bg-[linear-gradient(180deg,rgba(0,43,186,0.035),rgba(0,43,186,0))]" label={isGerman ? "Projektpreis" : "Project price"} accent>
+          <div className="flex items-baseline gap-[7px]">
+            <span className={`text-[26px] font-semibold tabular-nums tracking-[-0.03em] ${activePrice > 0 ? "text-[#0B0C0E] dark:text-white" : "text-[#7E838B]"}`}>
+              {formattedPrice}
             </span>
+            <span className="font-mono text-[11px] text-[#6B7078]">
+              {activeCurrency}
+            </span>
+          </div>
+          <div className={`text-[11px] ${activePrice > 0 ? "text-[#6B7078]" : "text-[#9A5106]"}`}>
+            {activePrice > 0
+              ? isGerman
+                ? "Preis gesetzt"
+                : "Price set"
+              : isGerman
+                ? "Pflichtfeld · noch nicht gesetzt"
+                : "Required · not set yet"}
+          </div>
+        </ProposalMetric>
+
+        <ProposalDivider />
+
+        <ProposalMetric className="flex-1" label={isGerman ? "Gültig bis" : "Valid until"}>
+          <div className="flex items-baseline gap-[7px]">
+            <span className={`text-[26px] font-semibold tracking-[-0.03em] ${proposal?.valid_until ? "text-[#0B0C0E] dark:text-white" : "text-[#7E838B]"}`}>
+              {proposal?.valid_until
+                ? new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${proposal.valid_until}T12:00:00`))
+                : "—"}
+            </span>
+            {!proposal?.valid_until ? (
+              <span className="text-[11.5px] text-[#6B7078]">
+                {isGerman ? "offen" : "open"}
+              </span>
+            ) : null}
+          </div>
+          <div className="truncate text-[11px] text-[#6B7078]">
+            {activeTimeline}
+          </div>
+        </ProposalMetric>
+
+        <ProposalDivider />
+
+        <ProposalMetric className="flex-1" label={isGerman ? "Leistungen" : "Services"}>
+          <div className="flex items-baseline gap-[7px]">
+            <span className="text-[26px] font-semibold tabular-nums tracking-[-0.03em]">
+              {scopeLines.length}
+            </span>
+            <span className="text-[11.5px] text-[#6B7078]">
+              + {activeCustomSections.length} {isGerman ? "Abschnitt" : "section"}
+            </span>
+          </div>
+          <div className="truncate text-[11px] text-[#6B7078]">
+            {activeCustomSections[0]?.title || (isGerman ? "Keine eigenen Abschnitte" : "No custom sections")}
+          </div>
+        </ProposalMetric>
+
+        <ProposalDivider />
+
+        <ProposalMetric className="flex-[1.15]" label={isGerman ? "Vorlage / AI" : "Template / AI"}>
+          <div className="truncate text-[13.5px] font-medium tracking-[-0.01em]">
+            {selectedTemplate?.name || (isGerman ? "Keine Vorlage" : "No template")}
+          </div>
+          <div className="truncate text-[11px] text-[#6B7078]">
+            {proposalHistoryAssessment.ready
+              ? isGerman
+                ? "AI-Entwurf verfügbar"
+                : "AI draft available"
+              : isGerman
+                ? "AI-Entwurf inaktiv · kein sinnvoller Verlauf"
+                : "AI draft inactive · no useful thread"}
+          </div>
+        </ProposalMetric>
+      </section>
+
+      {/* WORK AREA */}
+      <div className="mt-[14px] flex min-h-0 flex-1 gap-4">
+        <form
+          id="proposal-builder-form"
+          action={saveProposal}
+          className="flex min-w-0 flex-1"
+        >
+          <input type="hidden" name="leadId" value={id} />
+          <input
+            type="hidden"
+            name="proposalLanguage"
+            value={proposalLanguage}
+          />
+
+          {selectedPayload && activeLogoUrl ? (
+            <input type="hidden" name="templateLogoUrl" value={activeLogoUrl} />
           ) : null}
-        </div>
-      ) : null}
 
-      {linkedProject ? (
-        <Card data-workspace-reveal className="leadbase-workspace-card mt-6">
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
-                <FolderKanban className="size-4" />
+          <ProposalBuilderTabs
+            isGerman={isGerman}
+            scopeCount={scopeLines.length}
+            sectionCount={activeCustomSections.length}
+            details={
+              <div className="space-y-[14px]">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <ProposalInput
+                    name="proposalNumber"
+                    label={isGerman ? "Angebotsnummer" : "Proposal number"}
+                    defaultValue={proposal?.proposal_number ?? ""}
+                    placeholder={isGerman ? "z. B. RE-14" : "e.g. Q-14"}
+                    required
+                    disabled={isAccepted}
+                  />
+                  <ProposalInput name="title" label={isGerman ? "Titel" : "Title"} defaultValue={activeTitle} required disabled={isAccepted} />
+                  <ProposalInput name="clientName" label={isGerman ? "Kunde" : "Client"} defaultValue={proposal?.client_name ?? companyName} required disabled={isAccepted} />
+                  <ProposalInput name="contactName" label={isGerman ? "Ansprechpartner" : "Contact"} defaultValue={proposal?.contact_name ?? contact?.full_name ?? ""} disabled={isAccepted} />
+                  <ProposalInput name="contactEmail" label={isGerman ? "Kunden-E-Mail für Bestätigungs-PDF" : "Client email for confirmation PDF"} defaultValue={proposal?.contact_email ?? contact?.email ?? ""} type="email" disabled={isAccepted} />
+                </div>
+
+                <ProposalInput
+                  name="websiteUrl"
+                  label="Website"
+                  defaultValue={proposal?.website_url ?? company?.website_url ?? ""}
+                  disabled={isAccepted}
+                />
+
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <ProposalLabel>
+                      {isGerman ? "Einleitung" : "Introduction"}
+                    </ProposalLabel>
+                    <ProposalAiAutofillButton
+                      leadId={id}
+                      isGerman={isGerman}
+                      disabled={isAccepted}
+                      available={proposalHistoryAssessment.ready}
+                      compact
+                    />
+                  </div>
+                  <Textarea
+                    id="introText"
+                    name="introText"
+                    rows={3}
+                    defaultValue={activeIntro}
+                    disabled={isAccepted}
+                    className="mt-1.5 min-h-[64px] rounded-[10px] border-black/[0.09] bg-[#F7F8FA] px-[11px] py-2.5 text-[12.5px] leading-[1.5] shadow-none focus-visible:border-[#002BBA]/45 focus-visible:ring-[3px] focus-visible:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-white/[0.04]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <ProposalInput name="timelineText" label={isGerman ? "Zeitrahmen" : "Timeline"} defaultValue={activeTimeline} disabled={isAccepted} />
+                  <ProposalInput name="validUntil" label={isGerman ? "Gültig bis" : "Valid until"} defaultValue={proposal?.valid_until ?? ""} type="date" disabled={isAccepted} />
+                  <div>
+                    <ProposalLabel required>
+                      {isGerman ? "Projektpreis" : "Project price"}
+                    </ProposalLabel>
+                    <div className="mt-1.5 flex h-9 items-center gap-2 rounded-[10px] border border-[#002BBA]/45 bg-white px-[11px] shadow-[0_0_0_3px_rgba(0,43,186,0.10)] dark:bg-[#111216]">
+                      <span className="text-[13px] font-medium text-[#002BBA]">€</span>
+                      <input
+                        id="price"
+                        name="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        defaultValue={String(activePrice)}
+                        required
+                        disabled={isAccepted}
+                        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] tabular-nums outline-none"
+                      />
+                      <select
+                        id="currency"
+                        name="currency"
+                        defaultValue={activeCurrency}
+                        disabled={isAccepted}
+                        className="h-6 rounded-[7px] border-0 bg-black/[0.05] px-[7px] font-mono text-[10.5px] text-[#40454E] outline-none dark:bg-white/[0.07] dark:text-white"
+                      >
+                        <option value="EUR">EUR</option>
+                        <option value="USD">USD</option>
+                        <option value="CHF">CHF</option>
+                        <option value="GBP">GBP</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <ProposalLabel>
+                    {isGerman ? "Zusätzliche Hinweise" : "Additional notes"}
+                  </ProposalLabel>
+                  <Textarea
+                    id="notes"
+                    name="notes"
+                    rows={2}
+                    defaultValue={activeNotes}
+                    disabled={isAccepted}
+                    className="mt-1.5 min-h-[52px] rounded-[10px] border-black/[0.09] bg-[#F7F8FA] px-[11px] py-2.5 text-[12.5px] leading-[1.45] shadow-none focus-visible:border-[#002BBA]/45 focus-visible:ring-[3px] focus-visible:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-white/[0.04]"
+                  />
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold">
-                  {isGerman ? "Projekt automatisch angelegt" : "Project created automatically"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {linkedProject.project_name} · {linkedProject.status}
-                </p>
+            }
+            scope={
+              <ProposalScopeEditor
+                defaultValue={scope}
+                disabled={isAccepted}
+                isGerman={isGerman}
+              />
+            }
+            sections={
+              <ProposalSectionsBuilder
+                defaultSections={activeCustomSections}
+                disabled={isAccepted}
+                isGerman={isGerman}
+              />
+            }
+            branding={
+              <ProposalBrandingFields
+                defaultAccentColor={activeAccentColor}
+                currentLogoUrl={activeLogoUrl}
+                firstTimeClient={activeFirstTimeClient}
+                isGerman={isGerman}
+                disabled={isAccepted}
+              />
+            }
+            design={
+              <ProposalDesignTemplatePicker
+                initialTemplate={activeDesignTemplate}
+                accentColor={activeAccentColor}
+                isGerman={isGerman}
+                disabled={isAccepted}
+              />
+            }
+            footer={
+              <div
+                key="proposal-builder-footer"
+                className="flex shrink-0 items-center justify-between border-t border-black/[0.07] px-[18px] py-[10px] dark:border-white/[0.08]"
+              >
+                <div className="flex min-w-0 items-center gap-2 text-[11.5px] text-[#6B7078]">
+                  {activePrice <= 0 ? (
+                    <AlertCircle className="size-3.5 shrink-0 text-[#9A5106]" />
+                  ) : null}
+                  <span className="truncate">
+                    {isAccepted
+                      ? isGerman
+                        ? "Angenommener Stand · Bearbeitung gesperrt"
+                        : "Accepted version · editing locked"
+                      : activePrice <= 0
+                        ? isGerman
+                          ? "Projektpreis fehlt · Angebot kann noch nicht veröffentlicht werden"
+                          : "Project price missing · proposal cannot be published yet"
+                        : isGerman
+                          ? "Änderungen werden beim Speichern auf der Angebotsseite aktualisiert"
+                          : "Saving updates the public proposal page"}
+                  </span>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[#6B7078]">
+                    {isAccepted
+                      ? isGerman
+                        ? "Gesperrt"
+                        : "Locked"
+                      : isGerman
+                        ? "Nicht gespeichert"
+                        : "Unsaved"}
+                  </span>
+
+                  <PendingSubmitButton
+                    className="inline-flex h-[32px] items-center gap-1.5 rounded-[9px] bg-[#002BBA] px-3 text-[12.5px] font-medium text-white shadow-[0_1px_2px_rgba(0,43,186,0.30)] transition-colors hover:bg-[#00229A]"
+                    pendingText={isGerman ? "Speichert…" : "Saving…"}
+                    disabled={isAccepted}
+                  >
+                    <Save className="size-3.5" />
+                    {isGerman ? "Angebot speichern" : "Save proposal"}
+                  </PendingSubmitButton>
+                </div>
               </div>
+            }
+          />
+        </form>
+
+        {/* RIGHT RAIL */}
+        <aside className="flex w-[360px] shrink-0 self-start flex-col gap-[14px] xl:w-[392px]">
+          <section className="flex shrink-0 flex-col overflow-hidden rounded-[16px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(11,12,14,0.03)] dark:border-white/[0.08] dark:bg-[#111216]">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-black/[0.07] px-[18px] py-[13px] dark:border-white/[0.08]">
+              <div className="flex items-center gap-2">
+                <Eye className="size-3.5 text-[#6B7078]" />
+                <h2 className="text-[13.5px] font-semibold tracking-[-0.01em]">
+                  {isGerman ? "Vorschau" : "Preview"}
+                </h2>
+              </div>
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[#6B7078]">
+                {isGerman ? "Angebotsseite" : "Proposal page"}
+              </span>
             </div>
-            <Link
-              href={`/projects/${encodeURIComponent(linkedProject.id)}/edit`}
-              className={buttonVariants({ variant: "outline" })}
-            >
-              {isGerman ? "Projekt öffnen" : "Open project"}
-            </Link>
-          </CardContent>
-        </Card>
-      ) : null}
 
-      {!isAccepted ? (
-        <Card data-workspace-reveal className="leadbase-workspace-card mt-6 sm:mt-8">
-          <CardContent className="p-4 sm:p-6">
-            <div>
-              <h2 className="text-sm font-semibold">
+            <div className="max-h-[430px] overflow-y-auto bg-[#F6F7F9] p-[14px] dark:bg-[#0C0D10]">
+              <ProposalLivePreview
+                ownerName={ownerName}
+                isGerman={isGerman}
+                initial={{
+                  title: activeTitle,
+                  clientName: proposal?.client_name ?? companyName,
+                  contactName,
+                  introText: activeIntro,
+                  scope: scopeLines,
+                  price: String(activePrice),
+                  currency: activeCurrency,
+                  firstTimeClient: activeFirstTimeClient,
+                  accentColor: activeAccentColor,
+                  designTemplate: activeDesignTemplate,
+                  proposalNumber: proposal?.proposal_number ?? "",
+                }}
+              />
+            </div>
+          </section>
+
+          <ProposalReadinessCard
+            isGerman={isGerman}
+            initialSectionCount={activeCustomSections.length}
+            footer={
+              proposal && !isAccepted ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 text-[10px] text-white/55">
+                    {proposal.sent_at
+                      ? `${isGerman ? "Zuletzt gesendet" : "Last sent"}: ${new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Berlin" }).format(new Date(proposal.sent_at))}`
+                      : isGerman
+                        ? "Entwurf gespeichert"
+                        : "Draft saved"}
+                  </div>
+
+                  <form action={sendProposalToClient}>
+                    <input type="hidden" name="leadId" value={id} />
+                    <PendingSubmitButton
+                      pendingText={isGerman ? "Sendet…" : "Sending…"}
+                      disabled={!proposal.contact_email}
+                      className="inline-flex h-[28px] items-center gap-1.5 rounded-[8px] bg-white px-2.5 text-[10.5px] font-medium text-[#0B0C0E] transition-colors hover:bg-white/90"
+                    >
+                      <Send className="size-3" />
+                      {proposal.sent_at
+                        ? isGerman ? "Erneut senden" : "Send again"
+                        : isGerman ? "Per E-Mail senden" : "Send by email"}
+                    </PendingSubmitButton>
+                  </form>
+                </div>
+              ) : undefined
+            }
+          />
+
+          {/* EXISTING SECONDARY FUNCTIONALITY, compactly integrated */}
+          {!isAccepted ? (
+            <details className="shrink-0 rounded-[12px] border border-black/[0.08] bg-white px-3 py-2.5 dark:border-white/[0.08] dark:bg-[#111216]">
+              <summary className="cursor-pointer list-none text-[11.5px] font-medium text-[#40454E] dark:text-[#B9BDC5]">
                 {isGerman ? "Vorlagen & AI" : "Templates & AI"}
-              </h2>
+              </summary>
 
-              <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-                {isGerman
-                  ? "Lade eine wiederverwendbare Angebotsvorlage oder lass Leadbase aus dem bisherigen E-Mail-Verlauf einen editierbaren Entwurf erstellen."
-                  : "Load a reusable proposal template or let Leadbase create an editable draft from the email history."}
-              </p>
-            </div>
-
-            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] xl:items-start">
-              <div className="min-w-0 rounded-xl border bg-muted/10 p-4">
-                <p className="text-xs font-medium text-foreground">
-                  {isGerman ? "Vorlage laden" : "Load template"}
-                </p>
-
-                <form
-                  method="get"
-                  className="mt-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-                >
+              <div className="mt-3 space-y-3 border-t border-black/[0.07] pt-3 dark:border-white/[0.08]">
+                <form method="get" className="flex gap-2">
                   <select
                     name="template"
                     defaultValue={selectedTemplate?.id ?? ""}
-                    className="h-10 w-full min-w-0 rounded-lg border bg-background px-3 text-sm"
+                    className="h-8 min-w-0 flex-1 rounded-[8px] border border-black/[0.09] bg-white px-2 text-[11px] dark:border-white/[0.10] dark:bg-[#15161A]"
                   >
-                    <option value="">
-                      {isGerman ? "Keine Vorlage" : "No template"}
-                    </option>
+                    <option value="">{isGerman ? "Keine Vorlage" : "No template"}</option>
                     {templateRows.map((template) => (
                       <option key={template.id} value={template.id}>
                         {template.name}
                       </option>
                     ))}
                   </select>
-
-                  <button
-                    type="submit"
-                    className={buttonVariants({
-                      variant: "outline",
-                      className: "w-full whitespace-nowrap sm:w-auto",
-                    })}
-                  >
-                    {isGerman ? "Vorlage laden" : "Load template"}
+                  <button type="submit" className="h-8 rounded-[8px] border border-black/[0.09] px-2.5 text-[11px] text-[#40454E] hover:bg-[#F7F8FA] dark:border-white/[0.10] dark:text-white">
+                    {isGerman ? "Laden" : "Load"}
                   </button>
                 </form>
 
                 {selectedTemplate ? (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground">
-                    <span className="min-w-0 truncate">
-                      {isGerman ? "Geladen:" : "Loaded:"} {selectedTemplate.name}
-                    </span>
+                  <form action={deleteProposalTemplate} className="flex items-center justify-between gap-2 rounded-[8px] bg-[#F7F8FA] px-2.5 py-2 dark:bg-white/[0.04]">
+                    <input type="hidden" name="leadId" value={id} />
+                    <input type="hidden" name="templateId" value={selectedTemplate.id} />
+                    <span className="min-w-0 truncate text-[10.5px] text-[#6B7078]">{selectedTemplate.name}</span>
+                    <button type="submit" className="shrink-0 text-[10.5px] text-[#9A5106] hover:underline">
+                      {isGerman ? "Löschen" : "Delete"}
+                    </button>
+                  </form>
+                ) : null}
 
-                    <form action={deleteProposalTemplate}>
-                      <input type="hidden" name="leadId" value={id} />
-                      <input type="hidden" name="templateId" value={selectedTemplate.id} />
-                      <button
-                        type="submit"
-                        className="whitespace-nowrap font-medium text-foreground hover:underline"
-                      >
-                        {isGerman ? "Vorlage löschen" : "Delete template"}
-                      </button>
-                    </form>
+                <ProposalAiAutofillButton
+                  leadId={id}
+                  isGerman={isGerman}
+                  disabled={false}
+                  available={proposalHistoryAssessment.ready}
+                />
+
+                {proposal ? (
+                  <form action={saveProposalAsTemplate} className="flex gap-2">
+                    <input type="hidden" name="leadId" value={id} />
+                    <Input
+                      name="templateName"
+                      placeholder={isGerman ? "Vorlagenname" : "Template name"}
+                      required
+                      maxLength={120}
+                      className="h-8 rounded-[8px] text-[11px]"
+                    />
+                    <PendingSubmitButton
+                      pendingText={isGerman ? "Speichert…" : "Saving…"}
+                      className="h-8 shrink-0 rounded-[8px] border border-black/[0.09] px-2.5 text-[11px] text-[#40454E] hover:bg-[#F7F8FA] dark:border-white/[0.10] dark:text-white"
+                    >
+                      {isGerman ? "Als Vorlage" : "Save template"}
+                    </PendingSubmitButton>
+                  </form>
+                ) : null}
+
+                {publicPath ? (
+                  <div className="flex items-center gap-2">
+                    <CopyProposalLink
+                      path={publicPath}
+                      label={isGerman ? "Link kopieren" : "Copy link"}
+                      copiedLabel={isGerman ? "Kopiert" : "Copied"}
+                    />
                   </div>
                 ) : null}
               </div>
+            </details>
+          ) : null}
 
-              <div className="min-w-0 rounded-xl border bg-muted/10 p-4">
-                <p className="text-xs font-medium text-foreground">
-                  {isGerman ? "AI-Entwurf" : "AI draft"}
-                </p>
+          {linkedProject ? (
+            <Link
+              href={`/projects/${encodeURIComponent(linkedProject.id)}`}
+              className="flex shrink-0 items-center gap-2 rounded-[12px] border border-black/[0.08] bg-white px-3 py-2.5 text-[11.5px] text-[#40454E] transition-colors hover:bg-[#F7F8FA] dark:border-white/[0.08] dark:bg-[#111216] dark:text-[#B9BDC5]"
+            >
+              <FolderKanban className="size-3.5 text-[#002BBA]" />
+              <span className="min-w-0 flex-1 truncate">{linkedProject.project_name}</span>
+              <ExternalLink className="size-3 text-[#6B7078]" />
+            </Link>
+          ) : null}
+        </aside>
+      </div>
+    </div>
+  );
+}
 
-                <div className="mt-3">
-                  <ProposalAiAutofillButton
-                    leadId={id}
-                    isGerman={isGerman}
-                    disabled={false}
-                    available={proposalHistoryAssessment.ready}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+function ProposalMetric({
+  label,
+  accent = false,
+  className = "",
+  children,
+}: {
+  label: string;
+  accent?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`min-w-0 px-5 py-[15px] ${className}`}>
+      <div className={`font-mono text-[9.5px] uppercase tracking-[0.11em] ${accent ? "text-[#002BBA]" : "text-[#6B7078]"}`}>
+        {label}
+      </div>
+      <div className="mt-1.5 flex min-h-[42px] flex-col gap-1.5">
+        {children}
+      </div>
+    </div>
+  );
+}
 
-      <form
-        id="proposal-builder-form"
-        action={saveProposal}
-        className="mt-6 space-y-4 sm:mt-8"
-      >
-        <input
-          type="hidden"
-          name="leadId"
-          value={id}
-        />
+function ProposalDivider() {
+  return (
+    <div className="my-[14px] w-px shrink-0 bg-black/[0.07] dark:bg-white/[0.08]" />
+  );
+}
 
-        {selectedPayload && activeLogoUrl ? (
-          <input
-            type="hidden"
-            name="templateLogoUrl"
-            value={activeLogoUrl}
-          />
-        ) : null}
-
-        <Card data-workspace-reveal className="leadbase-workspace-card">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border">
-                <FileText className="size-4" />
-              </div>
-
-              <div>
-                <h2 className="text-sm font-semibold">
-                  {isGerman
-                    ? "Angebotsdaten"
-                    : "Proposal details"}
-                </h2>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {isGerman
-                    ? "Diese Angaben erscheinen auf der öffentlichen Proposal-Seite."
-                    : "These details appear on the public proposal page."}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-5 sm:grid-cols-2">
-              <Field
-                name="title"
-                label={
-                  isGerman
-                    ? "Titel *"
-                    : "Title *"
-                }
-                defaultValue={activeTitle}
-                required
-              />
-
-              <Field
-                name="clientName"
-                label={
-                  isGerman
-                    ? "Kunde *"
-                    : "Client *"
-                }
-                defaultValue={
-                  proposal?.client_name ??
-                  companyName
-                }
-                required
-              />
-
-              <Field
-                name="contactName"
-                label={
-                  isGerman
-                    ? "Ansprechpartner"
-                    : "Contact"
-                }
-                defaultValue={
-                  proposal?.contact_name ??
-                  contact?.full_name ??
-                  ""
-                }
-              />
-
-              <Field
-                name="contactEmail"
-                label={
-                  isGerman
-                    ? "Kunden-E-Mail für Bestätigungs-PDF"
-                    : "Client email for confirmation PDF"
-                }
-                type="email"
-                defaultValue={
-                  proposal?.contact_email ??
-                  contact?.email ??
-                  ""
-                }
-              />
-
-              <Field
-                name="websiteUrl"
-                label="Website"
-                type="text"
-                defaultValue={
-                  proposal?.website_url ??
-                  company?.website_url ??
-                  ""
-                }
-              />
-
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="introText">
-                  {isGerman
-                    ? "Einleitung"
-                    : "Introduction"}
-                </Label>
-                <Textarea
-                  id="introText"
-                  name="introText"
-                  rows={4}
-                  defaultValue={activeIntro}
-                />
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="scope">
-                  {isGerman
-                    ? "Leistungsumfang · eine Leistung pro Zeile"
-                    : "Scope · one item per line"}
-                </Label>
-                <Textarea
-                  id="scope"
-                  name="scope"
-                  rows={7}
-                  defaultValue={scope}
-                />
-              </div>
-
-              <Field
-                name="timelineText"
-                label={
-                  isGerman
-                    ? "Zeitrahmen"
-                    : "Timeline"
-                }
-                defaultValue={activeTimeline}
-              />
-
-              <Field
-                name="validUntil"
-                label={
-                  isGerman
-                    ? "Gültig bis"
-                    : "Valid until"
-                }
-                type="date"
-                defaultValue={
-                  proposal?.valid_until ??
-                  ""
-                }
-              />
-
-              <Field
-                name="price"
-                label={
-                  isGerman
-                    ? "Projektpreis *"
-                    : "Project price *"
-                }
-                type="number"
-                step="0.01"
-                min="0"
-                defaultValue={String(activePrice)}
-                required
-              />
-
-              <div className="space-y-2">
-                <Label htmlFor="currency">
-                  {isGerman
-                    ? "Währung"
-                    : "Currency"}
-                </Label>
-                <select
-                  id="currency"
-                  name="currency"
-                  defaultValue={activeCurrency}
-                  className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="EUR">EUR</option>
-                  <option value="USD">USD</option>
-                  <option value="CHF">CHF</option>
-                  <option value="GBP">GBP</option>
-                </select>
-              </div>
-
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="notes">
-                  {isGerman
-                    ? "Zusätzliche Hinweise"
-                    : "Additional notes"}
-                </Label>
-                <Textarea
-                  id="notes"
-                  name="notes"
-                  rows={4}
-                  defaultValue={activeNotes}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card data-workspace-reveal className="leadbase-workspace-card">
-          <CardContent className="p-4 sm:p-6">
-            <div className="mb-6">
-              <h2 className="text-sm font-semibold">
-                {isGerman ? "Eigene Abschnitte" : "Custom sections"}
-              </h2>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {isGerman
-                  ? "Baue dein Angebot wie ein echtes SOW auf. Titel und Inhalt sind frei; Reihenfolge kannst du ändern."
-                  : "Build the proposal like a real SOW. Titles and content are free-form and can be reordered."}
-              </p>
-            </div>
-
-            <ProposalSectionsBuilder
-              defaultSections={activeCustomSections}
-              disabled={isAccepted}
-              isGerman={isGerman}
-            />
-          </CardContent>
-        </Card>
-
-        <Card data-workspace-reveal className="leadbase-workspace-card">
-          <CardContent className="p-4 sm:p-6">
-            <div className="mb-6">
-              <h2 className="text-sm font-semibold">
-                {isGerman
-                  ? "Branding & Konditionen"
-                  : "Branding & terms"}
-              </h2>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {isGerman
-                  ? "Passe Logo und Akzentfarbe an und entscheide pro Projekt, ob die Erstkunden-Garantie gilt."
-                  : "Customize the logo and accent color and choose whether the first-time-client guarantee applies."}
-              </p>
-            </div>
-
-            <ProposalBrandingFields
-              defaultAccentColor={activeAccentColor}
-              currentLogoUrl={activeLogoUrl}
-              firstTimeClient={activeFirstTimeClient}
-              isGerman={isGerman}
-              disabled={isAccepted}
-            />
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-end">
-          <PendingSubmitButton
-            className={buttonVariants({
-              className:
-                "gap-2",
-            })}
-            pendingText={
-              isGerman
-                ? "Speichert…"
-                : "Saving…"
-            }
-            disabled={isAccepted}
-          >
-            {isAccepted
-              ? isGerman
-                ? "Angebot angenommen"
-                : "Proposal accepted"
-              : isGerman
-                ? "Angebot speichern"
-                : "Save proposal"}
-          </PendingSubmitButton>
-        </div>
-      </form>
-
-      {proposal && !isAccepted ? (
-        <Card data-workspace-reveal className="leadbase-workspace-card mt-4">
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Send className="size-4" />
-                  <h2 className="text-sm font-semibold">
-                    {isGerman ? "Angebot versenden" : "Send proposal"}
-                  </h2>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {proposal.contact_email
-                    ? isGerman
-                      ? `Versand an ${proposal.contact_email}. Der Kunde erhält den öffentlichen Proposal-Link und kann direkt annehmen oder ablehnen.`
-                      : `Send to ${proposal.contact_email}. The client receives the public proposal link and can accept or decline directly.`
-                    : isGerman
-                      ? "Speichere zuerst eine Kunden-E-Mail, bevor du das Angebot versendest."
-                      : "Save a client email before sending the proposal."}
-                </p>
-                {proposal.sent_at ? (
-                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-                    {isGerman ? "Zuletzt gesendet:" : "Last sent:"}{" "}
-                    {new Intl.DateTimeFormat(isGerman ? "de-DE" : "en-GB", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                      timeZone: "Europe/Berlin",
-                    }).format(new Date(proposal.sent_at))}
-                  </p>
-                ) : null}
-                {proposal.delivery_email_error ? (
-                  <p className="mt-1 max-w-2xl text-xs text-red-600 dark:text-red-400">
-                    {proposal.delivery_email_error}
-                  </p>
-                ) : null}
-              </div>
-
-              <form action={sendProposalToClient}>
-                <input type="hidden" name="leadId" value={id} />
-                <PendingSubmitButton
-                  className={buttonVariants({ className: "gap-2" })}
-                  pendingText={isGerman ? "Sendet…" : "Sending…"}
-                  disabled={!proposal.contact_email}
-                >
-                  <Send className="size-4" />
-                  {proposal.sent_at
-                    ? isGerman
-                      ? "Erneut senden"
-                      : "Send again"
-                    : isGerman
-                      ? "Per E-Mail senden"
-                      : "Send by email"}
-                </PendingSubmitButton>
-              </form>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {proposal && !isAccepted ? (
-        <Card data-workspace-reveal className="leadbase-workspace-card mt-4">
-          <CardContent className="p-4 sm:p-6">
-            <form action={saveProposalAsTemplate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <input type="hidden" name="leadId" value={id} />
-              <div className="min-w-0 flex-1 space-y-2">
-                <Label htmlFor="templateName">
-                  {isGerman ? "Aktuelles Angebot als Vorlage speichern" : "Save current proposal as template"}
-                </Label>
-                <Input
-                  id="templateName"
-                  name="templateName"
-                  placeholder={isGerman ? "z. B. Webdesign Standard" : "e.g. Standard web design"}
-                  required
-                  maxLength={120}
-                />
-              </div>
-              <PendingSubmitButton
-                className={buttonVariants({ variant: "outline" })}
-                pendingText={isGerman ? "Speichert…" : "Saving…"}
-              >
-                {isGerman ? "Als Vorlage speichern" : "Save as template"}
-              </PendingSubmitButton>
-            </form>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {isGerman
-                ? "Kundenname und Ansprechpartner werden als Platzhalter gespeichert und beim nächsten Lead automatisch ersetzt."
-                : "Client and contact names are stored as placeholders and replaced automatically for the next lead."}
-            </p>
-          </CardContent>
-        </Card>
+function ProposalLabel({
+  children,
+  required = false,
+}: {
+  children: React.ReactNode;
+  required?: boolean;
+}) {
+  return (
+    <div className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">
+      {children}
+      {required ? (
+        <span className="ml-1 text-[#002BBA]">*</span>
       ) : null}
     </div>
   );
 }
 
-function Field({
+function ProposalInput({
   name,
   label,
   defaultValue,
   type = "text",
   required = false,
-  step,
-  min,
+  disabled = false,
+  placeholder,
 }: {
   name: string;
   label: string;
   defaultValue: string;
   type?: string;
   required?: boolean;
-  step?: string;
-  min?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={name}>
+    <div className={name === "websiteUrl" ? "col-span-2" : ""}>
+      <ProposalLabel required={required}>
         {label}
-      </Label>
+      </ProposalLabel>
       <Input
         id={name}
         name={name}
         type={type}
         defaultValue={defaultValue}
         required={required}
-        step={step}
-        min={min}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="mt-1.5 h-9 rounded-[10px] border-black/[0.09] bg-[#F7F8FA] px-[11px] text-[13px] shadow-none focus-visible:border-[#002BBA]/45 focus-visible:ring-[3px] focus-visible:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-white/[0.04]"
       />
     </div>
   );

@@ -28,6 +28,10 @@ import {
   createPortal,
 } from "react-dom";
 
+import {
+  initializeLeadbasePreviewMotionRuntime,
+} from "@/lib/leadbase-preview-motion-runtime";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -1644,12 +1648,25 @@ export function CustomerDesignFrame({
       null
     );
 
+  const motionModeRef =
+    useRef(
+      false
+    );
+
   const [
     frameHeight,
     setFrameHeight,
   ] =
     useState(
       900
+    );
+
+  const [
+    motionMode,
+    setMotionMode,
+  ] =
+    useState(
+      false
     );
 
   const preparedHtml =
@@ -1685,6 +1702,12 @@ export function CustomerDesignFrame({
   const measure =
     useCallback(
       () => {
+        if (
+          motionModeRef.current
+        ) {
+          return;
+        }
+
         const iframe =
           iframeRef.current;
 
@@ -1867,14 +1890,58 @@ export function CustomerDesignFrame({
               }
             );
 
-          measure();
+          const hasMotion =
+            Boolean(
+              document.querySelector(
+                ".leadbase-motion-reveal"
+              )
+            );
+
+          motionModeRef.current =
+            hasMotion;
+
+          setMotionMode(
+            hasMotion
+          );
+
+          const motionCleanup =
+            hasMotion
+              ? initializeLeadbasePreviewMotionRuntime({
+                  iframe,
+                  document,
+                  smoothWheel:
+                    true,
+                })
+              : () => {};
+
+          if (
+            !hasMotion
+          ) {
+            measure();
+          }
 
           const images =
             Array.from(
               document.images
             );
 
-          const imageHandler =
+          let observer:
+            ResizeObserver | null =
+              null;
+
+          let delayedMeasures:
+            number[] =
+              [];
+
+          let imageHandler:
+            (() => void) | null =
+              null;
+
+          if (
+            !hasMotion
+          ) {
+
+          imageHandler =
             () => {
               window.requestAnimationFrame(
                 measure
@@ -1902,7 +1969,7 @@ export function CustomerDesignFrame({
             );
           }
 
-          const observer =
+          observer =
             new ResizeObserver(
               () => {
                 window.requestAnimationFrame(
@@ -1942,7 +2009,7 @@ export function CustomerDesignFrame({
               }
             );
 
-          const delayedMeasures =
+          delayedMeasures =
             [
               100,
               300,
@@ -1958,23 +2025,34 @@ export function CustomerDesignFrame({
                 )
             );
 
+          }
+
           cleanupRef.current =
             () => {
-              observer.disconnect();
-
-              for (
-                const image of
-                  images
+              if (
+                !hasMotion
               ) {
-                image.removeEventListener(
-                  "load",
-                  imageHandler
-                );
+                observer
+                  ?.disconnect();
+              }
 
-                image.removeEventListener(
-                  "error",
-                  imageHandler
-                );
+              if (
+                imageHandler
+              ) {
+                for (
+                  const image of
+                    images
+                ) {
+                  image.removeEventListener(
+                    "load",
+                    imageHandler
+                  );
+
+                  image.removeEventListener(
+                    "error",
+                    imageHandler
+                  );
+                }
               }
 
               for (
@@ -1997,6 +2075,8 @@ export function CustomerDesignFrame({
                 blockGeneratedSubmit,
                 true
               );
+
+              motionCleanup();
             };
         } catch (
           error
@@ -2060,7 +2140,13 @@ export function CustomerDesignFrame({
       srcDoc={
         preparedHtml
       }
-      sandbox="allow-same-origin"
+      sandbox={
+        html.includes(
+          'data-leadbase-map-embed="true"'
+        )
+          ? "allow-same-origin allow-scripts"
+          : "allow-same-origin"
+      }
       referrerPolicy="no-referrer"
       loading="eager"
       onLoad={
@@ -2069,7 +2155,9 @@ export function CustomerDesignFrame({
       className="block w-full border-0 bg-white"
       style={{
         height:
-          `${frameHeight}px`,
+          motionMode
+            ? "100dvh"
+            : `${frameHeight}px`,
 
         minHeight:
           "calc(100dvh - 64px)",

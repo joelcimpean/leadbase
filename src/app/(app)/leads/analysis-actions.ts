@@ -11,6 +11,7 @@ import {
 } from "@/lib/email-quality";
 
 import { createClient } from "@/lib/supabase/server";
+import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
 
 /* =========================================================
    HELPERS
@@ -813,6 +814,8 @@ export async function analyzeLeadWebsite(
   ========================================================= */
 
   try {
+    await assertAiUsageAvailable(user.id);
+
     const screenshots =
       await captureWebsiteScreenshots(
         company.website_url
@@ -959,6 +962,15 @@ export async function analyzeLeadWebsite(
         finalUpdateError.message
       );
     }
+
+    await recordAiUsage({
+      userId: user.id,
+      feature: "lead_analysis",
+      model: visualResult.model,
+      usage: visualResult.usage,
+      requestKey: `lead-analysis:${leadId}:${visualResult.model}:${visualResult.usage.totalTokens}:${new Date().toISOString().slice(0, 16)}`,
+      metadata: { leadId },
+    });
 
     /* =======================================================
        ACTIVITY

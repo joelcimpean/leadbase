@@ -1,17 +1,7 @@
-import Link from "next/link";
-
-import {
-  Plus,
-} from "lucide-react";
-
 import {
   LeadsTable,
   type LeadTableRow,
 } from "./leads-table";
-
-import {
-  buttonVariants,
-} from "@/components/ui/button";
 
 import {
   leadsCopy,
@@ -116,6 +106,22 @@ export default async function LeadsPage() {
             false,
         }
       );
+
+  const {
+    data: campaignOptionsRows,
+    error: campaignOptionsError,
+  } = await supabase
+    .from("campaigns")
+    .select("id, name, status")
+    .neq("status", "ARCHIVED")
+    .order("name", { ascending: true });
+
+  if (campaignOptionsError) {
+    console.error(
+      "Could not load campaign options for lead creation:",
+      campaignOptionsError
+    );
+  }
 
   const {
     data: groupOrderRows,
@@ -241,55 +247,20 @@ export default async function LeadsPage() {
     );
 
   /* =======================================================
-     UI
+     UI — presentation lives in LeadsTable so live HOT data
+     can participate in the header without duplicating logic.
   ======================================================= */
 
   return (
-    <div className="mx-auto w-full max-w-[1700px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      <header className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">
-            {
-              text.page.eyebrow
-            }
-          </p>
-
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {
-              text.page.title
-            }
-          </h1>
-
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            {
-              text.page.description
-            }
-          </p>
-        </div>
-
-        <Link
-          href="/leads/new"
-          className={buttonVariants({
-            className:
-              "w-full gap-2 sm:w-fit",
-          })}
-        >
-          <Plus className="size-4" />
-
-          {
-            text.page.addLead
-          }
-        </Link>
-      </header>
-
-      <LeadsTable
-        leads={
-          leadRows
-        }
-        groupOrder={
-          groupOrder
-        }
-      />
-    </div>
+    <LeadsTable
+      leads={leadRows}
+      groupOrder={groupOrder}
+      campaignOptions={(campaignOptionsRows ?? []).map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        status: campaign.status,
+      }))}
+    />
   );
+
 }

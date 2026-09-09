@@ -1,180 +1,55 @@
-import {
-  NextResponse,
-} from "next/server";
+import { NextResponse } from "next/server";
 
 import {
-  buildProposalPdf,
+  buildProposalPdfFromPublicProposal,
   proposalPdfFilename,
 } from "@/lib/proposal-pdf";
-
-import {
-  createAdminClient,
-} from "@/lib/supabase/admin";
-
-import {
-  normalizeProposalSections,
-} from "@/lib/proposal-sections";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = {
-  params: Promise<{
-    token: string;
-  }>;
+  params: Promise<{ token: string }>;
 };
 
-function scopeItems(
-  value: unknown
-) {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is string =>
-          typeof item === "string" &&
-          item.trim().length > 0
-      )
-    : [];
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(
-  _request: Request,
-  context: RouteContext
-) {
-  const { token } =
-    await context.params;
+export async function GET(request: Request, context: RouteContext) {
+  const { token } = await context.params;
+  const admin = createAdminClient();
 
-  const admin =
-    createAdminClient();
+  const { data: proposal, error } = await admin
+    .from("proposals")
+    .select("public_token, status, client_name, language")
+    .eq("public_token", token)
+    .maybeSingle();
 
-  const {
-    data: proposal,
-    error,
-  } =
-    await admin
-      .from("proposals")
-      .select(`
-        public_token,
-        status,
-        title,
-        client_name,
-        contact_name,
-        website_url,
-        intro_text,
-        scope,
-        timeline_text,
-        price,
-        currency,
-        valid_until,
-        notes,
-        custom_sections,
-        accent_color,
-        logo_url,
-        first_time_client,
-        created_at,
-        accepted_at,
-        accepted_by_name,
-        acceptance_statement
-      `)
-      .eq("public_token", token)
-      .maybeSingle();
-
-  if (
-    error ||
-    !proposal ||
-    proposal.status !==
-      "ACCEPTED"
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Accepted proposal not found.",
-      },
-      {
-        status: 404,
-      }
-    );
+  if (error || !proposal) {
+    return NextResponse.json({ error: "Proposal not found." }, { status: 404 });
   }
 
   try {
-    const pdf =
-      await buildProposalPdf({
-        title:
-          proposal.title,
-        clientName:
+    const pdf = await buildProposalPdfFromPublicProposal({
+      origin: new URL(request.url).origin,
+      token,
+      language: proposal.language === "en" ? "en" : "de",
+    });
+
+    return new NextResponse(new Uint8Array(pdf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${proposalPdfFilename(
           proposal.client_name,
-        contactName:
-          proposal.contact_name,
-        websiteUrl:
-          proposal.website_url,
-        introText:
-          proposal.intro_text,
-        scope:
-          scopeItems(
-            proposal.scope
-          ),
-        timelineText:
-          proposal.timeline_text,
-        price:
-          Number(
-            proposal.price ?? 0
-          ),
-        currency:
-          proposal.currency ??
-          "EUR",
-        validUntil:
-          proposal.valid_until,
-        notes:
-          proposal.notes,
-        customSections:
-          normalizeProposalSections(
-            proposal.custom_sections
-          ),
-        accentColor:
-          proposal.accent_color,
-        logoUrl:
-          proposal.logo_url,
-        firstTimeClient:
-          proposal.first_time_client !==
-          false,
-        issuedAt:
-          proposal.created_at,
-        acceptedAt:
-          proposal.accepted_at,
-        acceptedByName:
-          proposal.accepted_by_name,
-        acceptanceStatement:
-          proposal.acceptance_statement,
-        publicToken:
-          proposal.public_token,
-      });
-
-    return new NextResponse(
-      new Uint8Array(pdf),
-      {
-        status: 200,
-        headers: {
-          "Content-Type":
-            "application/pdf",
-          "Content-Disposition":
-            `attachment; filename="${proposalPdfFilename(
-              proposal.client_name
-            )}"`,
-          "Cache-Control":
-            "private, no-store",
-        },
-      }
-    );
-  } catch (pdfError) {
-    console.error(
-      "Could not generate proposal PDF:",
-      pdfError
-    );
-
-    return NextResponse.json(
-      {
-        error:
-          "Could not generate PDF.",
+          proposal.language === "en" ? "en" : "de",
+        )}"`,
+        "Cache-Control": "private, no-store, max-age=0",
       },
-      {
-        status: 500,
-      }
+    });
+  } catch (pdfError) {
+    console.error("Could not generate proposal PDF from selected template:", pdfError);
+    return NextResponse.json(
+      { error: "Could not generate PDF." },
+      { status: 500 },
     );
   }
 }

@@ -65,11 +65,13 @@ export function ProposalAiAutofillButton({
   isGerman,
   disabled,
   available,
+  compact = false,
 }: {
   leadId: string;
   isGerman: boolean;
   disabled: boolean;
   available: boolean;
+  compact?: boolean;
 }) {
   const [loading, setLoading] =
     useState(false);
@@ -167,6 +169,8 @@ export function ProposalAiAutofillButton({
             detail: {
               customSections:
                 data.customSections ?? [],
+              scope:
+                data.scope ?? [],
             },
           }
         )
@@ -195,6 +199,38 @@ export function ProposalAiAutofillButton({
     } finally {
       setLoading(false);
     }
+  }
+
+  if (compact) {
+    return (
+      <div className="min-w-0">
+        <button
+          type="button"
+          disabled={disabled || !available || loading}
+          onClick={generate}
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#002BBA] transition-colors hover:text-[#001E85] disabled:cursor-not-allowed disabled:text-[#9AA0A8]"
+        >
+          <Sparkles className={`size-3 ${loading ? "animate-pulse" : ""}`} />
+          {loading
+            ? isGerman
+              ? "Liest Verlauf…"
+              : "Reading thread…"
+            : available
+              ? isGerman
+                ? "Aus Verlauf vorschlagen"
+                : "Suggest from thread"
+              : isGerman
+                ? "Kein sinnvoller Verlauf"
+                : "No useful thread"}
+        </button>
+
+        {message ? (
+          <p className="mt-1 text-[10px] text-[#6B7078]">
+            {message}
+          </p>
+        ) : null}
+      </div>
+    );
   }
 
   return (

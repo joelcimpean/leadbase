@@ -10,6 +10,7 @@ import {
 
 import {
   sendGmailMessage,
+  sendGmailThreadFollowUp,
 } from "@/lib/gmail-send";
 
 import {
@@ -346,6 +347,129 @@ export async function countDueFollowUpsForUser(
       );
     }
   ).length;
+}
+
+/* =========================================================
+   LIST ALL ACTIVE SCHEDULED FOLLOW-UPS
+
+   Read-only settings view. Unlike the early-send list, this
+   also includes protected OOO / customer-requested dates so
+   the user can see every active schedule in one place.
+========================================================= */
+
+export async function listAllScheduledFollowUpsForUser(
+  userId:
+    string,
+  limit =
+    200
+): Promise<
+  ScheduledFollowUpCandidate[]
+> {
+  const supabase =
+    createAdminClient();
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        "leads"
+      )
+      .select(`
+        id,
+        status,
+        next_follow_up_at,
+        smart_follow_up_mode,
+        manual_follow_up_stopped_at,
+
+        company:companies (
+          name
+        )
+      `)
+      .eq(
+        "user_id",
+        userId
+      )
+      .not(
+        "next_follow_up_at",
+        "is",
+        null
+      )
+      .is(
+        "manual_follow_up_stopped_at",
+        null
+      )
+      .order(
+        "next_follow_up_at",
+        {
+          ascending:
+            true,
+        }
+      )
+      .limit(
+        Math.max(
+          1,
+          Math.min(
+            limit,
+            500
+          )
+        )
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not load all scheduled follow-ups:",
+      error
+    );
+
+    return [];
+  }
+
+  return (
+    data ??
+    []
+  ).flatMap(
+    (
+      lead
+    ) => {
+      if (
+        CLOSED_STATUSES.has(
+          lead.status
+        ) ||
+        !lead.next_follow_up_at
+      ) {
+        return [];
+      }
+
+      const company =
+        getSingleRelation<{
+          name:
+            string;
+        }>(
+          lead.company
+        );
+
+      return [
+        {
+          leadId:
+            lead.id,
+
+          companyName:
+            company?.name ??
+            "Unknown company",
+
+          nextFollowUpAt:
+            lead.next_follow_up_at,
+
+          smartFollowUpMode:
+            lead.smart_follow_up_mode,
+        },
+      ];
+    }
+  );
 }
 
 /* =========================================================
@@ -1436,6 +1560,8 @@ export async function sendDueFollowUpsForUser({
             follow_up_body,
             follow_up_sent_at,
             follow_up_sending_started_at,
+            gmail_message_id,
+            gmail_thread_id,
             created_at
           `)
           .eq(
@@ -1711,22 +1837,43 @@ export async function sendDueFollowUpsForUser({
 
       try {
         gmailResult =
-          await sendGmailMessage({
-            fromEmail:
-              gmailConnection.email_address,
+          draft.gmail_message_id &&
+          draft.gmail_thread_id
+            ? await sendGmailThreadFollowUp({
+                fromEmail:
+                  gmailConnection.email_address,
 
-            toEmail:
-              recipientEmail,
+                toEmail:
+                  recipientEmail,
 
-            subject:
-              draft.subject,
+                body:
+                  draft.follow_up_body,
 
-            body:
-              draft.follow_up_body,
+                encryptedRefreshToken:
+                  gmailConnection.encrypted_refresh_token,
 
-            encryptedRefreshToken:
-              gmailConnection.encrypted_refresh_token,
-          });
+                replyToGmailMessageId:
+                  draft.gmail_message_id,
+
+                gmailThreadId:
+                  draft.gmail_thread_id,
+              })
+            : await sendGmailMessage({
+                fromEmail:
+                  gmailConnection.email_address,
+
+                toEmail:
+                  recipientEmail,
+
+                subject:
+                  draft.subject,
+
+                body:
+                  draft.follow_up_body,
+
+                encryptedRefreshToken:
+                  gmailConnection.encrypted_refresh_token,
+              });
       } catch (
         error
       ) {

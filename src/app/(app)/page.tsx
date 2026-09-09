@@ -33,6 +33,11 @@ import {
 } from "@/components/ui/badge";
 
 import {
+  StatusBadge,
+  type StatusBadgeTone,
+} from "@/components/ui/status-badge";
+
+import {
   Card,
   CardContent,
 } from "@/components/ui/card";
@@ -40,6 +45,17 @@ import {
 import {
   DashboardMotion,
 } from "@/components/dashboard-motion";
+
+import {
+  DashboardDailyStreak,
+} from "@/components/dashboard-daily-streak";
+
+import {
+  DashboardFocusWorkspace,
+  DashboardSummaryStrip,
+  type DashboardCommandGroups,
+  type DashboardSummaryCard,
+} from "@/components/dashboard-command-center";
 
 import {
   getAppLanguage,
@@ -115,6 +131,10 @@ type ContactRelation = {
     string
     | null;
 
+  phone:
+    string
+    | null;
+
   email_quality_status:
     string
     | null;
@@ -131,6 +151,14 @@ type ContactRelation = {
 type CompanyRelation = {
   name:
     string;
+
+  industry:
+    string
+    | null;
+
+  phone:
+    string
+    | null;
 };
 
 /* =========================================================
@@ -261,29 +289,37 @@ function formatToday(
   language:
     AppLanguage
 ) {
-  return new Intl.DateTimeFormat(
-    getLocale(
-      language
-    ),
-    {
-      timeZone:
-        "Europe/Berlin",
+  const value =
+    new Intl.DateTimeFormat(
+      getLocale(
+        language
+      ),
+      {
+        timeZone:
+          "Europe/Berlin",
 
-      weekday:
-        "long",
+        weekday:
+          "short",
 
-      day:
-        "2-digit",
+        day:
+          "2-digit",
 
-      month:
-        "long",
+        month:
+          "short",
 
-      year:
-        "numeric",
-    }
-  ).format(
-    new Date()
-  );
+        year:
+          "numeric",
+      }
+    ).format(
+      new Date()
+    );
+
+  return value
+    .replace(
+      /\./g,
+      ""
+    )
+    .toUpperCase();
 }
 
 function timestamp(
@@ -735,6 +771,159 @@ function parseDashboardFocus(
   }
 }
 
+
+function getProjectStatusTone(
+  status:
+    string
+): StatusBadgeTone {
+  switch (
+    status
+  ) {
+    case "IN_PROGRESS":
+      return "blue";
+
+    case "COMPLETED":
+      return "neutral";
+
+    case "PAUSED":
+      return "warning";
+
+    case "CANCELLED":
+      return "danger";
+
+    default:
+      return "neutral";
+  }
+}
+
+function formatCompactDuration(
+  seconds:
+    number
+) {
+  const safe =
+    Math.max(
+      0,
+      Math.round(
+        seconds
+      )
+    );
+
+  if (
+    safe <
+    60
+  ) {
+    return `${safe}s`;
+  }
+
+  const minutes =
+    Math.floor(
+      safe /
+      60
+    );
+
+  const rest =
+    safe %
+    60;
+
+  return rest
+    ? `${minutes}m ${rest}s`
+    : `${minutes}m`;
+}
+
+function getCommandChannel({
+  href,
+  language,
+}: {
+  href:
+    string;
+
+  language:
+    AppLanguage;
+}) {
+  const de =
+    language ===
+    "de";
+
+  if (
+    href.startsWith(
+      "/inbox"
+    )
+  ) {
+    return "Inbox";
+  }
+
+  if (
+    href.startsWith(
+      "/projects"
+    )
+  ) {
+    return de
+      ? "Projekt"
+      : "Project";
+  }
+
+  if (
+    href.includes(
+      "#outreach"
+    )
+  ) {
+    return "E-Mail";
+  }
+
+  return de
+    ? "Lead"
+    : "Lead";
+}
+
+function getCommandActionLabel({
+  href,
+  language,
+}: {
+  href:
+    string;
+
+  language:
+    AppLanguage;
+}) {
+  const de =
+    language ===
+    "de";
+
+  if (
+    href.startsWith(
+      "/inbox"
+    )
+  ) {
+    return de
+      ? "Antwort öffnen"
+      : "Open reply";
+  }
+
+  if (
+    href.startsWith(
+      "/projects"
+    )
+  ) {
+    return de
+      ? "Projekt öffnen"
+      : "Open project";
+  }
+
+  if (
+    href.includes(
+      "#outreach"
+    )
+  ) {
+    return de
+      ? "Entwurf öffnen"
+      : "Open draft";
+  }
+
+  return de
+    ? "Öffnen"
+    : "Open";
+}
+
 /* =========================================================
    PAGE
 ========================================================= */
@@ -805,6 +994,7 @@ export default async function DashboardPage({
           1000
     ).toISOString();
 
+
   const [
     leadsResult,
     draftsResult,
@@ -835,12 +1025,15 @@ export default async function DashboardPage({
           created_at,
 
           company:companies (
-            name
+            name,
+            industry,
+            phone
           ),
 
           primary_contact:contacts (
             full_name,
             email,
+            phone,
             email_quality_status,
             email_quality_detail,
             email_candidate
@@ -1060,6 +1253,7 @@ export default async function DashboardPage({
   const messages =
     messagesResult.data ??
     [];
+
 
   const visits =
     visitsResult.data ??
@@ -2020,16 +2214,15 @@ export default async function DashboardPage({
     });
   }
 
-  const commandItems =
-    (
-      activeFocus
-        ? commandsByFocus.get(
-            activeFocus
-          ) ?? []
-        : Array.from(
-            commandByKey.values()
-          )
-    )
+  function sortedCommands(
+    items:
+      CommandItem[],
+    limit:
+      number
+  ) {
+    return [
+      ...items,
+    ]
       .sort(
         (
           a,
@@ -2042,10 +2235,68 @@ export default async function DashboardPage({
       )
       .slice(
         0,
-        activeFocus
-          ? 30
-          : 10
+        limit
       );
+  }
+
+  const dashboardCommandGroups:
+    DashboardCommandGroups = {
+      all:
+        sortedCommands(
+          Array.from(
+            commandByKey.values()
+          ),
+          10
+        ),
+
+      replies:
+        sortedCommands(
+          commandsByFocus.get(
+            "replies"
+          ) ?? [],
+          30
+        ),
+
+      hot:
+        sortedCommands(
+          commandsByFocus.get(
+            "hot"
+          ) ?? [],
+          30
+        ),
+
+      followups:
+        sortedCommands(
+          commandsByFocus.get(
+            "followups"
+          ) ?? [],
+          30
+        ),
+
+      "email-issues":
+        sortedCommands(
+          commandsByFocus.get(
+            "email-issues"
+          ) ?? [],
+          30
+        ),
+
+      drafts:
+        sortedCommands(
+          commandsByFocus.get(
+            "drafts"
+          ) ?? [],
+          30
+        ),
+
+      ooo:
+        sortedCommands(
+          commandsByFocus.get(
+            "ooo"
+          ) ?? [],
+          30
+        ),
+    };
 
   /* =======================================================
      PIPELINE
@@ -2169,17 +2420,59 @@ export default async function DashboardPage({
         (
           a,
           b
-        ) =>
-          timestamp(
-            b.completed_at ??
-            b.started_at ??
-            b.created_at
-          ) -
-          timestamp(
-            a.completed_at ??
-            a.started_at ??
-            a.created_at
-          )
+        ) => {
+          const activeRank =
+            (
+              project:
+                typeof a
+            ) =>
+              project.status ===
+                "IN_PROGRESS"
+                ? 0
+                : project.status ===
+                    "PLANNED"
+                  ? 1
+                  : 2;
+
+          const rankDifference =
+            activeRank(
+              a
+            ) -
+            activeRank(
+              b
+            );
+
+          if (
+            rankDifference !==
+            0
+          ) {
+            return rankDifference;
+          }
+
+          const valueDifference =
+            Number(
+              b.total_value ??
+                0
+            ) -
+            Number(
+              a.total_value ??
+                0
+            );
+
+          if (
+            valueDifference !==
+            0
+          ) {
+            return valueDifference;
+          }
+
+          return a.project_name.localeCompare(
+            b.project_name,
+            de
+              ? "de"
+              : "en"
+          );
+        }
       )
       .slice(
         0,
@@ -2375,156 +2668,334 @@ export default async function DashboardPage({
             "Analytics",
         };
 
-  const summaryCards = [
-    {
-      label:
-        copy.unreadReplies,
 
-      value:
-        unreadHumanReplyByLead.size,
 
-      icon:
-        MessageSquareReply,
+  /* =======================================================
+     CONCEPT → REAL DATA MAPPING
+  ======================================================= */
 
-      focus:
-        "replies" as const,
+  const featuredHotLead =
+    hotLeads[0] ??
+    null;
 
-      href:
-        "/?focus=replies#dashboard-focus",
+  const featuredHotCompany =
+    featuredHotLead
+      ? getSingleRelation<
+          CompanyRelation
+        >(
+          featuredHotLead.company
+        )
+      : null;
 
-      accent:
+  const featuredHotContact =
+    featuredHotLead
+      ? getSingleRelation<
+          ContactRelation
+        >(
+          featuredHotLead.primary_contact
+        )
+      : null;
+
+  const featuredHotPreview =
+    featuredHotLead
+      ? previewByLead.get(
+          featuredHotLead.id
+        ) ??
+        null
+      : null;
+
+  const featuredHotDraft =
+    featuredHotLead
+      ? latestDraftByLead.get(
+          featuredHotLead.id
+        ) ??
+        null
+      : null;
+
+  const featuredHotReply =
+    featuredHotLead
+      ? unreadHumanReplyByLead.get(
+          featuredHotLead.id
+        ) ??
+        null
+      : null;
+
+
+  const allCommandCount =
+    commandByKey.size;
+
+  const timeCriticalCount =
+    Array.from(
+      commandByKey.values()
+    ).filter(
+      (
+        item
+      ) =>
+        item.priority >=
+        95
+    ).length;
+
+
+  const maximumPipelineCount =
+    Math.max(
+      1,
+      ...pipelineStatuses.map(
+        (
+          status
+        ) =>
+          statusCounts.get(
+            status
+          ) ??
+          0
+      )
+    );
+
+  const contactedForRate =
+    (
+      statusCounts.get(
+        "CONTACTED"
+      ) ??
+      0
+    ) +
+    (
+      statusCounts.get(
+        "REPLIED"
+      ) ??
+      0
+    );
+
+  const responseRate =
+    contactedForRate >
+    0
+      ? (
+          (
+            statusCounts.get(
+              "REPLIED"
+            ) ??
+            0
+          ) /
+          contactedForRate *
+          100
+        )
+      : 0;
+
+  const paidProgress =
+    bookedValue >
+    0
+      ? Math.min(
+          100,
+          Math.round(
+            paidRevenue /
+              bookedValue *
+              100
+          )
+        )
+      : 0;
+
+  const summaryMeta =
+    new Map<
+      DashboardFocus,
+      string
+    >([
+      [
+        "replies",
         unreadHumanReplyByLead.size >
         0
-          ? "text-emerald-600 dark:text-emerald-400"
-          : "text-muted-foreground",
-    },
-
-    {
-      label:
-        copy.hotLeads,
-
-      value:
-        hotLeads.length,
-
-      icon:
-        Flame,
-
-      focus:
-        "hot" as const,
-
-      href:
-        "/?focus=hot#dashboard-focus",
-
-      accent:
-        hotLeads.length >
-        0
-          ? "text-orange-600 dark:text-orange-400"
-          : "text-muted-foreground",
-    },
-
-    {
-      label:
-        copy.followUps,
-
-      value:
-        followUpsDue.length,
-
-      icon:
-        CalendarClock,
-
-      focus:
-        "followups" as const,
-
-      href:
-        "/?focus=followups#dashboard-focus",
-
-      accent:
-        followUpsDue.length >
-        0
-          ? "text-amber-600 dark:text-amber-400"
-          : "text-muted-foreground",
-    },
-
-    {
-      label:
-        copy.emailIssues,
-
-      value:
-        emailIssueLeads.length,
-
-      icon:
-        ShieldAlert,
-
-      focus:
-        "email-issues" as const,
-
-      href:
-        "/?focus=email-issues#dashboard-focus",
-
-      accent:
+          ? de
+            ? `${unreadHumanReplyByLead.size} ungelesen`
+            : `${unreadHumanReplyByLead.size} unread`
+          : de
+            ? "Inbox leer"
+            : "Inbox clear",
+      ],
+      [
+        "hot",
+        featuredHotLead
+          ? `Score ${Number(
+              featuredHotLead.hot_lead_score ??
+                0
+            )}`
+          : de
+            ? "keine HOT Leads"
+            : "no HOT leads",
+      ],
+      [
+        "followups",
+        followUpsDue[0]
+          ? de
+            ? `nächster ${formatDateTime(
+                followUpsDue[0]
+                  .nextFollowUpAt,
+                language
+              )}`
+            : `next ${formatDateTime(
+                followUpsDue[0]
+                  .nextFollowUpAt,
+                language
+              )}`
+          : de
+            ? "nichts fällig"
+            : "nothing due",
+      ],
+      [
+        "email-issues",
         emailIssueLeads.length >
         0
-          ? "text-red-600 dark:text-red-400"
-          : "text-muted-foreground",
-    },
-
-    {
-      label:
-        copy.drafts,
-
-      value:
-        readyDraftLeads.length,
-
-      icon:
-        Mail,
-
-      focus:
-        "drafts" as const,
-
-      href:
-        "/?focus=drafts#dashboard-focus",
-
-      accent:
+          ? de
+            ? "vor Versand prüfen"
+            : "check before send"
+          : de
+            ? "alles sauber"
+            : "all clear",
+      ],
+      [
+        "drafts",
         readyDraftLeads.length >
         0
-          ? "text-blue-600 dark:text-blue-400"
-          : "text-muted-foreground",
-    },
-
-    {
-      label:
-        copy.ooo,
-
-      value:
-        oooReturningToday.length,
-
-      icon:
-        BellRing,
-
-      focus:
-        "ooo" as const,
-
-      href:
-        "/?focus=ooo#dashboard-focus",
-
-      accent:
+          ? de
+            ? "zum Freigeben"
+            : "ready to review"
+          : de
+            ? "keine offenen"
+            : "none pending",
+      ],
+      [
+        "ooo",
         oooReturningToday.length >
         0
-          ? "text-violet-600 dark:text-violet-400"
-          : "text-muted-foreground",
+          ? de
+            ? "heute wieder da"
+            : "back today"
+          : de
+            ? "keine Rückkehr"
+            : "none returning",
+      ],
+    ]);
+
+  const summaryCards:
+    DashboardSummaryCard[] = [
+      {
+        label:
+          copy.unreadReplies,
+        value:
+          unreadHumanReplyByLead.size,
+        meta:
+          summaryMeta.get(
+            "replies"
+          ) ?? "",
+        focus:
+          "replies",
+      },
+      {
+        label:
+          copy.hotLeads,
+        value:
+          hotLeads.length,
+        meta:
+          summaryMeta.get(
+            "hot"
+          ) ?? "",
+        focus:
+          "hot",
+      },
+      {
+        label:
+          copy.followUps,
+        value:
+          followUpsDue.length,
+        meta:
+          summaryMeta.get(
+            "followups"
+          ) ?? "",
+        focus:
+          "followups",
+      },
+      {
+        label:
+          copy.drafts,
+        value:
+          readyDraftLeads.length,
+        meta:
+          summaryMeta.get(
+            "drafts"
+          ) ?? "",
+        focus:
+          "drafts",
+      },
+      {
+        label:
+          copy.emailIssues,
+        value:
+          emailIssueLeads.length,
+        meta:
+          summaryMeta.get(
+            "email-issues"
+          ) ?? "",
+        focus:
+          "email-issues",
+      },
+      {
+        label:
+          copy.ooo,
+        value:
+          oooReturningToday.length,
+        meta:
+          summaryMeta.get(
+            "ooo"
+          ) ?? "",
+        focus:
+          "ooo",
+      },
+    ];
+
+  const focusTabs: {
+    label:
+      string;
+    focus:
+      DashboardFocus
+      | null;
+    count:
+      number;
+  }[] = [
+    {
+      label:
+        de
+          ? "Alle"
+          : "All",
+      focus:
+        null,
+      count:
+        allCommandCount,
+    },
+    {
+      label:
+        de
+          ? "Follow-ups"
+          : "Follow-ups",
+      focus:
+        "followups",
+      count:
+        followUpsDue.length,
+    },
+    {
+      label:
+        de
+          ? "Entwürfe"
+          : "Drafts",
+      focus:
+        "drafts",
+      count:
+        readyDraftLeads.length,
+    },
+    {
+      label:
+        "HOT",
+      focus:
+        "hot",
+      count:
+        hotLeads.length,
     },
   ];
-
-  const activeFocusLabel =
-    activeFocus
-      ? summaryCards.find(
-          (
-            card
-          ) =>
-            card.focus ===
-            activeFocus
-        )?.label ?? null
-      : null;
 
   /* =======================================================
      RENDER
@@ -2532,718 +3003,700 @@ export default async function DashboardPage({
 
   return (
     <DashboardMotion>
-      <div className="leadbase-page-surface relative min-h-full overflow-hidden">
-        <div className="leadbase-dashboard-grid absolute inset-0" aria-hidden="true" />
+      <div className="min-h-full bg-[#F6F7F9] text-[#0B0C0E] dark:bg-[#090A0C] dark:text-[#F7F7F8] xl:h-full xl:overflow-hidden">
+        <div className="flex w-full flex-col px-4 py-4 sm:px-5 lg:px-[22px] lg:py-[18px] xl:h-full">
+          {/* =================================================
+              HEADER
+          ================================================= */}
 
-        <div className="relative mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      {/* ===================================================
-          HEADER
-      =================================================== */}
-
-      <header data-leadbase-reveal className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/10 bg-primary/[0.045] px-2.5 py-1 text-xs font-medium text-primary">
-            <span className="leadbase-live-dot size-1.5 rounded-full bg-primary" />
-
-            {copy.eyebrow}
-          </div>
-
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-            {
-              copy.title
-            }
-          </h1>
-
-          <p className="mt-2.5 max-w-2xl text-sm leading-6 text-muted-foreground">
-            {
-              copy.description
-            }
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className="h-9 rounded-xl border-border/70 bg-background/80 px-3 font-normal shadow-sm backdrop-blur"
+          <header
+            data-leadbase-reveal
+            className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between"
           >
-            {
-              formatToday(
-                language
-              )
-            }
-          </Badge>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-primary">
+                <span className="size-1.5 rounded-full bg-primary" />
+                {copy.eyebrow}
+              </div>
 
-          <Link
-            href="/analytics"
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-background/80 px-3 text-xs font-medium shadow-sm backdrop-blur transition-all hover:-translate-y-px hover:border-primary/20 hover:bg-accent/70 hover:text-primary"
-          >
-            <BarChart3 className="size-3.5" />
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <h1 className="text-[34px] font-semibold leading-none tracking-[-0.045em] sm:text-[38px]">
+                  {copy.title}
+                </h1>
 
-            {
-              copy.analytics
-            }
-          </Link>
-
-          <Link
-            href="/inbox"
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-background/80 px-3 text-xs font-medium shadow-sm backdrop-blur transition-all hover:-translate-y-px hover:border-primary/20 hover:bg-accent/70 hover:text-primary"
-          >
-            <Inbox className="size-3.5" />
-
-            {
-              copy.viewInbox
-            }
-          </Link>
-        </div>
-      </header>
-
-      {/* ===================================================
-          TODAY SUMMARY
-      =================================================== */}
-
-      <section data-leadbase-reveal data-anime-stagger className="mt-6 grid grid-cols-2 gap-3 md:mt-8 md:grid-cols-3 xl:grid-cols-6">
-        {summaryCards.map(
-          (
-            card
-          ) => {
-            const Icon =
-              card.icon;
-
-            return (
-              <Link
-                key={
-                  card.label
-                }
-                href={
-                  card.href
-                }
-                className="group min-w-0"
-                data-motion-lift="true"
-                data-motion-press="true"
-              >
-                <Card
-                  className={`leadbase-kpi-card h-full min-w-0 py-0 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/20 group-hover:shadow-[0_14px_36px_color-mix(in_srgb,var(--primary)_8%,transparent)] ${
-                    activeFocus ===
-                    card.focus
-                      ? "border-primary/35 ring-1 ring-primary/10"
-                      : "border-border/70"
-                  }`}
-                >
-                  <CardContent className="p-4 sm:p-5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs text-muted-foreground">
-                        {
-                          card.label
-                        }
-                      </p>
-
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-primary/10 bg-primary/[0.055]">
-                        <Icon
-                          className={`size-4 shrink-0 ${card.accent}`}
-                        />
-                      </span>
-                    </div>
-
-                    <p data-motion-count className="mt-5 text-2xl font-semibold tracking-[-0.03em]">
-                      {
-                        card.value
-                      }
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          }
-        )}
-      </section>
-
-      {/* ===================================================
-          FOCUS + HOT LEADS
-      =================================================== */}
-
-      <section id="dashboard-focus" data-leadbase-reveal className="mt-4 scroll-mt-6 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-        <Card className="leadbase-panel min-w-0 border-border/70">
-          <CardContent className="p-0">
-            <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-primary" />
-
-                  <h2 className="text-sm font-semibold">
-                    {
-                      activeFocusLabel ??
-                      copy.focus
-                    }
-                  </h2>
-                </div>
-
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {
-                    activeFocusLabel
-                      ? de
-                        ? `Nur ${activeFocusLabel.toLowerCase()} werden hier angezeigt.`
-                        : `Only ${activeFocusLabel.toLowerCase()} are shown here.`
-                      : copy.focusDescription
-                  }
+                <p className="text-sm text-[#6B7078] dark:text-muted-foreground">
+                  {allCommandCount}{" "}
+                  {de
+                    ? "Aktionen priorisiert"
+                    : "prioritized actions"}
+                  {" · "}
+                  {timeCriticalCount}{" "}
+                  {de
+                    ? "zeitkritisch"
+                    : "time-sensitive"}
                 </p>
               </div>
 
-              <Link
-                href={
-                  activeFocus
-                    ? "/#dashboard-focus"
-                    : "/leads"
-                }
-                className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
-              >
-                {
-                  activeFocus
-                    ? de
-                      ? "Filter zurücksetzen"
-                      : "Clear filter"
-                    : copy.viewAllLeads
-                }
-              </Link>
-            </div>
-
-            {commandItems.length ===
-            0 ? (
-              <div className="flex min-h-64 items-center justify-center p-6 text-center">
-                <div className="max-w-sm">
-                  <div className="mx-auto flex size-10 items-center justify-center rounded-xl border">
-                    <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-
-                  <p className="mt-4 text-sm font-medium">
-                    {
-                      copy.nothingUrgent
-                    }
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {
-                      copy.nothingUrgentDescription
-                    }
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div data-motion-list-stagger className="divide-y">
-                {commandItems.map(
-                  (
-                    item
-                  ) => (
-                    <Link
-                      key={
-                        item.key
-                      }
-                      href={
-                        item.href
-                      }
-                      className="group flex items-start gap-3 px-4 py-4 transition-colors hover:bg-muted/30 sm:items-center sm:px-5"
-                    >
-                      <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background sm:mt-0">
-                        <CircleDot className="size-3.5 text-muted-foreground" />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="min-w-0 truncate text-sm font-semibold">
-                            {
-                              item.title
-                            }
-                          </p>
-
-                          <Badge
-                            variant="outline"
-                            className={`shrink-0 rounded-full text-[10px] ${item.badgeClass}`}
-                          >
-                            {
-                              item.badge
-                            }
-                          </Badge>
-                        </div>
-
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground sm:truncate">
-                          {
-                            item.description
-                          }
-                        </p>
-                      </div>
-
-                      <ArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 sm:mt-0" />
-                    </Link>
-                  )
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="leadbase-panel min-w-0 border-border/70">
-          <CardContent className="p-0">
-            <div className="border-b px-4 py-4 sm:px-5">
-              <div className="flex items-center gap-2">
-                <Flame className="size-4 text-orange-600 dark:text-orange-400" />
-
-                <h2 className="text-sm font-semibold">
-                  {
-                    copy.hotNow
-                  }
-                </h2>
-              </div>
-
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {
-                  copy.hotNowDescription
-                }
+              <p className="mt-1.5 max-w-2xl text-[11.5px] leading-4.5 text-[#6B7078] dark:text-muted-foreground">
+                {copy.description}
               </p>
             </div>
 
-            {hotLeads.length ===
-            0 ? (
-              <div className="flex min-h-64 items-center justify-center px-5 py-8 text-center">
-                <div>
-                  <Flame className="mx-auto size-5 text-muted-foreground" />
-
-                  <p className="mt-3 text-sm font-medium">
-                    {
-                      copy.noHot
-                    }
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {hotLeads
-                  .slice(
-                    0,
-                    5
-                  )
-                  .map(
-                    (
-                      lead
-                    ) => {
-                      const score =
-                        Number(
-                          lead.hot_lead_score ??
-                            0
-                        );
-
-                      const preview =
-                        previewByLead.get(
-                          lead.id
-                        );
-
-                      return (
-                        <Link
-                          key={
-                            lead.id
-                          }
-                          href={`/leads/${lead.id}`}
-                          className="group block px-4 py-4 transition-colors hover:bg-muted/30 sm:px-5"
-                        >
-                          <div className="flex min-w-0 items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold">
-                                {companyNameByLeadId.get(
-                                  lead.id
-                                )}
-                              </p>
-
-                              <p className="mt-1 truncate text-xs text-muted-foreground">
-                                {preview?.sessions.size
-                                  ? de
-                                    ? `${preview.sessions.size} externe Preview-Session${preview.sessions.size === 1 ? "" : "s"}`
-                                    : `${preview.sessions.size} external preview session${preview.sessions.size === 1 ? "" : "s"}`
-                                  : statusLabel(
-                                      lead.status,
-                                      language
-                                    )}
-                              </p>
-                            </div>
-
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 rounded-full border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-300"
-                            >
-                              🔥{" "}
-                              {
-                                score
-                              }{" "}
-                              HOT
-                            </Badge>
-                          </div>
-                        </Link>
-                      );
-                    }
-                  )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* ===================================================
-          BUSINESS OVERVIEW
-      =================================================== */}
-
-      <section data-leadbase-reveal className="mt-4">
-        <div>
-          <h2 className="text-sm font-semibold">
-            {
-              copy.overview
-            }
-          </h2>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-5">
-          <MetricCard
-            label={
-              copy.pipelineValue
-            }
-            value={
-              formatCurrency(
-                pipelineValue,
-                language
-              )
-            }
-            icon={
-              Users
-            }
-          />
-
-          <MetricCard
-            label={
-              copy.booked
-            }
-            value={
-              formatCurrency(
-                bookedValue,
-                language
-              )
-            }
-            icon={
-              BriefcaseBusiness
-            }
-          />
-
-          <MetricCard
-            label={
-              copy.paid
-            }
-            value={
-              formatCurrency(
-                paidRevenue,
-                language
-              )
-            }
-            icon={
-              Banknote
-            }
-          />
-
-          <MetricCard
-            label={
-              copy.outstanding
-            }
-            value={
-              formatCurrency(
-                outstanding,
-                language
-              )
-            }
-            icon={
-              WalletCards
-            }
-          />
-
-          <MetricCard
-            label={
-              copy.sent
-            }
-            value={
-              String(
-                sentEmailsResult.count ??
-                  0
-              )
-            }
-            icon={
-              Mail
-            }
-          />
-        </div>
-      </section>
-
-      {/* ===================================================
-          PIPELINE + PROJECTS
-      =================================================== */}
-
-      <section data-leadbase-reveal className="mt-4 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
-        <Card className="leadbase-panel min-w-0 border-border/70">
-          <CardContent className="p-4 sm:p-5">
-            <h2 className="text-sm font-semibold">
-              {
-                copy.pipeline
-              }
-            </h2>
-
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {
-                copy.pipelineDescription
-              }
-            </p>
-
-            <div className="mt-5 space-y-4">
-              {pipelineStatuses.map(
-                (
-                  status
-                ) => {
-                  const value =
-                    statusCounts.get(
-                      status
-                    ) ??
-                    0;
-
-                  const percentage =
-                    leads.length >
-                    0
-                      ? Math.round(
-                          value /
-                            leads.length *
-                            100
-                        )
-                      : 0;
-
-                  return (
-                    <div
-                      key={
-                        status
-                      }
-                    >
-                      <div className="flex items-center justify-between gap-3 text-xs">
-                        <span className="truncate text-muted-foreground">
-                          {statusLabel(
-                            status,
-                            language
-                          )}
-                        </span>
-
-                        <span className="font-medium">
-                          {
-                            value
-                          }
-                        </span>
-                      </div>
-
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={`h-full rounded-full ${pipelineBarClass(
-                            status
-                          )}`}
-                          style={{
-                            width:
-                              `${percentage}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="leadbase-panel min-w-0 border-border/70">
-          <CardContent className="p-0">
-            <div className="flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-5">
-              <div>
-                <h2 className="text-sm font-semibold">
-                  {
-                    copy.projects
-                  }
-                </h2>
-
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {
-                    copy.projectsDescription
-                  }
-                </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex h-[34px] items-center gap-2 rounded-[10px] border border-border bg-card px-3 font-mono text-[10px] uppercase tracking-[0.04em] text-[#6B7078] shadow-[0_1px_2px_rgba(11,12,14,0.02)]  dark:text-muted-foreground">
+                <CalendarClock className="size-3.5 opacity-60" />
+                {formatToday(
+                  language
+                )}
               </div>
 
               <Link
-                href="/projects"
-                className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                href="/analytics"
+                className="inline-flex h-[34px] items-center gap-2 rounded-[10px] border border-border bg-card px-3 text-[13px] font-medium text-[#40454E] shadow-[0_1px_2px_rgba(11,12,14,0.02)] transition hover:border-black/15 hover:bg-[#FDFDFE]  dark:text-[#D7D9DE] dark:hover:bg-white/[0.06]"
               >
-                {
-                  copy.allProjects
-                }
+                <BarChart3 className="size-3.5 opacity-60" />
+                {copy.analytics}
+              </Link>
+
+              <Link
+                href="/inbox"
+                className="inline-flex h-[34px] items-center gap-2 rounded-[10px] bg-primary px-3.5 text-[13px] font-medium text-primary-foreground shadow-[0_1px_2px_rgba(0,43,186,0.28)] transition hover:bg-[#00229A]"
+              >
+                <Inbox className="size-3.5" />
+                {copy.viewInbox}
               </Link>
             </div>
+          </header>
 
-            {recentProjects.length ===
-            0 ? (
-              <div className="flex min-h-64 items-center justify-center p-6 text-center">
-                <div>
-                  <BriefcaseBusiness className="mx-auto size-5 text-muted-foreground" />
+          {/* =================================================
+              SUMMARY STRIP
+          ================================================= */}
 
-                  <p className="mt-3 text-sm font-medium">
+          <DashboardSummaryStrip
+            cards={
+              summaryCards
+            }
+            initialFocus={
+              activeFocus
+            }
+          />
+
+          {/* =================================================
+              MAIN COMMAND CENTER
+          ================================================= */}
+
+          <section
+            data-leadbase-reveal
+            className="mt-3 grid gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[286px_minmax(0,1fr)_360px]"
+          >
+            {/* LEFT RAIL */}
+            <div className="flex min-w-0 flex-col gap-4 xl:min-h-0">
+              <div className="rounded-[15px] bg-[#0B0C0E] p-3.5 text-white shadow-[0_1px_2px_rgba(11,12,14,0.12)] dark:border dark:border-white/10">
+                {featuredHotLead ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-white/60">
+                        <Flame className="size-3" />
+                        {de
+                          ? "Hot Lead"
+                          : "Hot lead"}
+                      </div>
+
+                      <div className="font-mono text-[9px] text-white/40">
+                        1 / {openLeads.length}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[15px] font-semibold tracking-[-0.02em]">
+                          {
+                            featuredHotCompany
+                              ?.name ??
+                            companyNameByLeadId.get(
+                              featuredHotLead.id
+                            )
+                          }
+                        </p>
+
+                        <p className="mt-1 truncate text-[11px] text-white/55">
+                          {statusLabel(
+                            featuredHotLead.status,
+                            language
+                          )}
+                          {featuredHotCompany
+                            ?.industry
+                            ? ` · ${featuredHotCompany.industry}`
+                            : ""}
+                        </p>
+                      </div>
+
+                      <div
+                        className="flex size-[54px] shrink-0 items-center justify-center rounded-full p-[5px]"
+                        style={{
+                          background:
+                            `conic-gradient(#3B5BE0 0 ${Math.max(
+                              0,
+                              Math.min(
+                                100,
+                                Number(
+                                  featuredHotLead.hot_lead_score ??
+                                    0
+                                )
+                              )
+                            )}%, rgba(255,255,255,.12) ${Math.max(
+                              0,
+                              Math.min(
+                                100,
+                                Number(
+                                  featuredHotLead.hot_lead_score ??
+                                    0
+                                )
+                              )
+                            )}% 100%)`,
+                        }}
+                      >
+                        <div className="flex size-full items-center justify-center rounded-full bg-[#0B0C0E] font-mono text-[13px] font-medium">
+                          {Number(
+                            featuredHotLead.hot_lead_score ??
+                              0
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      {featuredHotPreview
+                        ?.sessions.size ? (
+                        <div className="flex items-center gap-2 text-[11px] text-white/70">
+                          <CircleDot className="size-3 shrink-0 text-white/55" />
+                          <span className="min-w-0 truncate">
+                            {featuredHotPreview.sessions.size}{" "}
+                            {de
+                              ? `Preview-Session${featuredHotPreview.sessions.size === 1 ? "" : "s"}`
+                              : `preview session${featuredHotPreview.sessions.size === 1 ? "" : "s"}`}
+                            {featuredHotPreview.latestSeen
+                              ? ` · ${formatDateTime(
+                                  featuredHotPreview.latestSeen,
+                                  language
+                                )}`
+                              : ""}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {featuredHotPreview &&
+                      featuredHotPreview.maxScroll >
+                        0 ? (
+                        <div className="flex items-center gap-2 text-[11px] text-white/70">
+                          <ArrowRight className="size-3 shrink-0 rotate-90 text-white/55" />
+                          <span>
+                            {de
+                              ? "Max. Scrolltiefe"
+                              : "Max scroll depth"}
+                            {" "}
+                            {Math.round(
+                              featuredHotPreview.maxScroll
+                            )}
+                            %
+                            {featuredHotPreview.maxDuration >
+                            0
+                              ? ` · ${formatCompactDuration(
+                                  featuredHotPreview.maxDuration
+                                )}`
+                              : ""}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {!featuredHotPreview
+                        ?.sessions.size &&
+                      !featuredHotPreview
+                        ?.maxScroll ? (
+                        <div className="flex items-center gap-2 text-[11px] text-white/60">
+                          <Sparkles className="size-3 shrink-0" />
+                          <span>
+                            {de
+                              ? "HOT Score aus realen Lead-Signalen"
+                              : "HOT score from real lead signals"}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      {featuredHotReply ? (
+                        <Link
+                          href={`/inbox?lead=${encodeURIComponent(
+                            featuredHotLead.id
+                          )}`}
+                          className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded-[9px] bg-white px-3 text-[12px] font-medium text-[#0B0C0E] transition hover:bg-white/90"
+                        >
+                          {de
+                            ? "Antwort öffnen"
+                            : "Open reply"}
+                        </Link>
+                      ) : featuredHotDraft &&
+                        !featuredHotDraft.sent_at ? (
+                        <Link
+                          href={`/leads/${featuredHotLead.id}#outreach`}
+                          className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded-[9px] bg-white px-3 text-[12px] font-medium text-[#0B0C0E] transition hover:bg-white/90"
+                        >
+                          {de
+                            ? "Entwurf öffnen"
+                            : "Open draft"}
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/leads/${featuredHotLead.id}`}
+                          className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded-[9px] bg-white px-3 text-[12px] font-medium text-[#0B0C0E] transition hover:bg-white/90"
+                        >
+                          {de
+                            ? "HOT Lead prüfen"
+                            : "Review HOT lead"}
+                        </Link>
+                      )}
+
+                      <Link
+                        href={`/leads/${featuredHotLead.id}`}
+                        className="inline-flex h-8 items-center justify-center rounded-[9px] border border-white/[0.18] px-3 text-[12px] text-white/80 transition hover:bg-white/[0.08]"
+                      >
+                        {de
+                          ? "Lead öffnen"
+                          : "Open lead"}
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex min-h-[200px] flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-white/55">
+                        <Flame className="size-3" />
+                        {de
+                          ? "Hot Lead"
+                          : "Hot lead"}
+                      </div>
+
+                      <p className="mt-5 text-[16px] font-semibold">
+                        {copy.noHot}
+                      </p>
+
+                      <p className="mt-2 text-[11px] leading-5 text-white/50">
+                        {de
+                          ? "Sobald ein Lead echte starke Signale erreicht, erscheint er hier."
+                          : "A lead appears here as soon as it reaches real strong signals."}
+                      </p>
+                    </div>
+
+                    <Link
+                      href="/leads"
+                      className="mt-5 inline-flex h-8 items-center justify-center rounded-[9px] bg-white px-3 text-[12px] font-medium text-[#0B0C0E]"
+                    >
+                      {copy.viewAllLeads}
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-[15px] border border-border bg-card p-3.5 shadow-[var(--lb-shadow-xs)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-[13px] font-semibold tracking-[-0.01em]">
+                    {copy.pipeline}
+                  </h2>
+
+                  <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                    {leads.length}{" "}
+                    {de
+                      ? "Leads"
+                      : "leads"}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex min-h-0 flex-1 flex-col justify-between gap-2.5">
+                  {pipelineStatuses.map(
+                    (
+                      status
+                    ) => {
+                      const value =
+                        statusCounts.get(
+                          status
+                        ) ??
+                        0;
+
+                      const width =
+                        value >
+                        0
+                          ? Math.max(
+                              3,
+                              Math.round(
+                                value /
+                                  maximumPipelineCount *
+                                  100
+                              )
+                            )
+                          : 0;
+
+                      const emphasized =
+                        status ===
+                          "CONTACTED" ||
+                        status ===
+                          "DRAFT_READY";
+
+                      return (
+                        <div
+                          key={
+                            status
+                          }
+                          className="grid grid-cols-[80px_minmax(0,1fr)_24px] items-center gap-2.5"
+                        >
+                          <span
+                            className={`truncate text-[10.5px] ${
+                              emphasized
+                                ? "font-medium text-foreground"
+                                : "text-[#565B63] dark:text-muted-foreground"
+                            }`}
+                          >
+                            {statusLabel(
+                              status,
+                              language
+                            )}
+                          </span>
+
+                          <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.055] dark:bg-white/[0.07]">
+                            <div
+                              className={`h-full rounded-full ${
+                                emphasized
+                                  ? "bg-primary"
+                                  : "bg-primary/45"
+                              }`}
+                              style={{
+                                width:
+                                  `${width}%`,
+                              }}
+                            />
+                          </div>
+
+                          <span className={`text-right font-mono text-[10px] tabular-nums ${value ? "text-foreground" : "text-[#8B9097]"}`}>
+                            {value}
+                          </span>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-black/[0.06] pt-2.5 dark:border-white/[0.07]">
+                  <span className="text-[10.5px] text-[#6B7078]">
+                    {de
+                      ? "Antwortquote"
+                      : "Reply rate"}
+                  </span>
+
+                  <span className="font-mono text-[10.5px] font-medium text-primary">
+                    {new Intl.NumberFormat(
+                      de
+                        ? "de-DE"
+                        : "en-GB",
+                      {
+                        minimumFractionDigits:
+                          1,
+                        maximumFractionDigits:
+                          1,
+                      }
+                    ).format(
+                      responseRate
+                    )}
+                    %
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* CENTER */}
+            <div className="flex min-w-0 flex-col gap-2.5 xl:min-h-0">
+              <DashboardFocusWorkspace
+                initialFocus={
+                  activeFocus
+                }
+                groups={
+                  dashboardCommandGroups
+                }
+                tabs={
+                  focusTabs
+                }
+                language={
+                  language
+                }
+                title={
+                  copy.focus
+                }
+                description={
+                  copy.focusDescription
+                }
+                emptyTitle={
+                  copy.nothingUrgent
+                }
+                emptyDescription={
+                  copy.nothingUrgentDescription
+                }
+              />
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <QuickAction
+                  href="/find-leads"
+                  icon={
+                    Search
+                  }
+                  title={
+                    de
+                      ? "Neue Leads finden"
+                      : "Find new leads"
+                  }
+                  description={
+                    de
+                      ? "Recherche starten"
+                      : "Start research"
+                  }
+                />
+
+                <QuickAction
+                  href="/inbox"
+                  icon={
+                    Inbox
+                  }
+                  title={
+                    de
+                      ? "Inbox bearbeiten"
+                      : "Work the inbox"
+                  }
+                  description={
+                    de
+                      ? "Antworten & Rückfragen"
+                      : "Replies & questions"
+                  }
+                />
+
+                <QuickAction
+                  href="/leads"
+                  icon={
+                    UserRoundCheck
+                  }
+                  title={
+                    de
+                      ? "Leads priorisieren"
+                      : "Prioritize leads"
+                  }
+                  description={
+                    de
+                      ? "HOT Scores prüfen"
+                      : "Review HOT scores"
+                  }
+                />
+              </div>
+            </div>
+
+            {/* RIGHT RAIL */}
+            <div className="flex min-w-0 flex-col gap-2.5 xl:min-h-0">
+              <div className="rounded-[15px] border border-border bg-card p-3.5 shadow-[0_1px_2px_rgba(11,12,14,0.03)] ">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.11em] text-[#6B7078]">
+                    {copy.overview}
+                  </span>
+
+                  <span className="font-mono text-[9px] text-[#7D828A]">
+                    {new Date().getFullYear()}
+                  </span>
+                </div>
+
+                <div className="mt-3.5 flex items-end gap-3">
+                  <p className="text-[28px] font-semibold leading-none tracking-[-0.04em] tabular-nums">
+                    {formatCurrency(
+                      bookedValue,
+                      language
+                    )}
+                  </p>
+
+                  <span className="pb-0.5 text-[11px] text-[#6B7078]">
+                    {copy.booked.toLowerCase()}
+                  </span>
+                </div>
+
+                <div className="mt-3.5 h-[7px] overflow-hidden rounded-full bg-black/[0.055] dark:bg-white/[0.08]">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width:
+                        `${paidProgress}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <BusinessMetric
+                    label={
+                      copy.paid
+                    }
+                    value={
+                      formatCurrency(
+                        paidRevenue,
+                        language
+                      )
+                    }
+                  />
+
+                  <BusinessMetric
+                    label={
+                      copy.outstanding
+                    }
+                    value={
+                      formatCurrency(
+                        outstanding,
+                        language
+                      )
+                    }
+                    accent
+                  />
+
+                  <BusinessMetric
+                    label={
+                      copy.sent
+                    }
+                    value={
+                      String(
+                        sentEmailsResult.count ??
+                          0
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-black/[0.06] pt-3 text-[10.5px] dark:border-white/[0.07]">
+                  <span className="text-[#6B7078]">
+                    {copy.pipelineValue}
+                  </span>
+
+                  <span className="font-mono font-medium text-foreground">
+                    {formatCurrency(
+                      pipelineValue,
+                      language
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <DashboardDailyStreak />
+
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[15px] border border-border bg-card shadow-[var(--lb-shadow-xs)]">
+                <div className="flex items-center justify-between px-3.5 pb-2.5 pt-3.5">
+                  <h2 className="text-[13px] font-semibold tracking-[-0.01em]">
+                    {copy.projects}
+                  </h2>
+
+                  <Link
+                    href="/projects"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-primary"
+                  >
+                    {de
+                      ? "Alle"
+                      : "All"}
+                    <ArrowRight className="size-3" />
+                  </Link>
+                </div>
+
+                {recentProjects.length ===
+                0 ? (
+                  <div className="px-[18px] pb-[18px] text-[11px] text-[#6B7078]">
                     {de
                       ? "Noch keine Projekte"
                       : "No projects yet"}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {recentProjects.map(
-                  (
-                    project
-                  ) => {
-                    const total =
-                      Number(
-                        project.total_value ??
-                          0
-                      );
+                  </div>
+                ) : (
+                  <div className="px-2.5 pb-2.5">
+                    {recentProjects.map(
+                      (
+                        project
+                      ) => {
+                        const total =
+                          Number(
+                            project.total_value ??
+                              0
+                          );
 
-                    const paid =
-                      Number(
-                        project.amount_paid ??
-                          0
-                      );
+                        const paid =
+                          Number(
+                            project.amount_paid ??
+                              0
+                          );
 
-                    return (
-                      <Link
-                        key={
-                          project.id
-                        }
-                        href={`/projects/${project.id}/edit`}
-                        className="group block px-4 py-4 transition-colors hover:bg-muted/30 sm:px-5"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="min-w-0 truncate text-sm font-semibold">
-                                {
-                                  project.project_name
-                                }
+                        return (
+                          <Link
+                            key={
+                              project.id
+                            }
+                            href={`/projects/${project.id}/edit`}
+                            className="group flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 transition hover:bg-[#F7F8FA] dark:hover:bg-white/[0.035]"
+                          >
+                            <span
+                              className={`h-8 w-[3px] shrink-0 rounded-full ${
+                                project.status ===
+                                "IN_PROGRESS"
+                                  ? "bg-primary"
+                                  : "bg-black/[0.14] dark:bg-white/[0.16]"
+                              }`}
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <p className="truncate text-[12px] font-medium tracking-[-0.01em]">
+                                  {project.project_name}
+                                </p>
+
+                                <StatusBadge
+                                  tone={
+                                    getProjectStatusTone(
+                                      project.status
+                                    )
+                                  }
+                                >
+                                  {projectStatusLabel(
+                                    project.status,
+                                    language
+                                  )}
+                                </StatusBadge>
+                              </div>
+
+                              <p className="mt-0.5 truncate text-[10px] text-[#6B7078]">
+                                {project.client_name}
                               </p>
+                            </div>
 
-                              <Badge
-                                variant="outline"
-                                className="shrink-0 rounded-full text-[10px]"
-                              >
-                                {projectStatusLabel(
-                                  project.status,
+                            <div className="shrink-0 text-right">
+                              <p className="font-mono text-[10.5px] tabular-nums">
+                                {formatCurrency(
+                                  total,
                                   language
                                 )}
-                              </Badge>
-                            </div>
+                              </p>
 
-                            <p className="mt-1 truncate text-xs text-muted-foreground">
-                              {
-                                project.client_name
-                              }
-                            </p>
-
-                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted-foreground">
-                              <span>
+                              <p className="mt-0.5 font-mono text-[8.5px] text-[#7E838B]">
+                                {formatCurrency(
+                                  paid,
+                                  language
+                                )}{" "}
                                 {de
-                                  ? "Wert"
-                                  : "Value"}
-                                :{" "}
-                                <strong className="font-medium text-foreground">
-                                  {formatCurrency(
-                                    total,
-                                    language
-                                  )}
-                                </strong>
-                              </span>
-
-                              <span>
-                                {de
-                                  ? "Bezahlt"
-                                  : "Paid"}
-                                :{" "}
-                                <strong className="font-medium text-foreground">
-                                  {formatCurrency(
-                                    paid,
-                                    language
-                                  )}
-                                </strong>
-                              </span>
+                                  ? "bezahlt"
+                                  : "paid"}
+                              </p>
                             </div>
-                          </div>
-
-                          <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                        </div>
-                      </Link>
-                    );
-                  }
+                          </Link>
+                        );
+                      }
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* ===================================================
-          QUICK ACTIONS
-      =================================================== */}
-
-      <section data-leadbase-reveal className="mt-4 grid gap-3 sm:grid-cols-3">
-        <QuickAction
-          href="/find-leads"
-          icon={
-            Search
-          }
-          title={
-            de
-              ? "Neue Leads finden"
-              : "Find new leads"
-          }
-          description={
-            de
-              ? "Neue Unternehmen recherchieren und direkt einer Kampagne zuordnen."
-              : "Research new companies and assign them directly to a campaign."
-          }
-        />
-
-        <QuickAction
-          href="/inbox"
-          icon={
-            Inbox
-          }
-          title={
-            de
-              ? "Inbox bearbeiten"
-              : "Work the inbox"
-          }
-          description={
-            de
-              ? "Echte Antworten, Rückfragen und OOO-Mails prüfen."
-              : "Review real replies, questions and out-of-office messages."
-          }
-        />
-
-        <QuickAction
-          href="/leads"
-          icon={
-            UserRoundCheck
-          }
-          title={
-            de
-              ? "Leads priorisieren"
-              : "Prioritize leads"
-          }
-          description={
-            de
-              ? "HOT Scores, Preview-Signale und offene Drafts bearbeiten."
-              : "Work HOT scores, preview signals and pending drafts."
-          }
-        />
-      </section>
+            </div>
+          </section>
         </div>
       </div>
     </DashboardMotion>
@@ -3251,14 +3704,13 @@ export default async function DashboardPage({
 }
 
 /* =========================================================
-   METRIC CARD
+   SMALL BUSINESS METRIC
 ========================================================= */
 
-function MetricCard({
+function BusinessMetric({
   label,
   value,
-  icon:
-    Icon,
+  accent = false,
 }: {
   label:
     string;
@@ -3266,29 +3718,25 @@ function MetricCard({
   value:
     string;
 
-  icon:
-    typeof Users;
+  accent?:
+    boolean;
 }) {
   return (
-    <Card className="min-w-0 shadow-none">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
-            {
-              label
-            }
-          </p>
+    <div className="min-w-0 rounded-[11px] bg-[#F7F8FA] px-3 py-2.5 dark:bg-white/[0.045]">
+      <p className="truncate text-[9.5px] text-[#6B7078]">
+        {label}
+      </p>
 
-          <Icon className="size-4 shrink-0 text-muted-foreground" />
-        </div>
-
-        <p className="mt-4 break-words text-xl font-semibold tracking-tight">
-          {
-            value
-          }
-        </p>
-      </CardContent>
-    </Card>
+      <p
+        className={`mt-1 truncate text-[13px] font-semibold tracking-[-0.02em] tabular-nums ${
+          accent
+            ? "text-primary"
+            : "text-foreground"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -3320,31 +3768,21 @@ function QuickAction({
       href={
         href
       }
-      className="group min-w-0"
+      className="group flex min-h-[54px] min-w-0 items-center gap-2.5 rounded-[13px] border border-border bg-card px-2.5 py-2 shadow-[0_1px_2px_rgba(11,12,14,0.03)] transition hover:border-primary/30 hover:shadow-[0_4px_14px_-6px_rgba(0,43,186,0.20)]"
     >
-      <Card className="leadbase-panel h-full border-border/70 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/20 group-hover:shadow-[0_16px_40px_color-mix(in_srgb,var(--primary)_7%,transparent)]">
-        <CardContent className="flex h-full items-start justify-between gap-4 p-4 sm:p-5">
-          <div className="min-w-0">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-primary/10 bg-primary/[0.055] text-primary">
-              <Icon className="size-4" />
-            </div>
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#EAEEFB] text-primary dark:bg-primary/15">
+        <Icon className="size-4" />
+      </span>
 
-            <p className="mt-4 text-sm font-semibold">
-              {
-                title
-              }
-            </p>
+      <span className="min-w-0 flex-1 overflow-hidden">
+        <span className="block truncate whitespace-nowrap text-[10.5px] font-medium leading-[1.15] tracking-[-0.015em] text-foreground">
+          {title}
+        </span>
 
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {
-                description
-              }
-            </p>
-          </div>
-
-          <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-        </CardContent>
-      </Card>
+        <span className="mt-1 block truncate whitespace-nowrap text-[8.5px] leading-[1.15] text-[#6B7078] dark:text-muted-foreground">
+          {description}
+        </span>
+      </span>
     </Link>
   );
 }

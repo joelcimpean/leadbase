@@ -80,7 +80,7 @@ export default async function NewCampaignPage({
     );
 
   return (
-    <div className="leadbase-workspace-page mx-auto min-h-full w-full max-w-[1080px] px-4 py-5 sm:px-6 sm:py-7 md:px-8 lg:px-10 lg:py-10">
+    <div className="leadbase-workspace-page leadbase-route-form mx-auto min-h-full w-full max-w-[980px] px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5">
       <WorkspacePageMotion />
       {/* ===================================================
           BACK

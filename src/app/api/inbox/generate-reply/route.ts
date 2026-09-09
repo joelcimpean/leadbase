@@ -10,6 +10,11 @@ import {
     createClient,
   } from "@/lib/supabase/server";
   
+  import {
+    assertAiUsageAvailable,
+    recordAiUsage,
+  } from "@/lib/ai-usage";
+  
   export const runtime =
     "nodejs";
   
@@ -557,6 +562,8 @@ import {
          GENERATE
       ===================================================== */
   
+      await assertAiUsageAvailable(user.id);
+
       const generated =
         await generateReply({
           companyName:
@@ -604,6 +611,17 @@ import {
          RESPONSE
       ===================================================== */
   
+      await recordAiUsage({
+        userId: user.id,
+        feature: "reply_generation",
+        model: generated.model,
+        usage: generated.usage,
+        metadata: {
+          leadId: typeof leadId === "string" ? leadId : null,
+          replyToMessageId: typeof replyToMessageId === "string" ? replyToMessageId : null,
+        },
+      });
+
       return NextResponse.json({
         ok:
           true,

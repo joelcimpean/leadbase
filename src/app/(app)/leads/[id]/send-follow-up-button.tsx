@@ -1,21 +1,10 @@
 "use client";
 
-import {
-  Loader2,
-  Send,
-} from "lucide-react";
+import { Send } from "lucide-react";
+import { useState } from "react";
 
-import {
-  useFormStatus,
-} from "react-dom";
-
-import {
-  sendFollowUpOutreachDraft,
-} from "../outreach-actions";
-
-/* =========================================================
-   TYPES
-========================================================= */
+import { sendFollowUpOutreachDraft } from "../outreach-actions";
+import { queueUndoableSend } from "@/lib/undoable-send";
 
 type SendFollowUpButtonProps = {
   leadId: string;
@@ -23,89 +12,30 @@ type SendFollowUpButtonProps = {
   recipientEmail: string;
 };
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+export function SendFollowUpButton({ leadId, draftId, recipientEmail }: SendFollowUpButtonProps) {
+  const [queued, setQueued] = useState(false);
 
-export function SendFollowUpButton({
-  leadId,
-  draftId,
-  recipientEmail,
-}: SendFollowUpButtonProps) {
-  function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    const confirmed =
-      window.confirm(
-        `Send the follow-up email now to ${recipientEmail}?\n\nThis action will send the prepared follow-up through Gmail.`
-      );
+  function queueSend() {
+    if (queued) return;
+    const formData = new FormData();
+    formData.set("leadId", leadId);
+    formData.set("draftId", draftId);
+    setQueued(true);
 
-    if (!confirmed) {
-      event.preventDefault();
-    }
+    queueUndoableSend({
+      label: `Follow-up an ${recipientEmail}`,
+      detail: "Wird in 10 Sekunden gesendet.",
+      commit: async () => { await sendFollowUpOutreachDraft(formData); },
+      onUndo: () => setQueued(false),
+      onSuccess: () => setQueued(false),
+      onError: () => setQueued(false),
+    });
   }
 
   return (
-    <form
-      action={
-        sendFollowUpOutreachDraft
-      }
-      onSubmit={
-        handleSubmit
-      }
-    >
-      <input
-        type="hidden"
-        name="leadId"
-        value={
-          leadId
-        }
-      />
-
-      <input
-        type="hidden"
-        name="draftId"
-        value={
-          draftId
-        }
-      />
-
-      <SubmitButton />
-    </form>
-  );
-}
-
-/* =========================================================
-   BUTTON
-========================================================= */
-
-function SubmitButton() {
-  const {
-    pending,
-  } =
-    useFormStatus();
-
-  return (
-    <button
-      type="submit"
-      disabled={
-        pending
-      }
-      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {pending ? (
-        <>
-          <Loader2 className="size-3.5 animate-spin" />
-
-          Sending...
-        </>
-      ) : (
-        <>
-          <Send className="size-3.5" />
-
-          Send follow-up
-        </>
-      )}
+    <button type="button" disabled={queued} onClick={queueSend} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+      <Send className="size-3.5" />
+      {queued ? "Zum Senden vorgemerkt" : "Send follow-up"}
     </button>
   );
 }

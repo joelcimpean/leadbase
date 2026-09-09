@@ -16,6 +16,8 @@ import {
 
 import {
   CalendarClock,
+  ArrowDownUp,
+  Command,
   CalendarX2,
   ChevronDown,
   ChevronRight,
@@ -23,6 +25,8 @@ import {
   Eye,
   Folder,
   FolderOpen,
+  Film,
+  Megaphone,
   GripVertical,
   LayoutList,
   Loader2,
@@ -68,6 +72,8 @@ import {
   useLanguage,
 } from "@/components/language-provider";
 
+import darkStyles from "@/components/leadbase-route-dark-polish.module.css";
+
 import {
   useAppNotifications,
 } from "@/components/app-notifications";
@@ -75,6 +81,11 @@ import {
 import {
   useAppBackgroundTasks,
 } from "@/components/app-background-tasks";
+
+import {
+  LeadCreateDialog,
+  type QuickCreateCampaignOption,
+} from "@/components/quick-create-dialogs";
 
 import {
   createClient as createBrowserSupabaseClient,
@@ -255,41 +266,25 @@ function statusClass(
   status:
     string
 ) {
-  switch (
-    status
-  ) {
+  switch (status) {
     case "NEW":
-      return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-400";
-
     case "RESEARCHING":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400";
-
     case "QUALIFIED":
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400";
-
     case "DRAFT_READY":
-      return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-400";
-
-    case "CONTACTED":
-      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
-
-    case "REPLIED":
-      return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-400";
-
     case "CALL_BOOKED":
-      return "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-400";
-
     case "PROPOSAL":
-      return "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-400";
+      return "border-transparent bg-[#EAEEFB] text-[#002BBA]";
 
     case "WON":
-      return "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400";
+      return "border-transparent bg-[#E9F0EA] text-[#2F6B3A]";
 
+    case "CONTACTED":
+    case "REPLIED":
+    case "LOST":
+    case "NOT_A_FIT":
     case "DO_NOT_CONTACT":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
-
     default:
-      return "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300";
+      return "border-transparent bg-black/[0.05] text-[#6B7078]";
   }
 }
 
@@ -302,17 +297,15 @@ function priorityClass(
     | string
     | null
 ) {
-  switch (
-    priority
-  ) {
+  switch (priority) {
     case "HIGH":
-      return "text-red-600 dark:text-red-400";
+      return "text-[#9A5106]";
 
     case "MEDIUM":
-      return "text-amber-600 dark:text-amber-400";
+      return "text-[#40454E]";
 
     default:
-      return "text-muted-foreground";
+      return "text-[#6B7078]";
   }
 }
 
@@ -432,7 +425,7 @@ function SelectionCheckbox({
       onChange={
         onChange
       }
-      className="size-4 cursor-pointer rounded border-border accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+      className="size-4 cursor-pointer rounded border-[#C9CDD3] accent-[#002BBA] disabled:cursor-not-allowed disabled:opacity-50"
     />
   );
 }
@@ -444,12 +437,16 @@ function SelectionCheckbox({
 export function LeadsTable({
   leads,
   groupOrder,
+  campaignOptions,
 }: {
   leads:
     LeadTableRow[];
 
   groupOrder:
     Record<string, number>;
+
+  campaignOptions:
+    QuickCreateCampaignOption[];
 }) {
   const router =
     useRouter();
@@ -464,11 +461,58 @@ export function LeadsTable({
   } =
     useAppNotifications();
 
+  const backgroundTasks =
+    useAppBackgroundTasks();
+
   const {
     analysisTask,
     startBulkAnalysis,
   } =
-    useAppBackgroundTasks();
+    backgroundTasks;
+
+  /*
+   * Compatibility bridge:
+   *
+   * Some Leadbase revisions expose the bulk-design dock controls
+   * (`startBulkDesignTask`, `updateBulkDesignTask`,
+   * `finishBulkDesignTask`) while older revisions only expose
+   * the analysis/background queue API.
+   *
+   * The actual bulk-design loop below does not depend on these
+   * helpers for generation. They only mirror progress into the
+   * global background-task dock, so falling back to no-ops keeps
+   * the existing design flow fully functional without forcing a
+   * rewrite of the user's current background-task provider.
+   */
+  const {
+    startBulkDesignTask =
+      () => {},
+
+    updateBulkDesignTask =
+      () => {},
+
+    finishBulkDesignTask =
+      () => {},
+  } =
+    backgroundTasks as
+      typeof backgroundTasks & {
+        startBulkDesignTask?: (
+          total:
+            number,
+          currentCompany?:
+            string | null
+        ) => void;
+
+        updateBulkDesignTask?: (
+          current:
+            number,
+          currentCompany?:
+            string | null
+        ) => void;
+
+        finishBulkDesignTask?:
+          () => void;
+      };
 
   const text =
     leadsCopy[
@@ -535,6 +579,18 @@ export function LeadsTable({
 
           previewViews:
             "Vorschau",
+
+          deleteTitle:
+            "Leads löschen",
+
+          deleteDescription:
+            "Möchtest du wirklich {count} ausgewählte Leads löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+
+          cancel:
+            "Abbrechen",
+
+          confirmDelete:
+            "Leads löschen",
         }
       : {
           compact:
@@ -593,6 +649,18 @@ export function LeadsTable({
 
           previewViews:
             "Preview",
+
+          deleteTitle:
+            "Delete leads",
+
+          deleteDescription:
+            "Are you sure you want to delete {count} selected leads? This action cannot be undone.",
+
+          cancel:
+            "Cancel",
+
+          confirmDelete:
+            "Delete leads",
         };
 
   /* =======================================================
@@ -849,6 +917,40 @@ export function LeadsTable({
   ======================================================= */
 
   const [
+    quickFilter,
+    setQuickFilter,
+  ] = useState<
+    "ALL" |
+    "HOT" |
+    "DRAFT_READY" |
+    "CONTACTED" |
+    "NO_EMAIL"
+  >("ALL");
+
+  const [
+    sortByHotScore,
+    setSortByHotScore,
+  ] = useState(false);
+
+  const searchInputRef =
+    useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
+  const [
     search,
     setSearch,
   ] =
@@ -938,10 +1040,22 @@ export function LeadsTable({
                     priority
               );
 
+            const matchesQuick =
+              quickFilter === "ALL" ||
+              (quickFilter === "HOT" &&
+                hotLeadSummaries[lead.id]?.level === "HOT") ||
+              (quickFilter === "DRAFT_READY" &&
+                lead.status === "DRAFT_READY") ||
+              (quickFilter === "CONTACTED" &&
+                lead.status === "CONTACTED") ||
+              (quickFilter === "NO_EMAIL" &&
+                !lead.contactEmail);
+
             return (
               matchesSearch &&
               matchesStatus &&
-              matchesPriority
+              matchesPriority &&
+              matchesQuick
             );
           }
         );
@@ -951,6 +1065,8 @@ export function LeadsTable({
         search,
         status,
         priority,
+        quickFilter,
+        hotLeadSummaries,
       ]
     );
 
@@ -960,7 +1076,10 @@ export function LeadsTable({
     status !==
       "ALL" ||
     priority !==
-      "ALL";
+      "ALL" ||
+    quickFilter !==
+      "ALL" ||
+    sortByHotScore;
 
   function resetFilters() {
     setSearch(
@@ -973,6 +1092,14 @@ export function LeadsTable({
 
     setPriority(
       "ALL"
+    );
+
+    setQuickFilter(
+      "ALL"
+    );
+
+    setSortByHotScore(
+      false
     );
   }
 
@@ -1121,6 +1248,15 @@ export function LeadsTable({
 
     for (const group of list) {
       group.leads.sort((a, b) => {
+        if (sortByHotScore) {
+          const aHot = hotLeadSummaries[a.id]?.score ?? -1;
+          const bHot = hotLeadSummaries[b.id]?.score ?? -1;
+
+          if (aHot !== bHot) {
+            return bHot - aHot;
+          }
+        }
+
         const aOverride =
           leadOrderOverrides[a.id];
         const bOverride =
@@ -1198,6 +1334,8 @@ export function LeadsTable({
     groupOrderState,
     leadOrderOverrides,
     ui.uncategorized,
+    sortByHotScore,
+    hotLeadSummaries,
   ]);
 
   const manualSortingEnabled =
@@ -1778,6 +1916,22 @@ export function LeadsTable({
     );
 
   const [
+    generatingGifs,
+    setGeneratingGifs,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    gifProgress,
+    setGifProgress,
+  ] =
+    useState<Progress | null>(
+      null
+    );
+
+  const [
     drafting,
     setDrafting,
   ] =
@@ -1838,6 +1992,7 @@ export function LeadsTable({
   const busy =
     analyzing ||
     designing ||
+    generatingGifs ||
     drafting ||
     cancellingSchedules ||
     isDeleting;
@@ -1967,6 +2122,11 @@ export function LeadsTable({
 
   /* =======================================================
      BULK DESIGN
+
+     Important: design generation is intentionally separated
+     from GIF generation. Bulk design never creates a GIF and
+     never publishes a customer link. Review the variations
+     first, then explicitly run Bulk GIF.
   ======================================================= */
 
   async function handleBulkDesign() {
@@ -2031,6 +2191,11 @@ export function LeadsTable({
         eligible.length,
     });
 
+    startBulkDesignTask(
+      eligible.length,
+      eligible[0]?.companyName ?? null
+    );
+
     let createdCount =
       0;
 
@@ -2038,12 +2203,6 @@ export function LeadsTable({
       0;
 
     let failedCount =
-      0;
-
-    let gifReadyCount =
-      0;
-
-    let gifFailedCount =
       0;
 
     try {
@@ -2059,6 +2218,11 @@ export function LeadsTable({
           eligible[
             index
           ];
+
+        updateBulkDesignTask(
+          index,
+          lead.companyName
+        );
 
         try {
           const response =
@@ -2111,25 +2275,6 @@ export function LeadsTable({
             createdCount +=
               1;
           }
-
-          try {
-            await ensurePublicPreviewAndGif(
-              lead.id
-            );
-
-            gifReadyCount +=
-              1;
-          } catch (
-            gifError
-          ) {
-            gifFailedCount +=
-              1;
-
-            console.error(
-              `Preview/GIF preparation failed for ${lead.companyName}:`,
-              gifError
-            );
-          }
         } catch (
           error
         ) {
@@ -2150,6 +2295,11 @@ export function LeadsTable({
           total:
             eligible.length,
         });
+
+        updateBulkDesignTask(
+          index + 1,
+          eligible[index + 1]?.companyName ?? null
+        );
       }
 
       const parts =
@@ -2170,22 +2320,6 @@ export function LeadsTable({
             0
             ? `${failedCount} ${ui.failed}`
             : null,
-
-          gifReadyCount >
-            0
-            ? language ===
-                "de"
-              ? `${gifReadyCount} GIF bereit`
-              : `${gifReadyCount} GIF ready`
-            : null,
-
-          gifFailedCount >
-            0
-            ? language ===
-                "de"
-              ? `${gifFailedCount} GIF fehlgeschlagen`
-              : `${gifFailedCount} GIF failed`
-            : null,
         ].filter(
           Boolean
         );
@@ -2199,8 +2333,6 @@ export function LeadsTable({
       notify({
         variant:
           failedCount >
-            0 ||
-          gifFailedCount >
             0
             ? "warning"
             : "success",
@@ -2214,8 +2346,8 @@ export function LeadsTable({
         description:
           language ===
             "de"
-            ? `${createdCount} erstellt · ${existingCount} vorhanden · ${gifReadyCount} GIF bereit · ${gifFailedCount} GIF fehlgeschlagen`
-            : `${createdCount} created · ${existingCount} existing · ${gifReadyCount} GIF ready · ${gifFailedCount} GIF failed`,
+            ? `${createdCount} erstellt · ${existingCount} vorhanden · ${skippedCount} übersprungen · ${failedCount} fehlgeschlagen · keine GIFs erzeugt`
+            : `${createdCount} created · ${existingCount} existing · ${skippedCount} skipped · ${failedCount} failed · no GIFs generated`,
       });
 
       setSelectedIds(
@@ -2224,11 +2356,114 @@ export function LeadsTable({
 
       router.refresh();
     } finally {
+      finishBulkDesignTask();
+
       setDesigning(
         false
       );
 
       setDesignProgress(
+        null
+      );
+    }
+  }
+
+  /* =======================================================
+     BULK GIF
+
+     Explicit second step after review. For every selected lead
+     we first ensure the selected design has a live customer
+     preview, then capture a fresh GIF from that latest snapshot.
+  ======================================================= */
+
+  async function handleBulkGif() {
+    if (
+      busy ||
+      selectedIds.size ===
+        0
+    ) {
+      return;
+    }
+
+    const selectedLeads =
+      leads.filter(
+        (lead) =>
+          selectedIds.has(
+            lead.id
+          )
+      );
+
+    setGeneratingGifs(
+      true
+    );
+
+    setBulkMessage(
+      null
+    );
+
+    setGifProgress({
+      current: 0,
+      total: selectedLeads.length,
+    });
+
+    let readyCount = 0;
+    let failedCount = 0;
+
+    try {
+      for (
+        let index = 0;
+        index < selectedLeads.length;
+        index += 1
+      ) {
+        const lead = selectedLeads[index];
+
+        try {
+          await ensurePublicPreviewAndGif(
+            lead.id
+          );
+          readyCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          console.error(
+            `Bulk GIF failed for ${lead.companyName}:`,
+            error
+          );
+        }
+
+        setGifProgress({
+          current: index + 1,
+          total: selectedLeads.length,
+        });
+      }
+
+      setBulkMessage(
+        language === "de"
+          ? `GIF-Erstellung abgeschlossen: ${readyCount} bereit${failedCount ? ` · ${failedCount} fehlgeschlagen` : ""}`
+          : `GIF generation complete: ${readyCount} ready${failedCount ? ` · ${failedCount} failed` : ""}`
+      );
+
+      notify({
+        variant: failedCount > 0 ? "warning" : "success",
+        title:
+          language === "de"
+            ? "GIF-Erstellung abgeschlossen"
+            : "GIF generation complete",
+        description:
+          language === "de"
+            ? `${readyCount} frische GIFs aus den aktuell ausgewählten Designs erstellt${failedCount ? ` · ${failedCount} fehlgeschlagen` : ""}`
+            : `${readyCount} fresh GIFs created from the currently selected designs${failedCount ? ` · ${failedCount} failed` : ""}`,
+      });
+
+      setSelectedIds(
+        new Set()
+      );
+
+      router.refresh();
+    } finally {
+      setGeneratingGifs(
+        false
+      );
+      setGifProgress(
         null
       );
     }
@@ -2576,15 +2811,14 @@ export function LeadsTable({
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
-            <Button
-              variant="ghost"
-              size="icon"
+            <button
+              type="button"
               aria-label={`Actions for ${lead.companyName}`}
-              className="size-8"
+              className="flex size-[26px] items-center justify-center rounded-[8px] text-[#6B7078] transition-colors hover:bg-black/[0.05] hover:text-[#0B0C0E]"
             />
           }
         >
-          <MoreHorizontal className="size-4" />
+          <MoreHorizontal className="size-3.5" />
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end">
@@ -2596,11 +2830,7 @@ export function LeadsTable({
             }
           >
             <Eye className="size-4" />
-
-            {
-              text.common
-                .openLead
-            }
+            {text.common.openLead}
           </DropdownMenuItem>
 
           <DropdownMenuItem
@@ -2611,34 +2841,23 @@ export function LeadsTable({
             }
           >
             <Pencil className="size-4" />
-
-            {
-              text.common
-                .editLead
-            }
+            {text.common.editLead}
           </DropdownMenuItem>
 
           {lead.websiteUrl ? (
             <>
               <DropdownMenuSeparator />
-
               <DropdownMenuItem
                 onClick={() =>
                   window.open(
-                    normalizeUrl(
-                      lead.websiteUrl!
-                    ),
+                    normalizeUrl(lead.websiteUrl!),
                     "_blank",
                     "noopener,noreferrer"
                   )
                 }
               >
                 <ExternalLink className="size-4" />
-
-                {
-                  text.common
-                    .visitWebsite
-                }
+                {text.common.visitWebsite}
               </DropdownMenuItem>
             </>
           ) : null}
@@ -2647,1571 +2866,604 @@ export function LeadsTable({
     );
   }
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  const hotCount =
+    Object.values(hotLeadSummaries).filter(
+      (summary) => summary.level === "HOT"
+    ).length;
+
+  const draftReadyCount =
+    leads.filter((lead) => lead.status === "DRAFT_READY").length;
+
+  const contactedCount =
+    leads.filter((lead) => lead.status === "CONTACTED").length;
+
+  const noEmailCount =
+    leads.filter((lead) => !lead.contactEmail).length;
+
+  const filterCount =
+    Number(status !== "ALL") +
+    Number(priority !== "ALL");
+
+  const headerCopy = language === "de"
+    ? {
+        eyebrow: "CRM · Lead-Bestand",
+        description: "Prüfe Unternehmen, verfolge deinen Outreach und sieh, welche Leads als Nächstes deine Aufmerksamkeit brauchen.",
+        groups: "Gruppen",
+        signal: "mit Kaufsignal",
+        planned: "Geplante Mails",
+        add: "Lead hinzufügen",
+        all: "Alle",
+        hot: "Kaufsignal",
+        draft: "Entwurf bereit",
+        contacted: "Kontaktiert",
+        noEmail: "Ohne E-Mail",
+        hotScore: "Hot Score",
+        filter: "Filter",
+        company: "Unternehmen",
+        scores: "Web / Opp",
+        analysis: "Analyse",
+        status: "Status",
+        priority: "Prio",
+        contact: "Kontakt",
+        preview: "Preview",
+        action: "Aktion",
+        campaignOpen: "Kampagne öffnen",
+        grouped: "Gruppiert nach Kampagne",
+        sorted: sortByHotScore ? "Sortiert nach Hot Score" : "Manuelle Reihenfolge",
+        live: "Supabase live",
+        active: "Aktiv",
+      }
+    : {
+        eyebrow: "CRM · Lead inventory",
+        description: "Review companies, track outreach and see which leads need your attention next.",
+        groups: "groups",
+        signal: "with buying signal",
+        planned: "Scheduled emails",
+        add: "Add lead",
+        all: "All",
+        hot: "Signal",
+        draft: "Draft ready",
+        contacted: "Contacted",
+        noEmail: "No email",
+        hotScore: "Hot Score",
+        filter: "Filter",
+        company: "Company",
+        scores: "Web / Opp",
+        analysis: "Analysis",
+        status: "Status",
+        priority: "Prio",
+        contact: "Contact",
+        preview: "Preview",
+        action: "Action",
+        campaignOpen: "Open campaign",
+        grouped: "Grouped by campaign",
+        sorted: sortByHotScore ? "Sorted by Hot Score" : "Manual order",
+        live: "Supabase live",
+        active: "Active",
+      };
+
+  function QuickFilterButton({
+    value,
+    label,
+    count,
+  }: {
+    value: "ALL" | "HOT" | "DRAFT_READY" | "CONTACTED" | "NO_EMAIL";
+    label: string;
+    count?: number;
+  }) {
+    const active = quickFilter === value;
+
+    return (
+      <button
+        type="button"
+        onClick={() => setQuickFilter(value)}
+        className={`h-[26px] whitespace-nowrap rounded-[8px] px-2.5 text-[11.5px] transition-[background-color,color,box-shadow] ${
+          active
+            ? "bg-white font-medium text-[#0B0C0E] shadow-[0_1px_2px_rgba(11,12,14,0.12)]"
+            : "text-[#6B7078] hover:text-[#0B0C0E]"
+        }`}
+      >
+        {label}{count !== undefined ? ` ${count}` : ""}
+      </button>
+    );
+  }
 
   return (
-    <>
-      {/* ===================================================
-          CONTROLS
-      =================================================== */}
+    <div className={`${darkStyles.route} leadbase-route-leads flex min-h-0 h-full flex-col bg-[#F6F7F9] px-[26px] py-[24px] text-[#0B0C0E] max-[800px]:px-4 max-[800px]:py-4`}>
+      {/* HEADER */}
+      <header className="flex shrink-0 items-end justify-between gap-6">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#002BBA]">
+            <span className="size-[5px] rounded-full bg-[#002BBA]" />
+            {headerCopy.eyebrow}
+          </div>
 
-      <div className="mt-6 flex flex-col gap-3 md:mt-8 lg:flex-row lg:items-center lg:justify-between">
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
+            <h1 className="m-0 text-[42px] font-semibold leading-none tracking-[-0.035em]">Leads</h1>
+            <span className="text-[15px] tracking-[-0.01em] text-[#6B7078]">
+              <span className="tabular-nums">{leads.length}</span> Leads in <span className="tabular-nums">{groups.length}</span> {headerCopy.groups}
+              {hotCount > 0 ? <> · <span className="tabular-nums">{hotCount}</span> {headerCopy.signal}</> : null}
+            </span>
+          </div>
 
-          <Input
-            value={
-              search
-            }
-            onChange={(
-              event
-            ) =>
-              setSearch(
-                event.target
-                  .value
-              )
-            }
-            placeholder={
-              text.table
-                .searchPlaceholder
-            }
-            className="pl-9"
-          />
+          <p className="mt-[7px] max-w-[820px] text-[13.5px] leading-5 text-[#6B7078]">
+            {headerCopy.description}
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* VIEW MODE */}
+        <div className="flex shrink-0 items-center gap-2 max-[760px]:hidden">
+          <Link
+            href="/scheduled"
+            className="flex h-[34px] items-center gap-[7px] rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE]"
+          >
+            <CalendarClock className="size-3.5 opacity-60" />
+            {headerCopy.planned}
+          </Link>
 
-          <div className="inline-flex rounded-lg border bg-background p-1">
+          <LeadCreateDialog
+            campaigns={campaignOptions}
+            language={language}
+            label={headerCopy.add}
+          />
+        </div>
+      </header>
+
+      {/* TOOLBAR */}
+      <section className="mt-4 flex shrink-0 items-center gap-2.5 rounded-[14px] border border-black/[0.08] bg-white p-[10px] shadow-[0_1px_2px_rgba(11,12,14,0.03)] max-[1120px]:flex-wrap">
+        <div className="relative h-8 w-[268px] shrink-0 max-[700px]:w-full">
+          <Search className="absolute left-[11px] top-1/2 size-3.5 -translate-y-1/2 text-[#6B7078]" />
+          <input
+            ref={searchInputRef}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={text.table.searchPlaceholder}
+            className="h-8 w-full rounded-[9px] border border-black/[0.07] bg-[#F7F8FA] pl-8 pr-10 text-[12.5px] outline-none transition-colors placeholder:text-[#6B7078] hover:border-black/[0.12] focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10"
+          />
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-[5px] bg-black/[0.05] px-1.5 py-[1px] font-mono text-[9px] text-[#6B7078]">⌘K</span>
+        </div>
+
+        <div className="flex shrink-0 rounded-[10px] bg-black/[0.045] p-[3px] max-[940px]:order-3 max-[940px]:w-full max-[940px]:overflow-x-auto">
+          <QuickFilterButton value="ALL" label={headerCopy.all} count={leads.length} />
+          <QuickFilterButton value="HOT" label={headerCopy.hot} count={hotCount} />
+          <QuickFilterButton value="DRAFT_READY" label={headerCopy.draft} count={draftReadyCount} />
+          <QuickFilterButton value="CONTACTED" label={headerCopy.contacted} count={contactedCount} />
+          <QuickFilterButton value="NO_EMAIL" label={headerCopy.noEmail} count={noEmailCount} />
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2 max-[940px]:ml-0">
+          <div className="flex rounded-[9px] bg-black/[0.045] p-[3px]">
             <button
               type="button"
-              onClick={() =>
-                changeView(
-                  "compact"
-                )
-              }
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                viewMode ===
-                "compact"
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+              onClick={() => changeView("compact")}
+              className={`flex h-[26px] items-center gap-1.5 rounded-[7px] px-2.5 text-[11.5px] transition-[background-color,color,box-shadow] ${
+                viewMode === "compact"
+                  ? "bg-white font-medium text-[#0B0C0E] shadow-[0_1px_2px_rgba(11,12,14,0.12)]"
+                  : "text-[#6B7078]"
               }`}
             >
-              <LayoutList className="size-3.5" />
-
-              {
-                ui.compact
-              }
+              <LayoutList className="size-3" />
+              {ui.compact}
             </button>
-
             <button
               type="button"
-              onClick={() =>
-                changeView(
-                  "table"
-                )
-              }
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                viewMode ===
-                "table"
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+              onClick={() => changeView("table")}
+              className={`flex h-[26px] items-center gap-1.5 rounded-[7px] px-2.5 text-[11.5px] transition-[background-color,color,box-shadow] ${
+                viewMode === "table"
+                  ? "bg-white font-medium text-[#0B0C0E] shadow-[0_1px_2px_rgba(11,12,14,0.12)]"
+                  : "text-[#6B7078]"
               }`}
             >
-              <Table2 className="size-3.5" />
-
-              {
-                ui.table
-              }
+              <Table2 className="size-3" />
+              {ui.table}
             </button>
           </div>
 
-          {viewMode === "compact" ? (
-            <div
-              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium ${
-                hasActiveFilters
-                  ? "bg-muted/30 text-muted-foreground"
-                  : "border-primary/15 bg-primary/[0.045] text-primary"
-              }`}
-              title={
-                hasActiveFilters
-                  ? language === "de"
-                    ? "Filter zurücksetzen, um manuell zu sortieren"
-                    : "Reset filters to reorder manually"
-                  : language === "de"
-                    ? "Gruppen und Leads per Drag-and-Drop sortieren"
-                    : "Drag and drop groups and leads to reorder"
-              }
-            >
-              <GripVertical className="size-3.5" />
-
-              {hasActiveFilters
-                ? language === "de"
-                  ? "Sortierung pausiert"
-                  : "Sorting paused"
-                : language === "de"
-                  ? "Direkt sortieren"
-                  : "Instant ordering"}
-            </div>
-          ) : null}
-
-          <Link
-            href="/scheduled"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            <CalendarClock className="size-4" />
-
-            {language ===
-              "de"
-              ? "Geplante Mails"
-              : "Scheduled emails"}
-          </Link>
+          <span className="h-5 w-px bg-black/[0.09]" />
 
           <button
             type="button"
-            onClick={() =>
-              setFiltersOpen(
-                (
-                  current
-                ) =>
-                  !current
-              )
-            }
-            className="inline-flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted/50"
+            onClick={() => setSortByHotScore((value) => !value)}
+            className={`flex h-8 items-center gap-[7px] rounded-[9px] border px-[11px] text-[12px] transition-colors ${
+              sortByHotScore
+                ? "border-[#002BBA]/25 bg-[#EAEEFB] text-[#002BBA]"
+                : "border-black/[0.09] bg-white text-[#40454E] hover:border-black/[0.16]"
+            }`}
           >
-            <SlidersHorizontal className="size-4" />
-
-            {
-              text.table
-                .filters
-            }
+            <ArrowDownUp className="size-3.5 opacity-60" />
+            {headerCopy.hotScore}
           </button>
 
-          {hasActiveFilters ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={
-                resetFilters
-              }
-            >
-              {
-                text.table
-                  .reset
-              }
-            </Button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((value) => !value)}
+            className={`flex h-8 items-center gap-[7px] rounded-[9px] border px-[11px] text-[12px] transition-colors ${
+              filtersOpen || filterCount > 0
+                ? "border-[#002BBA]/25 bg-[#EAEEFB] text-[#002BBA]"
+                : "border-black/[0.09] bg-white text-[#40454E] hover:border-black/[0.16]"
+            }`}
+          >
+            <SlidersHorizontal className="size-3.5 opacity-60" />
+            {headerCopy.filter}
+            {filterCount > 0 ? (
+              <span className="rounded-[5px] bg-white px-1.5 py-[1px] font-mono text-[9px] text-[#002BBA]">{filterCount}</span>
+            ) : null}
+          </button>
         </div>
-      </div>
+      </section>
 
-      {/* ===================================================
-          FILTER PANEL
-      =================================================== */}
-
+      {/* FILTER PANEL */}
       {filtersOpen ? (
-        <div className="mt-3 grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              {
-                text.common
-                  .status
-              }
-            </p>
-
+        <section className="mt-2 grid shrink-0 gap-3 rounded-[13px] border border-black/[0.08] bg-white p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <label className="grid gap-1.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.11em] text-[#6B7078]">{text.common.status}</span>
             <select
-              value={
-                status
-              }
-              onChange={(
-                event
-              ) =>
-                setStatus(
-                  event.target
-                    .value
-                )
-              }
-              className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              className="h-8 rounded-[9px] border border-black/[0.09] bg-white px-2.5 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10"
             >
-              <option value="ALL">
-                {
-                  text.table
-                    .allStatuses
-                }
-              </option>
-
-              {[
-                "NEW",
-                "RESEARCHING",
-                "QUALIFIED",
-                "NOT_A_FIT",
-                "DRAFT_READY",
-                "CONTACTED",
-                "REPLIED",
-                "CALL_BOOKED",
-                "PROPOSAL",
-                "WON",
-                "LOST",
-                "DO_NOT_CONTACT",
-              ].map(
-                (
-                  item
-                ) => (
-                  <option
-                    key={
-                      item
-                    }
-                    value={
-                      item
-                    }
-                  >
-                    {getLeadStatusLabel(
-                      item,
-                      language
-                    )}
-                  </option>
-                )
-              )}
+              <option value="ALL">{text.table.allStatuses}</option>
+              {["NEW","RESEARCHING","QUALIFIED","NOT_A_FIT","DRAFT_READY","CONTACTED","REPLIED","CALL_BOOKED","PROPOSAL","WON","LOST","DO_NOT_CONTACT"].map((item) => (
+                <option key={item} value={item}>{getLeadStatusLabel(item, language)}</option>
+              ))}
             </select>
-          </div>
+          </label>
 
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              {
-                text.common
-                  .priority
-              }
-            </p>
-
+          <label className="grid gap-1.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.11em] text-[#6B7078]">{text.common.priority}</span>
             <select
-              value={
-                priority
-              }
-              onChange={(
-                event
-              ) =>
-                setPriority(
-                  event.target
-                    .value
-                )
-              }
-              className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              value={priority}
+              onChange={(event) => setPriority(event.target.value)}
+              className="h-8 rounded-[9px] border border-black/[0.09] bg-white px-2.5 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10"
             >
-              <option value="ALL">
-                {
-                  text.table
-                    .allPriorities
-                }
-              </option>
-
-              <option value="HIGH">
-                {
-                  text.common
-                    .priorityHigh
-                }
-              </option>
-
-              <option value="MEDIUM">
-                {
-                  text.common
-                    .priorityMedium
-                }
-              </option>
-
-              <option value="LOW">
-                {
-                  text.common
-                    .priorityLow
-                }
-              </option>
-
-              <option value="NONE">
-                {
-                  text.common
-                    .noPriority
-                }
-              </option>
+              <option value="ALL">{text.table.allPriorities}</option>
+              <option value="HIGH">{text.common.priorityHigh}</option>
+              <option value="MEDIUM">{text.common.priorityMedium}</option>
+              <option value="LOW">{text.common.priorityLow}</option>
+              <option value="NONE">{text.common.noPriority}</option>
             </select>
-          </div>
-        </div>
+          </label>
+
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="h-8 rounded-[9px] border border-black/[0.09] bg-white px-3 text-[11.5px] text-[#40454E] hover:bg-[#FDFDFE]"
+          >
+            {text.table.reset}
+          </button>
+        </section>
       ) : null}
 
-      {/* ===================================================
-          BULK BAR
-      =================================================== */}
+      {/* BULK ACTION BAR */}
+      {selectedIds.size > 0 ? (
+        <section className="mt-2 flex shrink-0 flex-wrap items-center gap-2 rounded-[12px] bg-[#002BBA] px-3.5 py-2.5 text-white shadow-[0_1px_2px_rgba(0,43,186,0.18)]">
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-white/60">Auswahl</span>
+          <span className="text-[12.5px] font-medium">{selectedIds.size === 1 ? text.table.selectedOne : text.table.selectedMany.replace("{count}", String(selectedIds.size))}</span>
+          <span className="mx-1 h-4 w-px bg-white/20" />
 
-      {selectedIds.size >
-      0 ? (
-        <div className="mt-4 flex flex-col gap-3 rounded-xl border bg-muted/30 p-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center rounded-lg border bg-background text-xs font-semibold">
-              {
-                selectedIds.size
-              }
-            </div>
+          <button type="button" disabled={busy} onClick={handleBulkAnalyze} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            {analyzing ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+            {analyzing && analyzeProgress ? `${analyzeProgress.current}/${analyzeProgress.total}` : text.table.analyzeSelected}
+          </button>
 
-            <div>
-              <p className="text-sm font-medium">
-                {selectedIds.size ===
-                1
-                  ? text.table
-                      .selectedOne
-                  : text.table.selectedMany.replace(
-                      "{count}",
-                      String(
-                        selectedIds.size
-                      )
-                    )}
-              </p>
+          <button type="button" disabled={busy} onClick={handleBulkDesign} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            {designing ? <Loader2 className="size-3 animate-spin" /> : <WandSparkles className="size-3" />}
+            {designing && designProgress ? `${designProgress.current}/${designProgress.total}` : ui.generateDesigns}
+          </button>
 
-              <p className="text-xs text-muted-foreground">
-                {
-                  text.table
-                    .chooseAction
-                }
-              </p>
-            </div>
-          </div>
+          <button type="button" disabled={busy} onClick={handleBulkGif} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            {generatingGifs ? <Loader2 className="size-3 animate-spin" /> : <Film className="size-3" />}
+            {generatingGifs && gifProgress ? `${gifProgress.current}/${gifProgress.total}` : (language === "de" ? "GIFs erstellen" : "Generate GIFs")}
+          </button>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={
-                busy
-              }
-              onClick={
-                clearSelection
-              }
-              className="gap-2"
-            >
-              <X className="size-4" />
+          <button type="button" disabled={busy} onClick={handleBulkDrafts} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            {drafting ? <Loader2 className="size-3 animate-spin" /> : <MailPlus className="size-3" />}
+            {drafting && draftProgress ? `${draftProgress.current}/${draftProgress.total}` : (language === "de" ? "Entwürfe erstellen" : "Create drafts")}
+          </button>
 
-              {
-                text.table
-                  .clear
-              }
-            </Button>
+          <button type="button" disabled={busy} onClick={() => setScheduleDialogOpen(true)} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            <CalendarClock className="size-3" />
+            {language === "de" ? "Später senden" : "Send later"}
+          </button>
 
-            <Button
-              type="button"
-              variant="outline"
-              disabled={
-                busy
-              }
-              onClick={
-                handleBulkAnalyze
-              }
-              className="gap-2"
-            >
-              {analyzing ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
+          <button type="button" disabled={busy} onClick={handleBulkCancelScheduledOutreach} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            {cancellingSchedules ? <Loader2 className="size-3 animate-spin" /> : <CalendarX2 className="size-3" />}
+            {language === "de" ? "Versand stoppen" : "Cancel send"}
+          </button>
 
-                  {analyzeProgress
-                    ? `${analyzeProgress.current}/${analyzeProgress.total}`
-                    : text.table
-                        .analyzing}
-                </>
-              ) : (
-                <>
-                  <Sparkles className="size-4" />
+          <button type="button" disabled={busy} onClick={() => setDeleteDialogOpen(true)} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+            <Trash2 className="size-3" />
+            {text.table.deleteSelected}
+          </button>
 
-                  {
-                    text.table
-                      .analyzeSelected
-                  }
-                </>
-              )}
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              disabled={
-                busy
-              }
-              onClick={
-                handleBulkDesign
-              }
-              className="gap-2"
-            >
-              {designing ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-
-                  {designProgress
-                    ? `${designProgress.current}/${designProgress.total}`
-                    : ui.generating}
-                </>
-              ) : (
-                <>
-                  <WandSparkles className="size-4" />
-
-                  {
-                    ui.generateDesigns
-                  }
-                </>
-              )}
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              disabled={
-                busy
-              }
-              onClick={
-                handleBulkDrafts
-              }
-              className="gap-2"
-            >
-              {drafting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-
-                  {draftProgress
-                    ? `${draftProgress.current}/${draftProgress.total}`
-                    : "Drafts werden erstellt"}
-                </>
-              ) : (
-                <>
-                  <MailPlus className="size-4" />
-
-                  Drafts erstellen
-                </>
-              )}
-            </Button>
-
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-1.5">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={
-                  busy
-                }
-                onClick={() =>
-                  setScheduleDialogOpen(
-                    true
-                  )
-                }
-                className="gap-2"
-              >
-                <CalendarClock className="size-4" />
-
-                {language ===
-                  "de"
-                  ? "Später senden"
-                  : "Send later"}
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={
-                  busy
-                }
-                onClick={
-                  handleBulkCancelScheduledOutreach
-                }
-                className="gap-2"
-                title={
-                  language ===
-                    "de"
-                    ? "Geplanten Outreach für die Auswahl stoppen"
-                    : "Cancel scheduled outreach for selection"
-                }
-              >
-                {cancellingSchedules ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <CalendarX2 className="size-4" />
-                )}
-
-                {language ===
-                  "de"
-                  ? "Versand stoppen"
-                  : "Cancel send"}
-              </Button>
-            </div>
-
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={
-                busy
-              }
-              onClick={() =>
-                setDeleteDialogOpen(
-                  true
-                )
-              }
-              className="gap-2"
-            >
-              {isDeleting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-
-              {
-                text.table
-                  .deleteSelected
-              }
-            </Button>
-          </div>
-        </div>
+          <button type="button" disabled={busy} onClick={clearSelection} className="ml-auto flex size-7 items-center justify-center rounded-[8px] text-white/65 hover:bg-white/10 hover:text-white">
+            <X className="size-3.5" />
+          </button>
+        </section>
       ) : null}
 
       {bulkMessage ? (
-        <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
-          {
-            bulkMessage
-          }
-        </div>
+        <div className="mt-2 shrink-0 rounded-[10px] border border-black/[0.07] bg-white px-3 py-2 text-[11.5px] text-[#6B7078]">{bulkMessage}</div>
       ) : null}
 
+      {/* MAIN DATA SURFACE */}
+      {viewMode === "compact" ? (
+        <section className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(11,12,14,0.03)]">
+          <div className="grid shrink-0 grid-cols-[36px_minmax(270px,1.7fr)_92px_106px_112px_72px_minmax(150px,1fr)_76px_78px_34px] items-center border-b border-black/[0.07] px-3 py-2 font-mono text-[9px] uppercase tracking-[0.11em] text-[#6B7078] max-[1180px]:grid-cols-[36px_minmax(260px,1.7fr)_86px_104px_100px_minmax(140px,1fr)_70px_34px]">
+            <SelectionCheckbox checked={allVisibleSelected} indeterminate={someVisibleSelected} disabled={busy} label={text.table.selectAllVisible} onChange={toggleAllVisible} />
+            <span className="pl-1">{headerCopy.company}</span>
+            <span className="text-center">{headerCopy.scores}</span>
+            <span>{headerCopy.analysis}</span>
+            <span>{headerCopy.status}</span>
+            <span>{headerCopy.priority}</span>
+            <span>{headerCopy.contact}</span>
+            <span>{headerCopy.preview}</span>
+            <span className="max-[1180px]:hidden">{language === "de" ? "Kontakt" : "Contacted"}</span>
+            <span className="text-right">{headerCopy.action}</span>
+          </div>
 
-
-
-      {/* ===================================================
-          SELECT ALL
-      =================================================== */}
-
-      {filteredLeads.length >
-      0 ? (
-        <div className="mt-4 flex items-center gap-3 px-1 text-xs text-muted-foreground">
-          <SelectionCheckbox
-            checked={
-              allVisibleSelected
-            }
-            indeterminate={
-              someVisibleSelected
-            }
-            disabled={
-              busy
-            }
-            label={
-              text.table
-                .selectAllVisible
-            }
-            onChange={
-              toggleAllVisible
-            }
-          />
-
-          <span>
-            {
-              filteredLeads.length
-            }{" "}
-            {
-              ui.leads
-            }
-          </span>
-        </div>
-      ) : null}
-
-      {/* ===================================================
-          COMPACT VIEW
-      =================================================== */}
-
-      {viewMode ===
-      "compact" ? (
-        <div className="mt-3 space-y-3">
-          {groups.map(
-            (
-              group
-            ) => {
-              const collapsed =
-                collapsedGroups.has(
-                  group.key
-                );
-
-              const groupSelectedCount =
-                group.leads.filter(
-                  (
-                    lead
-                  ) =>
-                    selectedIds.has(
-                      lead.id
-                    )
-                ).length;
-
-              const allGroupSelected =
-                group.leads.length >
-                  0 &&
-                groupSelectedCount ===
-                  group.leads.length;
-
-              const someGroupSelected =
-                groupSelectedCount >
-                  0 &&
-                !allGroupSelected;
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {groups.map((group) => {
+              const collapsed = collapsedGroups.has(group.key);
+              const groupSelectedCount = group.leads.filter((lead) => selectedIds.has(lead.id)).length;
+              const allGroupSelected = group.leads.length > 0 && groupSelectedCount === group.leads.length;
+              const someGroupSelected = groupSelectedCount > 0 && !allGroupSelected;
 
               return (
-                <div
-                  key={
-                    group.key
-                  }
-                  className={`relative overflow-visible rounded-2xl border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.025)] transition-[border-color,box-shadow,transform] ${
-                    draggedGroupKey === group.key
-                      ? "border-primary/35 shadow-[0_10px_32px_rgba(0,43,186,0.10)]"
-                      : "hover:border-border/80 hover:shadow-[0_8px_28px_rgba(15,23,42,0.045)]"
-                  }`}
-                >
-                  {groupDropTarget?.targetKey === group.key &&
-                  draggedGroupKey !== group.key ? (
-                    <div
-                      className={`pointer-events-none absolute left-3 right-3 z-20 h-0.5 rounded-full bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.6),0_0_10px_rgba(77,107,255,0.35)] ${
-                        groupDropTarget.placeAfter
-                          ? "-bottom-[7px]"
-                          : "-top-[7px]"
-                      }`}
-                    >
-                      <span className="absolute -left-1 top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 border-background bg-primary" />
+                <div key={group.key} className="relative">
+                  {groupDropTarget?.targetKey === group.key && draggedGroupKey !== group.key ? (
+                    <div className={`pointer-events-none absolute left-2 right-2 z-50 h-[3px] rounded-full bg-[#002BBA] ${groupDropTarget.placeAfter ? "-bottom-[2px]" : "-top-[2px]"}`}>
+                      <span className="absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-[#002BBA]" />
                     </div>
                   ) : null}
-                  {/* CAMPAIGN HEADER */}
 
                   <div
                     onDragOver={(event) => {
-                      if (
-                        draggedGroupKey &&
-                        manualSortingEnabled
-                      ) {
+                      if (draggedGroupKey && manualSortingEnabled) {
                         event.preventDefault();
                         event.stopPropagation();
-
-                        const bounds =
-                          event.currentTarget.getBoundingClientRect();
-
-                        setGroupDropTarget({
-                          targetKey: group.key,
-                          placeAfter:
-                            event.clientY >
-                            bounds.top + bounds.height / 2,
-                        });
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setGroupDropTarget({ targetKey: group.key, placeAfter: event.clientY > bounds.top + bounds.height / 2 });
                       }
                     }}
                     onDrop={(event) => {
-                      if (!draggedGroupKey) {
-                        return;
-                      }
-
+                      if (!draggedGroupKey) return;
                       event.preventDefault();
                       event.stopPropagation();
-
-                      const target =
-                        groupDropTarget?.targetKey === group.key
-                          ? groupDropTarget
-                          : {
-                              targetKey: group.key,
-                              placeAfter: false,
-                            };
-
-                      moveGroupRelative(
-                        draggedGroupKey,
-                        group.key,
-                        target.placeAfter
-                      );
-
+                      const target = groupDropTarget?.targetKey === group.key ? groupDropTarget : { targetKey: group.key, placeAfter: false };
+                      moveGroupRelative(draggedGroupKey, group.key, target.placeAfter);
                       setDraggedGroupKey(null);
                       setGroupDropTarget(null);
                     }}
-                    className={`flex items-center gap-2.5 bg-gradient-to-r from-muted/35 via-muted/15 to-transparent px-3 py-3 sm:px-4 ${
-                      collapsed
-                        ? "rounded-2xl"
-                        : "rounded-t-2xl border-b"
-                    }`}
+                    className={`group/group grid h-[36px] grid-cols-[36px_minmax(0,1fr)_auto] items-center border-b border-black/[0.07] px-3 text-[12.5px] transition-colors ${allGroupSelected ? "bg-[#EAF0FF]" : someGroupSelected ? "bg-[#F1F4FF]" : "bg-[#F7F8FA]"}`}
                   >
                     <button
                       type="button"
-                      draggable={
-                        manualSortingEnabled
-                      }
+                      draggable={manualSortingEnabled}
                       onDragStart={(event) => {
-                        if (!manualSortingEnabled) {
-                          event.preventDefault();
-                          return;
-                        }
-
-                        setDraggedGroupKey(
-                          group.key
-                        );
-                        event.dataTransfer.effectAllowed =
-                          "move";
-                        event.dataTransfer.setData(
-                          "text/plain",
-                          `group:${group.key}`
-                        );
+                        if (!manualSortingEnabled) { event.preventDefault(); return; }
+                        setDraggedGroupKey(group.key);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", `group:${group.key}`);
                       }}
-                      onDragEnd={() => {
-                        setDraggedGroupKey(null);
-                        setGroupDropTarget(null);
-                      }}
-                      className={`flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors ${
-                        manualSortingEnabled
-                          ? "cursor-grab hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
-                          : "cursor-not-allowed opacity-35"
-                      }`}
-                      aria-label={
-                        language === "de"
-                          ? `${group.name} verschieben`
-                          : `Move ${group.name}`
-                      }
-                      title={
-                        hasActiveFilters
-                          ? language === "de"
-                            ? "Filter zurücksetzen, um zu sortieren"
-                            : "Reset filters to sort"
-                          : language === "de"
-                            ? "Gruppe ziehen"
-                            : "Drag group"
-                      }
+                      onDragEnd={() => { setDraggedGroupKey(null); setGroupDropTarget(null); }}
+                      className={`flex size-5 items-center justify-center text-[#6B7078] transition-opacity ${manualSortingEnabled ? "cursor-grab opacity-0 group-hover/group:opacity-50 active:cursor-grabbing" : "opacity-0"}`}
+                      aria-label={language === "de" ? `${group.name} verschieben` : `Move ${group.name}`}
                     >
-                      <GripVertical className="size-4" />
+                      <GripVertical className="size-3" />
                     </button>
 
-                    <SelectionCheckbox
-                      checked={
-                        allGroupSelected
-                      }
-                      indeterminate={
-                        someGroupSelected
-                      }
-                      disabled={
-                        busy
-                      }
-                      label={`Select ${group.name}`}
-                      onChange={() =>
-                        toggleCampaignSelection(
-                          group.leads
-                        )
-                      }
-                    />
+                    <div className="flex min-w-0 items-center gap-2">
+                      <button type="button" onClick={() => toggleGroupOpen(group.key)} className="flex size-5 shrink-0 items-center justify-center text-[#6B7078] hover:text-[#0B0C0E]">
+                        {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+                      </button>
+                      <Megaphone className="size-3.5 shrink-0 text-[#002BBA]" />
+                      <SelectionCheckbox checked={allGroupSelected} indeterminate={someGroupSelected} disabled={busy} label={`Select ${group.name}`} onChange={() => toggleCampaignSelection(group.leads)} />
+                      <span className="truncate font-semibold tracking-[-0.01em]">{group.name}</span>
+                      <span className="shrink-0 rounded-[6px] bg-black/[0.05] px-2 py-[2px] font-mono text-[8.5px] text-[#6B7078]">{group.leads.length} Leads</span>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toggleGroupOpen(
-                          group.key
-                        )
-                      }
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    >
-                      {collapsed ? (
-                        <Folder className="size-4 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
-                      )}
-
-                      <span className="truncate text-sm font-semibold">
-                        {
-                          group.name
-                        }
-                      </span>
-
-                      <span className="shrink-0 rounded-md border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                        {
-                          group.leads.length
-                        }
-                      </span>
-
-                      <span className="ml-auto">
-                        {collapsed ? (
-                          <ChevronRight className="size-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="size-4 text-muted-foreground" />
-                        )}
-                      </span>
-                    </button>
+                    {group.key !== "__none__" ? (
+                      <Link href={`/campaigns/${group.key}`} className="flex items-center gap-1.5 text-[11px] text-[#6B7078] hover:text-[#002BBA]">
+                        {headerCopy.campaignOpen}
+                        <ChevronRight className="size-3" />
+                      </Link>
+                    ) : null}
                   </div>
 
-                  {!collapsed ? (
-                    <div className="divide-y">
-                      {group.leads.map(
-                        (
-                          lead
-                        ) => {
-                          const selected =
-                            selectedIds.has(
-                              lead.id
-                            );
+                  {!collapsed ? group.leads.map((lead) => {
+                    const selected = selectedIds.has(lead.id);
+                    const analyzed = lead.analysisStatus === "COMPLETED";
+                    const preview = previewSummaries[lead.id];
+                    const hot = hotLeadSummaries[lead.id];
 
-                          const analyzed =
-                            lead.analysisStatus ===
-                            "COMPLETED";
+                    return (
+                      <div
+                        key={lead.id}
+                        onDragOver={(event) => {
+                          if (draggedLeadId && manualSortingEnabled) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const bounds = event.currentTarget.getBoundingClientRect();
+                            setLeadDropTarget({ groupKey: group.key, targetId: lead.id, placeAfter: event.clientY > bounds.top + bounds.height / 2 });
+                          }
+                        }}
+                        onDrop={(event) => {
+                          if (!draggedLeadId) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const target = leadDropTarget?.targetId === lead.id ? leadDropTarget : { groupKey: group.key, targetId: lead.id, placeAfter: false };
+                          moveLeadRelative(group.key, draggedLeadId, lead.id, target.placeAfter);
+                          setDraggedLeadId(null);
+                          setLeadDropTarget(null);
+                        }}
+                        className={`group/lead relative grid min-h-[46px] grid-cols-[36px_minmax(270px,1.7fr)_92px_106px_112px_72px_minmax(150px,1fr)_76px_78px_34px] items-center border-b border-black/[0.055] px-3 transition-colors last:border-b-0 max-[1180px]:grid-cols-[36px_minmax(260px,1.7fr)_86px_104px_100px_minmax(140px,1fr)_70px_34px] ${selected ? "bg-[#EAF0FF] hover:bg-[#E3EAFF]" : "hover:bg-[#F7F8FA]"} ${draggedLeadId === lead.id ? "opacity-60" : ""}`}
+                      >
+                        {leadDropTarget?.groupKey === group.key && leadDropTarget.targetId === lead.id && draggedLeadId !== lead.id ? (
+                          <div className={`pointer-events-none absolute left-2 right-2 z-50 h-[3px] rounded-full bg-[#002BBA] ${leadDropTarget.placeAfter ? "-bottom-[2px]" : "-top-[2px]"}`}>
+                            <span className="absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-[#002BBA]" />
+                          </div>
+                        ) : null}
 
-                          return (
-                            <div
-                              key={
-                                lead.id
-                              }
-                              onDragOver={(event) => {
-                                if (
-                                  draggedLeadId &&
-                                  manualSortingEnabled
-                                ) {
-                                  event.preventDefault();
-                                  event.stopPropagation();
+                        <div className="flex items-center justify-center gap-1.5 pr-1">
+                          <button
+                            type="button"
+                            draggable={manualSortingEnabled}
+                            onDragStart={(event) => {
+                              if (!manualSortingEnabled) { event.preventDefault(); return; }
+                              setDraggedLeadId(lead.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", `lead:${lead.id}`);
+                            }}
+                            onDragEnd={() => { setDraggedLeadId(null); setLeadDropTarget(null); }}
+                            className={`flex size-3.5 items-center justify-center text-[#6B7078] transition-opacity ${manualSortingEnabled ? "cursor-grab opacity-0 group-hover/lead:opacity-45 active:cursor-grabbing" : "opacity-0"}`}
+                            aria-label={language === "de" ? `${lead.companyName} verschieben` : `Move ${lead.companyName}`}
+                          >
+                            <GripVertical className="size-3" />
+                          </button>
+                          <SelectionCheckbox checked={selected} disabled={busy} label={`Select ${lead.companyName}`} onChange={() => toggleLead(lead.id)} />
+                        </div>
 
-                                  const bounds =
-                                    event.currentTarget.getBoundingClientRect();
+                        <Link href={`/leads/${lead.id}`} className="min-w-0 py-1.5 pl-1.5 pr-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-[12.5px] font-medium tracking-[-0.01em] hover:underline">{lead.companyName}</span>
+                            {hot && hot.level !== "COLD" ? <LeadHotScoreIndicator summary={hot} /> : null}
+                          </div>
+                          <div className="mt-[2px] truncate text-[10.5px] text-[#6B7078]">{lead.location ?? lead.industry ?? "—"}</div>
+                        </Link>
 
-                                  setLeadDropTarget({
-                                    groupKey: group.key,
-                                    targetId: lead.id,
-                                    placeAfter:
-                                      event.clientY >
-                                      bounds.top + bounds.height / 2,
-                                  });
-                                }
-                              }}
-                              onDrop={(event) => {
-                                if (!draggedLeadId) {
-                                  return;
-                                }
+                        <div className="flex items-center justify-center gap-1 font-mono text-[11px] tabular-nums">
+                          <span className="font-medium text-[#0B0C0E]">{lead.websiteScore ?? "—"}</span>
+                          <span className="text-[#B1B5BB]">/</span>
+                          <span className="text-[#6B7078]">{lead.opportunityScore ?? "—"}</span>
+                        </div>
 
-                                event.preventDefault();
-                                event.stopPropagation();
+                        <div className="flex items-center gap-1.5 text-[10.5px] text-[#6B7078]">
+                          <span className={`size-[5px] rounded-full ${analyzed ? "bg-[#2F6B3A]" : "bg-black/[0.18]"}`} />
+                          {analyzed ? ui.analyzed : ui.notAnalyzed}
+                        </div>
 
-                                const target =
-                                  leadDropTarget?.targetId === lead.id
-                                    ? leadDropTarget
-                                    : {
-                                        groupKey: group.key,
-                                        targetId: lead.id,
-                                        placeAfter: false,
-                                      };
+                        <div>
+                          <Badge variant="outline" className={`whitespace-nowrap border-0 px-1.5 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.05em] ${statusClass(lead.status)}`}>
+                            {getLeadStatusLabel(lead.status, language)}
+                          </Badge>
+                        </div>
 
-                                moveLeadRelative(
-                                  group.key,
-                                  draggedLeadId,
-                                  lead.id,
-                                  target.placeAfter
-                                );
+                        <span className={`text-[10.5px] font-medium ${priorityClass(lead.priority)}`}>{getLeadPriorityLabel(lead.priority, language)}</span>
 
-                                setDraggedLeadId(null);
-                                setLeadDropTarget(null);
-                              }}
-                              className={`group/lead relative flex flex-col gap-3 px-3 py-3.5 transition-[background-color,box-shadow] sm:px-4 lg:flex-row lg:items-center ${
-                                selected
-                                  ? "bg-primary/[0.045]"
-                                  : "hover:bg-muted/20"
-                              } ${
-                                draggedLeadId === lead.id
-                                  ? "bg-primary/[0.06] opacity-70"
-                                  : ""
-                              }`}
-                            >
-                              {leadDropTarget?.groupKey === group.key &&
-                              leadDropTarget.targetId === lead.id &&
-                              draggedLeadId !== lead.id ? (
-                                <div
-                                  className={`pointer-events-none absolute left-3 right-3 z-20 h-0.5 rounded-full bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.55),0_0_10px_rgba(77,107,255,0.32)] ${
-                                    leadDropTarget.placeAfter
-                                      ? "-bottom-px"
-                                      : "-top-px"
-                                  }`}
-                                >
-                                  <span className="absolute -left-1 top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 border-background bg-primary" />
-                                </div>
-                              ) : null}
-
-                              <div className="flex min-w-0 items-start gap-2.5 lg:flex-[1.4]">
-                                <button
-                                  type="button"
-                                  draggable={
-                                    manualSortingEnabled
-                                  }
-                                  onDragStart={(event) => {
-                                    if (!manualSortingEnabled) {
-                                      event.preventDefault();
-                                      return;
-                                    }
-
-                                    setDraggedLeadId(
-                                      lead.id
-                                    );
-                                    event.dataTransfer.effectAllowed =
-                                      "move";
-                                    event.dataTransfer.setData(
-                                      "text/plain",
-                                      `lead:${lead.id}`
-                                    );
-                                  }}
-                                  onDragEnd={() => {
-                                    setDraggedLeadId(null);
-                                    setLeadDropTarget(null);
-                                  }}
-                                  className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-all ${
-                                    manualSortingEnabled
-                                      ? "cursor-grab opacity-45 hover:bg-primary/10 hover:text-primary hover:opacity-100 active:cursor-grabbing group-hover/lead:opacity-100"
-                                      : "cursor-not-allowed opacity-20"
-                                  }`}
-                                  aria-label={
-                                    language === "de"
-                                      ? `${lead.companyName} verschieben`
-                                      : `Move ${lead.companyName}`
-                                  }
-                                  title={
-                                    hasActiveFilters
-                                      ? language === "de"
-                                        ? "Filter zurücksetzen, um zu sortieren"
-                                        : "Reset filters to sort"
-                                      : language === "de"
-                                        ? "Lead ziehen"
-                                        : "Drag lead"
-                                  }
-                                >
-                                  <GripVertical className="size-4" />
-                                </button>
-
-                                <div className="pt-1">
-                                  <SelectionCheckbox
-                                    checked={
-                                      selected
-                                    }
-                                    disabled={
-                                      busy
-                                    }
-                                    label={`Select ${lead.companyName}`}
-                                    onChange={() =>
-                                      toggleLead(
-                                        lead.id
-                                      )
-                                    }
-                                  />
-                                </div>
-
-                                <Link
-  href={`/leads/${lead.id}`}
-  className="min-w-0 text-left"
->
-  <div className="flex min-w-0 items-center gap-2">
-    <p className="min-w-0 truncate text-sm font-semibold hover:underline">
-      {
-        lead.companyName
-      }
-    </p>
-
-    {hotLeadSummaries[
-      lead.id
-    ] ? (
-      <LeadHotScoreIndicator
-        summary={
-          hotLeadSummaries[
-            lead.id
-          ]
-        }
-      />
-    ) : null}
-  </div>
-
-  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-    {lead.location ? (
-      <span className="inline-flex min-w-0 items-center gap-1">
-        <MapPin className="size-3 shrink-0" />
-
-        <span className="truncate">
-          {
-            lead.location
-          }
-        </span>
-      </span>
-    ) : null}
-
-    {lead.industry ? (
-      <span className="truncate">
-        {
-          lead.industry
-        }
-      </span>
-    ) : null}
-  </div>
-</Link>
-                              </div>
-
-                              {/* SCORES */}
-
-                              <div className="flex shrink-0 items-center gap-4 lg:w-[150px]">
-                                <div>
-                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                                    Web
-                                  </p>
-
-                                  <p className="text-sm font-semibold">
-                                    {lead.websiteScore ??
-                                      "—"}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <p className="text-[9px] uppercase tracking-wide text-muted-foreground">
-                                    Opp.
-                                  </p>
-
-                                  <p className="text-sm font-semibold">
-                                    {lead.opportunityScore ??
-                                      "—"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* ANALYSIS */}
-
-                              <div className="shrink-0 lg:w-[115px]">
-                                <div
-                                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
-                                    analyzed
-                                      ? "text-emerald-600 dark:text-emerald-400"
-                                      : "text-muted-foreground"
-                                  }`}
-                                >
-                                  <span
-                                    className={`size-1.5 rounded-full ${
-                                      analyzed
-                                        ? "bg-emerald-500"
-                                        : "bg-muted-foreground/40"
-                                    }`}
-                                  />
-
-                                  {analyzed
-                                    ? ui.analyzed
-                                    : ui.notAnalyzed}
-                                </div>
-                              </div>
-
-                              {/* STATUS */}
-
-                              <div className="shrink-0 lg:w-[125px]">
-                                <Badge
-                                  variant="outline"
-                                  className={`whitespace-nowrap text-[10px] ${statusClass(
-                                    lead.status
-                                  )}`}
-                                >
-                                  {getLeadStatusLabel(
-                                    lead.status,
-                                    language
-                                  )}
-                                </Badge>
-                              </div>
-
-                              {/* PRIORITY */}
-
-                              <div className="shrink-0 lg:w-[80px]">
-                                <span
-                                  className={`text-[11px] font-medium ${priorityClass(
-                                    lead.priority
-                                  )}`}
-                                >
-                                  {getLeadPriorityLabel(
-                                    lead.priority,
-                                    language
-                                  )}
-                                </span>
-                              </div>
-
-                              {/* CONTACT */}
-
-                              <div className="min-w-0 lg:w-[180px]">
-                                {lead.contactEmail ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <Mail className="size-3 shrink-0 text-muted-foreground" />
-
-                                    <span className="truncate text-[11px] text-muted-foreground">
-                                      {
-                                        lead.contactEmail
-                                      }
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-[11px] text-muted-foreground">
-                                    {lead.contactFormUrl
-                                      ? text.common
-                                          .contactForm
-                                      : text.common
-                                          .noEmailFound}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* CUSTOMER PREVIEW VIEWS */}
-
-                              <div className="flex shrink-0 justify-start lg:w-[92px]">
-                                {previewSummaries[
-                                  lead.id
-                                ] ? (
-                                  <LeadPreviewVisitsButton
-                                    summary={
-                                      previewSummaries[
-                                        lead.id
-                                      ]
-                                    }
-                                  />
-                                ) : null}
-                              </div>
-
-                              {/* DATE */}
-
-                              <div className="shrink-0 lg:w-[70px]">
-                                <span className="text-[11px] text-muted-foreground">
-                                  {formatDate(
-                                    lead.lastContactedAt,
-                                    language
-                                  )}
-                                </span>
-                              </div>
-
-                              <div className="ml-auto shrink-0">
-                                <LeadActions
-                                  lead={
-                                    lead
-                                  }
-                                />
-                              </div>
+                        <div className="min-w-0 pr-2">
+                          {lead.contactEmail ? (
+                            <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-[#6B7078]">
+                              <Mail className="size-3 shrink-0" />
+                              <span className="truncate">{lead.contactEmail}</span>
                             </div>
-                          );
-                        }
-                      )}
-                    </div>
-                  ) : null}
+                          ) : (
+                            <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] text-[#6B7078]">
+                              <Mail className="size-3 shrink-0 text-[#9A5106]" />
+                              <span className="truncate">{lead.contactFormUrl ? text.common.contactForm : text.common.noEmailFound}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-[10.5px] text-[#6B7078]">
+                          {preview ? <LeadPreviewVisitsButton summary={preview} /> : <span className="font-mono">0</span>}
+                        </div>
+
+                        <span className="font-mono text-[10px] text-[#6B7078] max-[1180px]:hidden">{formatDate(lead.lastContactedAt, language)}</span>
+
+                        <div className="flex justify-end"><LeadActions lead={lead} /></div>
+                      </div>
+                    );
+                  }) : null}
                 </div>
               );
-            }
-          )}
+            })}
 
-          {filteredLeads.length ===
-          0 ? (
-            <div className="rounded-xl border bg-background px-5 py-12 text-center">
-              <p className="text-sm font-medium">
-                {
-                  text.table
-                    .noMatching
-                }
-              </p>
+            {filteredLeads.length === 0 ? (
+              <div className="py-8 pl-[52px] pr-5 text-left max-sm:px-4">
+                <p className="text-[13px] font-medium">{text.table.noMatching}</p>
+                <p className="mt-1 text-[11.5px] text-[#6B7078]">{text.table.noMatchingDescription}</p>
+                {hasActiveFilters ? (
+                  <button type="button" onClick={resetFilters} className="mt-3 h-8 rounded-[9px] border border-black/[0.09] bg-white px-3 text-[11.5px] text-[#40454E] hover:bg-[#FDFDFE]">{text.table.clearFilters}</button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
 
-              <p className="mt-1 text-sm text-muted-foreground">
-                {
-                  text.table
-                    .noMatchingDescription
-                }
-              </p>
-
-              {hasActiveFilters ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-4"
-                  onClick={
-                    resetFilters
-                  }
-                >
-                  {
-                    text.table
-                      .clearFilters
-                  }
-                </Button>
-              ) : null}
+          <footer className="flex shrink-0 items-center justify-between border-t border-black/[0.07] bg-[#FDFDFE] px-4 py-2 text-[10.5px] text-[#6B7078]">
+            <div className="flex items-center gap-3">
+              <span className="font-mono uppercase tracking-[0.06em]">{filteredLeads.length} Leads · {groups.length} {headerCopy.groups}</span>
+              <span>{headerCopy.grouped}</span>
             </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* ===================================================
-          TABLE VIEW
-      =================================================== */}
-
-      {viewMode ===
-      "table" ? (
-        <div className="mt-3 overflow-x-auto rounded-xl border bg-background">
+            <div className="flex items-center gap-2.5">
+              <span>{headerCopy.sorted}</span>
+              <span className="h-3 w-px bg-black/[0.14]" />
+              <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.08em]">
+                <span className="size-[5px] rounded-full bg-[#2F6B3A]" />
+                {headerCopy.live}
+              </span>
+            </div>
+          </footer>
+        </section>
+      ) : (
+        <section className="mt-3 min-h-0 flex-1 overflow-auto rounded-[16px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(11,12,14,0.03)]">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-12">
-                  <SelectionCheckbox
-                    checked={
-                      allVisibleSelected
-                    }
-                    indeterminate={
-                      someVisibleSelected
-                    }
-                    disabled={
-                      busy
-                    }
-                    label={
-                      text.table
-                        .selectAllVisible
-                    }
-                    onChange={
-                      toggleAllVisible
-                    }
-                  />
-                </TableHead>
-
-                <TableHead>
-                  {
-                    text.common
-                      .company
-                  }
-                </TableHead>
-
-                <TableHead>
-                  {
-                    ui.campaign
-                  }
-                </TableHead>
-
-                <TableHead>
-                  {
-                    ui.scores
-                  }
-                </TableHead>
-
-                <TableHead>
-                  {
-                    text.common
-                      .status
-                  }
-                </TableHead>
-
-                <TableHead>
-                  {
-                    text.common
-                      .priority
-                  }
-                </TableHead>
-
-                <TableHead>
-                  {
-                    ui.contact
-                  }
-                </TableHead>
-
-                <TableHead>
-                  {
-                    ui.previewViews
-                  }
-                </TableHead>
-
+                <TableHead className="w-12"><SelectionCheckbox checked={allVisibleSelected} indeterminate={someVisibleSelected} disabled={busy} label={text.table.selectAllVisible} onChange={toggleAllVisible} /></TableHead>
+                <TableHead>{text.common.company}</TableHead>
+                <TableHead>{ui.campaign}</TableHead>
+                <TableHead>{ui.scores}</TableHead>
+                <TableHead>{text.common.status}</TableHead>
+                <TableHead>{text.common.priority}</TableHead>
+                <TableHead>{ui.contact}</TableHead>
+                <TableHead>{ui.previewViews}</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
-
             <TableBody>
-              {filteredLeads.map(
-                (
-                  lead
-                ) => (
-                  <TableRow
-                    key={
-                      lead.id
-                    }
-                    className={
-                      selectedIds.has(
-                        lead.id
-                      )
-                        ? "bg-muted/30"
-                        : undefined
-                    }
-                  >
-                    <TableCell>
-                      <SelectionCheckbox
-                        checked={
-                          selectedIds.has(
-                            lead.id
-                          )
-                        }
-                        disabled={
-                          busy
-                        }
-                        label={`Select ${lead.companyName}`}
-                        onChange={() =>
-                          toggleLead(
-                            lead.id
-                          )
-                        }
-                      />
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          className="min-w-0 truncate text-left font-medium hover:underline"
-                        >
-                          {
-                            lead.companyName
-                          }
-                        </Link>
-
-                        {hotLeadSummaries[
-                          lead.id
-                        ] ? (
-                          <LeadHotScoreIndicator
-                            summary={
-                              hotLeadSummaries[
-                                lead.id
-                              ]
-                            }
-                            />
-                        ) : null}
-                      </div>
-
-                      <p className="mt-0.5 max-w-[260px] truncate text-xs text-muted-foreground">
-                        {lead.location ??
-                          "—"}
-                      </p>
-                    </TableCell>
-
-                    <TableCell className="text-xs text-muted-foreground">
-                      {lead.campaignName ??
-                        ui.uncategorized}
-                    </TableCell>
-
-                    <TableCell className="whitespace-nowrap text-xs">
-                      <span className="font-semibold">
-                        {lead.websiteScore ??
-                          "—"}
-                      </span>
-
-                      <span className="mx-1.5 text-muted-foreground">
-                        /
-                      </span>
-
-                      <span className="font-semibold">
-                        {lead.opportunityScore ??
-                          "—"}
-                      </span>
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`whitespace-nowrap text-[10px] ${statusClass(
-                          lead.status
-                        )}`}
-                      >
-                        {getLeadStatusLabel(
-                          lead.status,
-                          language
-                        )}
-                      </Badge>
-                    </TableCell>
-
-                    <TableCell>
-                      <span
-                        className={`text-xs font-medium ${priorityClass(
-                          lead.priority
-                        )}`}
-                      >
-                        {getLeadPriorityLabel(
-                          lead.priority,
-                          language
-                        )}
-                      </span>
-                    </TableCell>
-
-                    <TableCell className="max-w-[220px] truncate text-xs text-muted-foreground">
-                      {lead.contactEmail ??
-                        (
-                          lead.contactFormUrl
-                            ? text.common
-                                .contactForm
-                            : text.common
-                                .noEmailFound
-                        )}
-                    </TableCell>
-
-                    <TableCell className="whitespace-nowrap">
-                      {previewSummaries[
-                        lead.id
-                      ] ? (
-                        <LeadPreviewVisitsButton
-                          summary={
-                            previewSummaries[
-                              lead.id
-                            ]
-                          }
-                        />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          —
-                        </span>
-                      )}
-                    </TableCell>
-
-                    <TableCell>
-                      <LeadActions
-                        lead={
-                          lead
-                        }
-                      />
-                    </TableCell>
-                  </TableRow>
-                )
-              )}
-
-              {filteredLeads.length ===
-              0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={
-                      9
-                    }
-                    className="h-40 text-center text-sm text-muted-foreground"
-                  >
-                    {
-                      text.table
-                        .noMatching
-                    }
+              {filteredLeads.map((lead) => (
+                <TableRow key={lead.id} className={selectedIds.has(lead.id) ? "bg-[#EAF0FF] hover:bg-[#E3EAFF]" : undefined}>
+                  <TableCell><SelectionCheckbox checked={selectedIds.has(lead.id)} disabled={busy} label={`Select ${lead.companyName}`} onChange={() => toggleLead(lead.id)} /></TableCell>
+                  <TableCell>
+                    <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">{lead.companyName}</Link>
+                    <p className="mt-0.5 max-w-[260px] truncate text-xs text-[#6B7078]">{lead.location ?? "—"}</p>
                   </TableCell>
+                  <TableCell className="text-xs text-[#6B7078]">{lead.campaignName ?? ui.uncategorized}</TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-xs">{lead.websiteScore ?? "—"} <span className="text-[#B1B5BB]">/</span> {lead.opportunityScore ?? "—"}</TableCell>
+                  <TableCell><Badge variant="outline" className={`border-0 text-[9px] ${statusClass(lead.status)}`}>{getLeadStatusLabel(lead.status, language)}</Badge></TableCell>
+                  <TableCell><span className={`text-xs ${priorityClass(lead.priority)}`}>{getLeadPriorityLabel(lead.priority, language)}</span></TableCell>
+                  <TableCell className="max-w-[220px] truncate text-xs text-[#6B7078]">{lead.contactEmail ?? (lead.contactFormUrl ? text.common.contactForm : text.common.noEmailFound)}</TableCell>
+                  <TableCell>{previewSummaries[lead.id] ? <LeadPreviewVisitsButton summary={previewSummaries[lead.id]} /> : <span className="text-xs text-[#6B7078]">—</span>}</TableCell>
+                  <TableCell><LeadActions lead={lead} /></TableCell>
                 </TableRow>
-              ) : null}
+              ))}
             </TableBody>
           </Table>
-        </div>
-      ) : null}
-
-      {/* ===================================================
-          FOOTER
-      =================================================== */}
-
-      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-        <span>
-          {
-            filteredLeads.length
-          }{" "}
-          {
-            ui.leads
-          }
-
-          {filteredLeads.length !==
-          leads.length
-            ? ` / ${leads.length}`
-            : ""}
-        </span>
-
-        <span>
-          Supabase
-        </span>
-      </div>
+        </section>
+      )}
 
       <BulkOutreachScheduleDialog
-        open={
-          scheduleDialogOpen
-        }
-        leads={
-          leads
-            .filter((lead) =>
-              selectedIds.has(
-                lead.id
-              )
-            )
-            .map((lead) => ({
-              id:
-                lead.id,
-              companyName:
-                lead.companyName,
-              contactEmail:
-                lead.contactEmail,
-            }))
-        }
-        onOpenChange={
-          setScheduleDialogOpen
-        }
-        onScheduled={() => {
-          setSelectedIds(
-            new Set()
-          );
-          router.refresh();
-        }}
+        open={scheduleDialogOpen}
+        leads={leads.filter((lead) => selectedIds.has(lead.id)).map((lead) => ({ id: lead.id, companyName: lead.companyName, contactEmail: lead.contactEmail }))}
+        onOpenChange={setScheduleDialogOpen}
+        onScheduled={() => { setSelectedIds(new Set()); router.refresh(); }}
       />
 
-      {/* ===================================================
-          DELETE DIALOG
-      =================================================== */}
-
-      <AlertDialog
-        open={
-          deleteDialogOpen
-        }
-        onOpenChange={
-          setDeleteDialogOpen
-        }
-      >
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {selectedIds.size ===
-              1
-                ? text.table
-                    .deleteDialogTitleOne
-                : text.table.deleteDialogTitleMany.replace(
-                    "{count}",
-                    String(
-                      selectedIds.size
-                    )
-                  )}
-            </AlertDialogTitle>
-
-            <AlertDialogDescription>
-              {
-                text.table
-                  .deleteDialogDescription
-              }
-            </AlertDialogDescription>
+            <AlertDialogTitle>{ui.deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{ui.deleteDescription.replace("{count}", String(selectedIds.size))}</AlertDialogDescription>
           </AlertDialogHeader>
-
           <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={
-                isDeleting
-              }
-            >
-              {
-                text.common
-                  .cancel
-              }
-            </AlertDialogCancel>
-
-            <AlertDialogAction
-              type="button"
-              variant="destructive"
-              disabled={
-                isDeleting
-              }
-              onClick={
-                handleBulkDelete
-              }
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-
-                  {
-                    text.table
-                      .deleting
-                  }
-                </>
-              ) : (
-                <>
-                  <Trash2 className="size-4" />
-
-                  {
-                    text.table
-                      .deleteLeads
-                  }
-                </>
-              )}
+            <AlertDialogCancel disabled={isDeleting}>{ui.cancel}</AlertDialogCancel>
+            <AlertDialogAction disabled={isDeleting} onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isDeleting ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+              {ui.confirmDelete}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }

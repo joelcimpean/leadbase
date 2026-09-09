@@ -23,6 +23,7 @@ import {
   stopScheduledFollowUps,
   stopSingleScheduledFollowUp,
   updateAutomaticFollowUps,
+  updateFollowUpDelay,
 } from "./actions";
 
 import {
@@ -55,6 +56,7 @@ import {
 } from "@/components/ui/label";
 
 import {
+  listAllScheduledFollowUpsForUser,
   listScheduledFollowUpsForUser,
   type ScheduledFollowUpCandidate,
 } from "@/lib/follow-up-worker";
@@ -70,6 +72,18 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+
+import {
+  CompactAppearanceLanguage,
+  FollowUpDelayControl,
+  IntegrationIcon,
+  SettingsSubLabel,
+  SettingsWorkspace,
+  StatusBadge,
+  WorkspaceIdentity,
+} from "./settings-workspace-client";
+
+import styles from "./settings-precision.module.css";
 
 /* =========================================================
    TYPES
@@ -751,7 +765,14 @@ export default async function SettingsPage({
   let automaticFollowUps =
     false;
 
+  let followUpDelayDays =
+    5;
+
   let manualFollowUps:
+    ScheduledFollowUpCandidate[] =
+    [];
+
+  let allScheduledFollowUps:
     ScheduledFollowUpCandidate[] =
     [];
 
@@ -796,6 +817,7 @@ export default async function SettingsPage({
     const [
       preferenceResult,
       manualCount,
+      allScheduled,
     ] =
       await Promise.all([
         supabase
@@ -803,7 +825,7 @@ export default async function SettingsPage({
             "outreach_preferences"
           )
           .select(
-            "automatic_follow_ups"
+            "automatic_follow_ups, follow_up_delay_days"
           )
           .eq(
             "user_id",
@@ -812,6 +834,10 @@ export default async function SettingsPage({
           .maybeSingle(),
 
         listScheduledFollowUpsForUser(
+          user.id
+        ),
+
+        listAllScheduledFollowUpsForUser(
           user.id
         ),
       ]);
@@ -830,8 +856,26 @@ export default async function SettingsPage({
         ?.automatic_follow_ups ??
       false;
 
+    const storedFollowUpDelayDays =
+      Number(
+        preferenceResult.data
+          ?.follow_up_delay_days
+      );
+
+    followUpDelayDays =
+      Number.isInteger(
+        storedFollowUpDelayDays
+      ) &&
+      storedFollowUpDelayDays >= 1 &&
+      storedFollowUpDelayDays <= 30
+        ? storedFollowUpDelayDays
+        : 5;
+
     manualFollowUps =
       manualCount;
+
+    allScheduledFollowUps =
+      allScheduled;
 
     manualFollowUpCount =
       manualFollowUps.length;
@@ -840,6 +884,12 @@ export default async function SettingsPage({
   const manualFollowUpGroups =
     groupScheduledFollowUps(
       manualFollowUps,
+      language
+    );
+
+  const allScheduledFollowUpGroups =
+    groupScheduledFollowUps(
+      allScheduledFollowUps,
       language
     );
 
@@ -918,996 +968,594 @@ export default async function SettingsPage({
       process.env.OPENAI_API_KEY
     );
 
+  const googlePlacesConfigured =
+    Boolean(
+      process.env.GOOGLE_PLACES_API_KEY
+    );
+
+  let crmLeadCount = 0;
+  let discoveredCompanyCount = 0;
+  let openCandidateCount = 0;
+
+  if (user) {
+    const [
+      leadCountResult,
+      candidateCountResult,
+      openCandidateCountResult,
+    ] = await Promise.all([
+      supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id),
+      supabase
+        .from("lead_candidates")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id),
+      supabase
+        .from("lead_candidates")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("status", "DISCOVERED"),
+    ]);
+
+    if (leadCountResult.error) {
+      console.error("Could not count CRM leads:", leadCountResult.error);
+    }
+    if (candidateCountResult.error) {
+      console.error("Could not count discovered companies:", candidateCountResult.error);
+    }
+    if (openCandidateCountResult.error) {
+      console.error("Could not count open lead candidates:", openCandidateCountResult.error);
+    }
+
+    crmLeadCount = leadCountResult.count ?? 0;
+    discoveredCompanyCount = candidateCountResult.count ?? 0;
+    openCandidateCount = openCandidateCountResult.count ?? 0;
+  }
+
+  const integrationReadyCount =
+    Number(gmailConnected) +
+    Number(openAiConfigured) +
+    Number(googlePlacesConfigured);
+
+  const metadataName =
+    user?.user_metadata?.full_name ??
+    user?.user_metadata?.name;
+
+  const workspaceName =
+    typeof metadataName === "string" && metadataName.trim()
+      ? metadataName.trim()
+      : "Joel Cimpean";
+
+  const workspaceEmail =
+    user?.email ??
+    gmailConnection?.email_address ??
+    "hello@joelcimpean.com";
+
+  const notice =
+    gmailParam === "connected" ? (
+      <span>
+        {language === "de"
+          ? "Gmail wurde verbunden. Postfach und Versandberechtigungen sind aktualisiert."
+          : "Gmail was connected. Mailbox and sending permissions are up to date."}
+      </span>
+    ) : followUpParam ? (
+      <span>
+        {followUpParam === "enabled"
+          ? followUpText.enabledMessage
+          : followUpParam === "disabled"
+            ? followUpText.disabledMessage
+            : followUpParam === "sent"
+              ? `${followUpText.resultSent} ${sentCount} sent · ${skippedCount} skipped · ${failedCount} failed.`
+              : followUpText.errorMessage}
+      </span>
+    ) : undefined;
+
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8 lg:px-10 lg:py-10">
-      {/* ===================================================
-          HEADER
-      =================================================== */}
+    <SettingsWorkspace
+      language={language}
+      integrationReadyCount={integrationReadyCount}
+      integrationTotal={3}
+      notice={notice}
+      general={
+        <GeneralSettingsPanel
+          language={language}
+          workspaceName={workspaceName}
+          workspaceEmail={workspaceEmail}
+        />
+      }
+      integrations={
+        <IntegrationsPanel
+          language={language}
+          gmailConnected={gmailConnected}
+          gmailEmail={gmailConnection?.email_address ?? workspaceEmail}
+          hasGmailSendScope={hasGmailSendScope}
+          hasGmailReadScope={hasGmailReadScope}
+          openAiConfigured={openAiConfigured}
+          googlePlacesConfigured={googlePlacesConfigured}
+        />
+      }
+      automation={
+        <AutomationPanel
+          language={language}
+          text={text}
+          followUpText={followUpText}
+          automaticFollowUps={automaticFollowUps}
+          followUpDelayDays={followUpDelayDays}
+          manualFollowUpCount={manualFollowUpCount}
+          manualFollowUpGroups={manualFollowUpGroups}
+          allScheduledFollowUpCount={allScheduledFollowUps.length}
+          allScheduledFollowUpGroups={allScheduledFollowUpGroups}
+        />
+      }
+      safety={
+        <SafetyPanel
+          language={language}
+          text={text}
+        />
+      }
+      data={
+        <DataPanel
+          language={language}
+          discoveredCompanyCount={discoveredCompanyCount}
+          openCandidateCount={openCandidateCount}
+          crmLeadCount={crmLeadCount}
+        />
+      }
+    />
+  );
+}
 
-      <header className="min-w-0">
-        <p className="text-sm text-muted-foreground">
-          {
-            text.eyebrow
-          }
-        </p>
+function GeneralSettingsPanel({
+  language,
+  workspaceName,
+  workspaceEmail,
+}: {
+  language: "de" | "en";
+  workspaceName: string;
+  workspaceEmail: string;
+}) {
+  return (
+    <>
+      <CompactAppearanceLanguage />
+      <div className={styles.generalRows} style={{ paddingTop: 0 }}>
+        <WorkspaceIdentity
+          name={workspaceName}
+          email={workspaceEmail}
+          language={language}
+        />
+      </div>
+    </>
+  );
+}
 
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {
-            text.title
-          }
-        </h1>
+function IntegrationsPanel({
+  language,
+  gmailConnected,
+  gmailEmail,
+  hasGmailSendScope,
+  hasGmailReadScope,
+  openAiConfigured,
+  googlePlacesConfigured,
+}: {
+  language: "de" | "en";
+  gmailConnected: boolean;
+  gmailEmail: string;
+  hasGmailSendScope: boolean;
+  hasGmailReadScope: boolean;
+  openAiConfigured: boolean;
+  googlePlacesConfigured: boolean;
+}) {
+  const de = language === "de";
 
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          {
-            text.description
-          }
-        </p>
-      </header>
+  const gmailCapabilities = [
+    hasGmailSendScope ? (de ? "Senden" : "Send") : null,
+    hasGmailReadScope ? (de ? "Posteingang-Sync" : "Inbox sync") : null,
+    gmailConnected ? "OAuth" : null,
+  ].filter(Boolean).join(", ");
 
-      {/* ===================================================
-          GMAIL MESSAGE
-      =================================================== */}
+  return (
+    <div className={styles.panelPad}>
+      <div className={styles.integrationRow}>
+        <div className={styles.integrationRowTop}>
+          <IntegrationIcon>
+            <Mail size={16} strokeWidth={1.8} />
+          </IntegrationIcon>
+          <div className={styles.integrationMain}>
+            <div className={styles.integrationTitleLine}>
+              <span className={styles.integrationTitle}>Gmail</span>
+              <StatusBadge state={gmailConnected ? "ready" : "quiet"}>
+                {gmailConnected ? (de ? "Verbunden" : "Connected") : (de ? "Nicht verbunden" : "Not connected")}
+              </StatusBadge>
+            </div>
+            <div className={styles.integrationMeta}>
+              {gmailEmail}
+              {gmailConnected && gmailCapabilities ? ` · ${gmailCapabilities}` : ""}
+            </div>
+          </div>
+          <a href="/api/google/gmail/connect" className={styles.actionButton}>
+            <RefreshCw size={13} strokeWidth={1.8} />
+            {gmailConnected ? (de ? "Neu verbinden" : "Reconnect") : (de ? "Verbinden" : "Connect")}
+          </a>
+        </div>
+      </div>
 
-      {gmailParam ===
-      "connected" ? (
-        <div className="mt-5 flex min-w-0 items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 sm:mt-6 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+      <div className={styles.integrationRow}>
+        <div className={styles.integrationRowTop}>
+          <IntegrationIcon>
+            <Bot size={16} strokeWidth={1.8} />
+          </IntegrationIcon>
+          <div className={styles.integrationMain}>
+            <div className={styles.integrationTitleLine}>
+              <span className={styles.integrationTitle}>{de ? "KI · OpenAI" : "AI · OpenAI"}</span>
+              <StatusBadge state={openAiConfigured ? "ready" : "warning"}>
+                {openAiConfigured ? (de ? "Konfiguriert" : "Configured") : (de ? "Nicht konfiguriert" : "Not configured")}
+              </StatusBadge>
+            </div>
+            <div className={styles.integrationMeta}>
+              {openAiConfigured
+                ? (de ? "Responses API · serverseitiger API-Key erkannt" : "Responses API · server-side API key detected")
+                : (de ? "Serverseitiger API-Key fehlt" : "Server-side API key missing")}
+            </div>
+          </div>
+          <SettingsSubLabel>{de ? "Kein Key im Browser" : "No key in browser"}</SettingsSubLabel>
+        </div>
+        <div className={styles.chipRow}>
+          <span className={styles.chipLabel}>{de ? "Verwendet für" : "Used for"}</span>
+          <span className={styles.chip}>{de ? "Website-Analyse" : "Website analysis"}</span>
+          <span className={styles.chip}>{de ? "Unternehmens-Recherche" : "Company research"}</span>
+          <span className={styles.chip}>{de ? "Outreach-Entwürfe" : "Outreach drafts"}</span>
+          <span className={styles.chip}>{de ? "Angebots-Autofill" : "Proposal autofill"}</span>
+        </div>
+      </div>
 
-          <div className="min-w-0">
-            <p className="text-sm font-medium">
-              {
-                text.gmailConnectedTitle
-              }
-            </p>
-
-            <p className="mt-0.5 break-words text-xs leading-5 opacity-80">
-              {
-                text.gmailConnectedDescription
-              }
-            </p>
+      <div className={styles.integrationRow}>
+        <div className={styles.integrationRowTop}>
+          <IntegrationIcon>
+            <MapPin size={16} strokeWidth={1.8} />
+          </IntegrationIcon>
+          <div className={styles.integrationMain}>
+            <div className={styles.integrationTitleLine}>
+              <span className={styles.integrationTitle}>{de ? "Lead-Suche" : "Lead discovery"}</span>
+            </div>
+            <div className={styles.integrationMeta}>
+              {de
+                ? "Quellen, die zum Finden und Recherchieren von Unternehmen verwendet werden."
+                : "Sources used to find and research companies."}
+            </div>
           </div>
         </div>
-      ) : null}
 
-      {followUpParam ? (
-        <div
-          className={`mt-5 flex min-w-0 items-start gap-3 rounded-xl border px-4 py-3 sm:mt-6 ${
-            followUpParam ===
-              "send-error" ||
-            followUpParam ===
-              "preference-error" ||
-            failedCount >
-              0
-              ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-          }`}
-        >
-          {followUpParam ===
-            "send-error" ||
-          followUpParam ===
-            "preference-error" ||
-          failedCount >
-            0 ? (
-            <Clock3 className="mt-0.5 size-4 shrink-0" />
-          ) : (
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-          )}
-
-          <div className="min-w-0">
-            <p className="text-sm font-medium">
-              {followUpParam ===
-              "enabled"
-                ? followUpText.enabledMessage
-                : followUpParam ===
-                    "disabled"
-                  ? followUpText.disabledMessage
-                  : followUpParam ===
-                      "sent"
-                    ? `${followUpText.resultSent} ${sentCount} sent · ${skippedCount} skipped · ${failedCount} failed.`
-                    : followUpText.errorMessage}
-            </p>
+        <div className={styles.sourceList}>
+          <div className={styles.sourceItem}>
+            <MapPin size={14} strokeWidth={1.8} />
+            <div className={styles.sourceCopy}>
+              <strong>Google Places</strong>
+              <span>{de ? "Lokale Unternehmenssuche" : "Local company discovery"}</span>
+            </div>
+            <StatusBadge state={googlePlacesConfigured ? "ready" : "warning"}>
+              {googlePlacesConfigured ? (de ? "Aktiv" : "Active") : (de ? "Fehlt" : "Missing")}
+            </StatusBadge>
+          </div>
+          <div className={styles.sourceItem}>
+            <SlidersHorizontal size={14} strokeWidth={1.8} />
+            <div className={styles.sourceCopy}>
+              <strong>{de ? "Website + KI" : "Website + AI"}</strong>
+              <span>{de ? "Strukturelle und visuelle Analyse" : "Structural and visual analysis"}</span>
+            </div>
+            <StatusBadge state={openAiConfigured ? "ready" : "warning"}>
+              {openAiConfigured ? (de ? "Aktiv" : "Active") : (de ? "Fehlt" : "Missing")}
+            </StatusBadge>
+          </div>
+          <div className={styles.sourceItem}>
+            <MonitorCog size={14} strokeWidth={1.8} />
+            <div className={styles.sourceCopy}>
+              <strong>{de ? "Website-Preview / Screenshots" : "Website preview / screenshots"}</strong>
+              <span>{de ? "Erfassung real gerenderter Seiten" : "Capture of real rendered pages"}</span>
+            </div>
+            <StatusBadge state="paused">{de ? "Pausiert" : "Paused"}</StatusBadge>
           </div>
         </div>
-      ) : null}
+      </div>
+    </div>
+  );
+}
 
-      {/* ===================================================
-          SETTINGS
-      =================================================== */}
+type SettingsCopy =
+  | typeof languageCopy["de"]["settings"]
+  | typeof languageCopy["en"]["settings"];
 
-      <div className="mt-6 space-y-4 sm:mt-8 sm:space-y-6">
-        {/* =================================================
-            APPEARANCE
-        ================================================= */}
+type FollowUpCopy = {
+  automationTitle: string;
+  automationDescription: string;
+  automatic: string;
+  enabled: string;
+  disabled: string;
+  enable: string;
+  disable: string;
+  enabling: string;
+  disabling: string;
+  automaticNote: string;
+  dueNow: string;
+  dueDescription: string;
+  sendNow: string;
+  sending: string;
+  due: string;
+  originallyPlanned: string;
+  selectHint: string;
+  sendSelected: string;
+  stop: string;
+  stopSelected: string;
+  noneDue: string;
+  resultSent: string;
+  enabledMessage: string;
+  disabledMessage: string;
+  errorMessage: string;
+};
 
-        <SettingsSection
-          icon={
-            MonitorCog
-          }
-          title={
-            text.appearanceTitle
-          }
-          description={
-            text.appearanceDescription
-          }
-        >
-          <div className="min-w-0">
-            <ThemeSelector />
-          </div>
+function AutomationPanel({
+  language,
+  text,
+  followUpText,
+  automaticFollowUps,
+  followUpDelayDays,
+  manualFollowUpCount,
+  manualFollowUpGroups,
+  allScheduledFollowUpCount,
+  allScheduledFollowUpGroups,
+}: {
+  language: "de" | "en";
+  text: SettingsCopy;
+  followUpText: FollowUpCopy;
+  automaticFollowUps: boolean;
+  followUpDelayDays: number;
+  manualFollowUpCount: number;
+  manualFollowUpGroups: FollowUpGroup[];
+  allScheduledFollowUpCount: number;
+  allScheduledFollowUpGroups: FollowUpGroup[];
+}) {
+  const de = language === "de";
 
-          <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            {
-              text.appearanceNote
-            }
-          </p>
-        </SettingsSection>
+  return (
+    <div id="follow-ups" className={styles.panelPad}>
+      <div className={styles.automationRow}>
+        <div className={styles.automationCopy}>
+          <strong>{followUpText.automatic}</strong>
+          <span>{followUpText.automaticNote}</span>
+        </div>
+        <form action={updateAutomaticFollowUps}>
+          <input type="hidden" name="enabled" value={automaticFollowUps ? "false" : "true"} />
+          <PendingSubmitButton
+            pendingText={automaticFollowUps ? followUpText.disabling : followUpText.enabling}
+            className={styles.actionButton}
+          >
+            <Zap size={13} strokeWidth={1.8} />
+            {automaticFollowUps ? followUpText.disable : followUpText.enable}
+          </PendingSubmitButton>
+        </form>
+      </div>
 
-        {/* =================================================
-            GMAIL
-        ================================================= */}
+      <div className={styles.automationRow}>
+        <div className={styles.automationCopy}>
+          <strong>{text.defaultFollowUpDelay}</strong>
+          <span>
+            {de
+              ? "Tage nach einer neu gesendeten Outreach-Mail, bevor das Standard-Follow-up geplant wird. Bereits geplante Follow-ups werden nicht nachträglich verschoben."
+              : "Days after a newly sent outreach email before the default follow-up is scheduled. Existing scheduled follow-ups are not moved retroactively."}
+          </span>
+        </div>
+        <FollowUpDelayControl
+          value={followUpDelayDays}
+          language={language}
+          action={updateFollowUpDelay}
+        />
+      </div>
 
-        <SettingsSection
-          icon={
-            Mail
-          }
-          title={
-            text.gmailTitle
-          }
-          description={
-            text.gmailDescription
-          }
-        >
-          <div className="flex min-w-0 flex-col justify-between gap-4 rounded-xl border p-4 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="min-w-0 break-all text-sm font-medium">
-                  {gmailConnection
-                    ?.email_address ??
-                    "hello@joelcimpean.com"}
-                </p>
+      <div className={styles.followUpBox}>
+        <div className={styles.followUpBoxHeader}>
+          <strong>{followUpText.dueNow}</strong>
+          <span>{manualFollowUpCount} {followUpText.due}</span>
+        </div>
 
-                {gmailConnected ? (
-                  <Badge
-                    variant="outline"
-                    className="shrink-0 border-emerald-200 bg-emerald-50 font-medium text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  >
-                    <CheckCircle2 className="mr-1 size-3" />
-
-                    {
-                      text.connected
-                    }
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="shrink-0"
-                  >
-                    {
-                      text.notConnected
-                    }
-                  </Badge>
-                )}
-              </div>
-
-              {gmailConnected ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <MiniStatus
-                    label={
-                      text.sendAccess
-                    }
-                    active={
-                      hasGmailSendScope
-                    }
-                  />
-
-                  <MiniStatus
-                    label={
-                      text.inboxSync
-                    }
-                    active={
-                      hasGmailReadScope
-                    }
-                  />
-
-                  <MiniStatus
-                    label={
-                      text.oauth
-                    }
-                    active
-                  />
-                </div>
-              ) : (
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {
-                    text.gmailNotConnectedNote
-                  }
-                </p>
-              )}
-            </div>
-
-            <a
-              href="/api/google/gmail/connect"
-              className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted sm:h-9 sm:w-auto"
-            >
-              {gmailConnected ? (
-                <>
-                  <RefreshCw className="size-3.5" />
-
-                  {
-                    text.reconnect
-                  }
-                </>
-              ) : (
-                text.connectGmail
-              )}
-            </a>
-          </div>
-        </SettingsSection>
-
-        {/* =================================================
-            AI
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            Bot
-          }
-          title={
-            text.aiTitle
-          }
-          description={
-            text.aiDescription
-          }
-        >
-          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-            <SettingBox
-              label={
-                text.provider
-              }
-              value="OpenAI"
-              note="Responses API"
-            />
-
-            <SettingBox
-              label={
-                text.status
-              }
-              value={
-                openAiConfigured
-                  ? text.configured
-                  : text.notConfigured
-              }
-              note={
-                openAiConfigured
-                  ? text.serverKeyDetected
-                  : text.serverKeyRequired
-              }
-            />
-          </div>
-        </SettingsSection>
-
-        {/* =================================================
-            LEAD DISCOVERY
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            MapPin
-          }
-          title={
-            text.discoveryTitle
-          }
-          description={
-            text.discoveryDescription
-          }
-        >
-          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-            <SettingBox
-              label={
-                text.localDiscovery
-              }
-              value="Google Places"
-              note={
-                text.businessDiscovery
-              }
-            />
-
-            <SettingBox
-              label={
-                text.research
-              }
-              value="Website + AI"
-              note={
-                text.structuralVisualAnalysis
-              }
-            />
-          </div>
-        </SettingsSection>
-
-        {/* =================================================
-            RESET LEAD DISCOVERY
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            Trash2
-          }
-          title={
-            resetText.title
-          }
-          description={
-            resetText.description
-          }
-        >
-          <LeadSearchReset />
-        </SettingsSection>
-
-        {/* =================================================
-            LANGUAGE
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            Globe2
-          }
-          title={
-            text.languageTitle
-          }
-          description={
-            text.languageDescription
-          }
-        >
-          <LanguageSelector />
-
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            {
-              text.languageNote
-            }
-          </p>
-        </SettingsSection>
-
-        {/* =================================================
-            FOLLOW-UP AUTOMATION
-        ================================================= */}
-
-        <div
-          id="follow-ups"
-          className="scroll-mt-6"
-        >
-        <SettingsSection
-          icon={
-            Zap
-          }
-          title={
-            followUpText.automationTitle
-          }
-          description={
-            followUpText.automationDescription
-          }
-        >
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <div className="min-w-0 rounded-2xl border border-border/70 bg-muted/[0.16] p-4 transition-colors hover:bg-muted/[0.24]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {
-                      followUpText.automatic
-                    }
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {
-                      followUpText.automaticNote
-                    }
-                  </p>
-                </div>
-
-                <Badge
-                  variant="outline"
-                  className={
-                    automaticFollowUps
-                      ? "shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                      : "shrink-0"
-                  }
-                >
-                  {automaticFollowUps
-                    ? followUpText.enabled
-                    : followUpText.disabled}
-                </Badge>
-              </div>
-
-              <form
-                action={
-                  updateAutomaticFollowUps
-                }
-                className="mt-4"
-              >
-                <input
-                  type="hidden"
-                  name="enabled"
-                  value={
-                    automaticFollowUps
-                      ? "false"
-                      : "true"
-                  }
-                />
-
-                <PendingSubmitButton
-                  pendingText={
-                    automaticFollowUps
-                      ? followUpText.disabling
-                      : followUpText.enabling
-                  }
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-                >
-                  {
-                    automaticFollowUps
-                      ? followUpText.disable
-                      : followUpText.enable
-                  }
-                </PendingSubmitButton>
-              </form>
-            </div>
-
-            <div className="min-w-0 rounded-2xl border border-border/70 bg-muted/[0.16] p-4 transition-colors hover:bg-muted/[0.24]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {
-                      followUpText.dueNow
-                    }
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {
-                      followUpText.dueDescription
-                    }
-                  </p>
-                </div>
-
-                <Badge
-                  variant="outline"
-                  className={
-                    manualFollowUpCount >
-                    0
-                      ? "shrink-0 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-                      : "shrink-0"
-                  }
-                >
-                  {
-                    manualFollowUpCount
-                  }{" "}
-                  {
-                    followUpText.due
-                  }
-                </Badge>
-              </div>
-
-              {manualFollowUpCount >
-              0 ? (
-                <form
-                  action={
-                    sendScheduledFollowUpsNow
-                  }
-                  className="mt-4"
-                >
-                  <div className="space-y-2">
-                    {manualFollowUpGroups.map(
-                      (
-                        group
-                      ) => (
-                        <details
-                          key={
-                            group.id
-                          }
-                          open={
-                            group.defaultOpen
-                          }
-                          className="group overflow-hidden rounded-lg border bg-background"
-                        >
-                          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
-                            <span className="min-w-0">
-                              <span className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-semibold">
-                                  {
-                                    group.label
-                                  }
-                                </span>
-
-                                <Badge
-                                  variant="outline"
-                                  className="h-5 px-1.5 text-[10px] font-medium"
-                                >
-                                  {
-                                    group.items.length
-                                  }
-                                </Badge>
-                              </span>
-
-                              <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                                {
-                                  group.description
-                                }
-                              </span>
-                            </span>
-
-                            <span className="shrink-0 text-xs text-muted-foreground transition-transform group-open:rotate-180">
-                              ↓
-                            </span>
-                          </summary>
-
-                          <div className="border-t">
-                            {group.items.map(
-                              (
-                                followUp,
-                                index
-                              ) => (
-                                <div
-                                  key={
-                                    followUp.leadId
-                                  }
-                                  className={`flex items-start gap-3 px-3 py-3 transition-colors hover:bg-muted/50 ${
-                                    index >
-                                    0
-                                      ? "border-t"
-                                      : ""
-                                  }`}
-                                >
-                                  <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-                                    <input
-                                      type="checkbox"
-                                      name="leadIds"
-                                      value={
-                                        followUp.leadId
-                                      }
-                                      className="mt-0.5 size-4 shrink-0 accent-[#002BBA]"
-                                    />
-
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-sm font-medium">
-                                        {
-                                          followUp.companyName
-                                        }
-                                      </span>
-
-                                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs leading-5 text-muted-foreground">
-                                        <span>
-                                          {
-                                            followUpText.originallyPlanned
-                                          }: {
-                                            formatBerlinDateTime(
-                                              followUp.nextFollowUpAt,
-                                              language
-                                            )
-                                          }
-                                        </span>
-
-                                        <span className="font-medium text-foreground/70">
-                                          · {
-                                            formatRelativeFollowUpTime(
-                                              followUp.nextFollowUpAt,
-                                              language
-                                            )
-                                          }
-                                        </span>
-                                      </span>
-                                    </span>
-                                  </label>
-
-                                  <button
-                                    type="submit"
-                                    formAction={
-                                      stopSingleScheduledFollowUp.bind(
-                                        null,
-                                        followUp.leadId
-                                      )
-                                    }
-                                    className="shrink-0 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-900/60 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-                                  >
-                                    {
-                                      followUpText.stop
-                                    }
-                                  </button>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </details>
-                      )
-                    )}
-                  </div>
-
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    {
-                      followUpText.selectHint
-                    }
-                  </p>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <PendingSubmitButton
-                      pendingText={
-                        followUpText.sending
-                      }
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all duration-200 hover:-translate-y-px hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15"
-                    >
-                      <Send className="size-3.5" />
-
-                      {
-                        followUpText.sendSelected
-                      }
-                    </PendingSubmitButton>
-
+        {manualFollowUpCount > 0 ? (
+          <form action={sendScheduledFollowUpsNow}>
+            {manualFollowUpGroups.map((group) => (
+              <details key={group.id} className={styles.followUpGroup} open={group.defaultOpen}>
+                <summary>
+                  <Clock3 size={13} strokeWidth={1.8} />
+                  <span>{group.label}</span>
+                  <span>{group.items.length}</span>
+                </summary>
+                {group.items.map((followUp) => (
+                  <div key={followUp.leadId} className={styles.followUpItem}>
+                    <label>
+                      <input type="checkbox" name="leadIds" value={followUp.leadId} />
+                      <span className={styles.followUpItemCopy}>
+                        <strong>{followUp.companyName}</strong>
+                        <span>
+                          {followUpText.originallyPlanned}: {formatBerlinDateTime(followUp.nextFollowUpAt, language)} · {formatRelativeFollowUpTime(followUp.nextFollowUpAt, language)}
+                        </span>
+                      </span>
+                    </label>
                     <button
                       type="submit"
-                      formAction={
-                        stopScheduledFollowUps
-                      }
-                      className="inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-900/60 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                      formAction={stopSingleScheduledFollowUp.bind(null, followUp.leadId)}
+                      className={styles.actionButtonWarn}
                     >
-                      {
-                        followUpText.stopSelected
-                      }
+                      {followUpText.stop}
                     </button>
                   </div>
-                </form>
-              ) : (
-                <p className="mt-4 text-xs text-muted-foreground">
-                  {
-                    followUpText.noneDue
-                  }
-                </p>
-              )}
+                ))}
+              </details>
+            ))}
+
+            <div className={styles.followUpActions}>
+              <PendingSubmitButton pendingText={followUpText.sending} className={styles.actionButtonPrimary}>
+                <Send size={13} strokeWidth={1.8} />
+                {followUpText.sendSelected}
+              </PendingSubmitButton>
+              <button type="submit" formAction={stopScheduledFollowUps} className={styles.actionButtonQuiet}>
+                {followUpText.stopSelected}
+              </button>
             </div>
+          </form>
+        ) : (
+          <div className={styles.followUpItem}>
+            <span className={styles.integrationMeta}>{followUpText.noneDue}</span>
           </div>
-        </SettingsSection>
-        </div>
-
-        {/* =================================================
-            OUTREACH
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            Send
-          }
-          title={
-            text.outreachTitle
-          }
-          description={
-            text.outreachDescription
-          }
-        >
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="min-w-0 space-y-2">
-              <Label htmlFor="follow-up-days">
-                {
-                  text.defaultFollowUpDelay
-                }
-              </Label>
-
-              <Input
-                id="follow-up-days"
-                type="number"
-                defaultValue="5"
-                disabled
-                className="h-11 sm:h-9"
-              />
-
-              <p className="text-xs leading-5 text-muted-foreground">
-                {
-                  text.followUpDelayNote
-                }
-              </p>
-            </div>
-
-            <div className="min-w-0 space-y-2">
-              <Label>
-                {
-                  text.sendingMode
-                }
-              </Label>
-
-              <div className="flex min-h-11 items-center rounded-lg border px-3 py-2 text-sm sm:min-h-9 sm:py-0">
-                {
-                  text.humanApprovalRequired
-                }
-              </div>
-
-              <p className="text-xs leading-5 text-muted-foreground">
-                {
-                  text.automaticSendingDisabled
-                }
-              </p>
-            </div>
-          </div>
-        </SettingsSection>
-
-        {/* =================================================
-            COMPLIANCE
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            ShieldCheck
-          }
-          title={
-            text.complianceTitle
-          }
-          description={
-            text.complianceDescription
-          }
-        >
-          <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-            <SafetyItem
-              text={
-                text.humanApprovalBeforeSending
-              }
-            />
-
-            <SafetyItem
-              text={
-                text.doNotContactSuppression
-              }
-            />
-
-            <SafetyItem
-              text={
-                text.noFabricatedContactInformation
-              }
-            />
-
-            <SafetyItem
-              text={
-                text.noTrackingPixels
-              }
-            />
-
-            <SafetyItem
-              text={
-                text.noDeceptiveSubjects
-              }
-            />
-
-            <SafetyItem
-              text={
-                text.activitySendingHistory
-              }
-            />
-          </div>
-        </SettingsSection>
-
-        {/* =================================================
-            DELIVERABILITY
-        ================================================= */}
-
-        <SettingsSection
-          icon={
-            SlidersHorizontal
-          }
-          title={
-            text.deliverabilityTitle
-          }
-          description={
-            text.deliverabilityDescription
-          }
-        >
-          <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-            <DeliverabilityBox
-              label="SPF"
-              notChecked={
-                text.notChecked
-              }
-              verificationLater={
-                text.verificationLater
-              }
-            />
-
-            <DeliverabilityBox
-              label="DKIM"
-              notChecked={
-                text.notChecked
-              }
-              verificationLater={
-                text.verificationLater
-              }
-            />
-
-            <DeliverabilityBox
-              label="DMARC"
-              notChecked={
-                text.notChecked
-              }
-              verificationLater={
-                text.verificationLater
-              }
-            />
-          </div>
-        </SettingsSection>
+        )}
       </div>
-    </div>
-  );
-}
 
-/* =========================================================
-   SETTINGS SECTION
-========================================================= */
+      <details className={styles.allFollowUps}>
+        <summary>
+          <span>
+            <Clock3 size={13} strokeWidth={1.8} />
+            {de ? "Alle geplanten Follow-ups ansehen" : "View all scheduled follow-ups"}
+          </span>
+          <span>{allScheduledFollowUpCount}</span>
+        </summary>
 
-function SettingsSection({
-  icon: Icon,
-  title,
-  description,
-  children,
-}: {
-  icon:
-    React.ElementType;
+        {allScheduledFollowUpCount > 0 ? (
+          <div className={styles.allFollowUpsBody}>
+            {allScheduledFollowUpGroups.map((group) => (
+              <div key={group.id} className={styles.allFollowUpGroup}>
+                <div className={styles.allFollowUpGroupHeader}>
+                  <strong>{group.label}</strong>
+                  <span>{group.items.length}</span>
+                </div>
 
-  title: string;
-
-  description: string;
-
-  children:
-    React.ReactNode;
-}) {
-  return (
-    <Card className="min-w-0 border-border/70 bg-card/95 shadow-[0_1px_2px_rgba(0,0,0,0.025),0_12px_36px_rgba(0,0,0,0.025)]">
-      <CardContent className="p-0">
-        <div className="flex min-w-0 gap-3 border-b p-4 sm:gap-4 sm:p-5">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/10 bg-primary/[0.055] text-primary shadow-sm shadow-primary/5">
-            <Icon className="size-4" />
+                {group.items.map((followUp) => (
+                  <a
+                    key={followUp.leadId}
+                    href={`/leads/${followUp.leadId}`}
+                    className={styles.allFollowUpItem}
+                  >
+                    <span className={styles.followUpItemCopy}>
+                      <strong>{followUp.companyName}</strong>
+                      <span>
+                        {formatBerlinDateTime(followUp.nextFollowUpAt, language)} · {formatRelativeFollowUpTime(followUp.nextFollowUpAt, language)}
+                      </span>
+                    </span>
+                    {followUp.smartFollowUpMode ? (
+                      <span className={styles.followUpModeBadge}>{followUp.smartFollowUpMode}</span>
+                    ) : null}
+                  </a>
+                ))}
+              </div>
+            ))}
           </div>
-
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">
-              {
-                title
-              }
-            </h2>
-
-            <p className="mt-1 max-w-2xl break-words text-sm leading-6 text-muted-foreground">
-              {
-                description
-              }
-            </p>
+        ) : (
+          <div className={styles.allFollowUpsEmpty}>
+            {de ? "Aktuell sind keine Follow-ups geplant." : "There are currently no scheduled follow-ups."}
           </div>
-        </div>
-
-        <div className="min-w-0 p-4 sm:p-5">
-          {
-            children
-          }
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/* =========================================================
-   SETTING BOX
-========================================================= */
-
-function SettingBox({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-
-  value: string;
-
-  note: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-2xl border border-border/70 bg-muted/[0.16] p-4 transition-colors hover:bg-muted/[0.24]">
-      <p className="text-xs font-medium text-muted-foreground">
-        {
-          label
-        }
-      </p>
-
-      <p className="mt-2 break-words text-sm font-medium">
-        {
-          value
-        }
-      </p>
-
-      <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
-        {
-          note
-        }
-      </p>
+        )}
+      </details>
     </div>
   );
 }
 
-/* =========================================================
-   MINI STATUS
-========================================================= */
-
-function MiniStatus({
-  label,
-  active,
-}: {
-  label: string;
-
-  active: boolean;
-}) {
-  return (
-    <div className="inline-flex min-h-7 items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-[11px] text-muted-foreground">
-      <span
-        className={
-          active
-            ? "size-1.5 shrink-0 rounded-full bg-emerald-500"
-            : "size-1.5 shrink-0 rounded-full bg-zinc-400"
-        }
-      />
-
-      {
-        label
-      }
-    </div>
-  );
-}
-
-/* =========================================================
-   SAFETY
-========================================================= */
-
-function SafetyItem({
+function SafetyPanel({
+  language,
   text,
 }: {
-  text: string;
+  language: "de" | "en";
+  text: SettingsCopy;
 }) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 rounded-lg border p-3">
-      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+  const de = language === "de";
+  const safetyItems = [
+    text.humanApprovalBeforeSending,
+    text.doNotContactSuppression,
+    text.noFabricatedContactInformation,
+    text.noTrackingPixels,
+    text.noDeceptiveSubjects,
+    text.activitySendingHistory,
+  ];
 
-      <span className="break-words text-sm leading-5">
-        {
-          text
-        }
-      </span>
+  return (
+    <div className={styles.panelPadData}>
+      <div className={styles.safetyGrid}>
+        {safetyItems.map((item) => (
+          <div key={item} className={styles.safetyItem}>
+            <span className={styles.safetyCheck}>
+              <CheckCircle2 size={12} strokeWidth={2} />
+            </span>
+            {item}
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.deliverability}>
+        <div className={styles.sectionKicker}>{text.deliverabilityTitle}</div>
+        <div className={styles.deliveryList}>
+          {["SPF", "DKIM", "DMARC"].map((label) => (
+            <div key={label} className={styles.deliveryItem}>
+              <strong>{label}</strong>
+              <span>{text.notChecked}</span>
+            </div>
+          ))}
+        </div>
+        <p className={styles.deliveryNote}>
+          {de
+            ? "Die automatische DNS-Prüfung ist noch nicht implementiert – die Werte bleiben bis dahin unverifiziert."
+            : "Automatic DNS verification is not implemented yet, so these values remain unverified for now."}
+        </p>
+      </div>
     </div>
   );
 }
 
-/* =========================================================
-   DELIVERABILITY
-========================================================= */
-
-function DeliverabilityBox({
-  label,
-  notChecked,
-  verificationLater,
+function DataPanel({
+  language,
+  discoveredCompanyCount,
+  openCandidateCount,
+  crmLeadCount,
 }: {
-  label: string;
-
-  notChecked: string;
-
-  verificationLater: string;
+  language: "de" | "en";
+  discoveredCompanyCount: number;
+  openCandidateCount: number;
+  crmLeadCount: number;
 }) {
-  return (
-    <div className="min-w-0 rounded-2xl border border-border/70 bg-muted/[0.16] p-4 transition-colors hover:bg-muted/[0.24]">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">
-          {
-            label
-          }
-        </p>
+  const de = language === "de";
 
-        <Badge
-          variant="outline"
-          className="shrink-0"
-        >
-          {
-            notChecked
-          }
-        </Badge>
+  const rows = [
+    {
+      label: de ? "Gefundene Unternehmen" : "Discovered companies",
+      note: de ? "Suchhistorie, die Duplikate in neuen Suchen verhindert." : "Search history that prevents duplicates in new searches.",
+      value: discoveredCompanyCount,
+    },
+    {
+      label: de ? "Offene Suchkandidaten" : "Open search candidates",
+      note: de ? "Ergebnisse, die noch auf Prüfung warten." : "Results still waiting for review.",
+      value: openCandidateCount,
+    },
+    {
+      label: de ? "CRM-Leads" : "CRM leads",
+      note: de ? "Bleiben bei einem Reset vollständig erhalten." : "Remain fully intact during a reset.",
+      value: crmLeadCount,
+    },
+  ];
+
+  return (
+    <div className={styles.panelPadData}>
+      <div className={styles.dataList}>
+        {rows.map((row) => (
+          <div key={row.label} className={styles.dataItem}>
+            <div className={styles.dataItemCopy}>
+              <strong>{row.label}</strong>
+              <span>{row.note}</span>
+            </div>
+            <span className={styles.dataValue}>{row.value}</span>
+          </div>
+        ))}
       </div>
 
-      <p className="mt-3 text-xs leading-5 text-muted-foreground">
-        {
-          verificationLater
-        }
-      </p>
+      <div className={styles.criticalArea}>
+        <div className={styles.criticalLabel}>
+          <Clock3 size={14} strokeWidth={1.8} />
+          <span>{de ? "Kritischer Bereich" : "Critical area"}</span>
+        </div>
+        <LeadSearchReset />
+      </div>
     </div>
   );
 }

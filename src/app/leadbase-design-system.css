@@ -1,0 +1,656 @@
+/* =========================================================
+   LEADBASE DESIGN FOUNDATION — PHASE 10A
+
+   Visual source of truth:
+   approved Leadbase dashboard / Claude design.
+
+   This file loads AFTER globals.css so the existing app keeps
+   all generated Bklit/shadcn styles while the Leadbase tokens
+   below become the global visual language.
+========================================================= */
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-heading: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* =========================================================
+   LIGHT TOKENS
+========================================================= */
+
+:root {
+  --background: #F6F7F9;
+  --foreground: #0B0C0E;
+
+  --card: #FFFFFF;
+  --card-foreground: #0B0C0E;
+
+  --popover: #FFFFFF;
+  --popover-foreground: #0B0C0E;
+
+  --primary: #002BBA;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #F3F4F6;
+  --secondary-foreground: #20242A;
+
+  --muted: #F7F8FA;
+  --muted-foreground: #6B7078;
+
+  --accent: #EAEEFB;
+  --accent-foreground: #002BBA;
+
+  --destructive: #C83A3A;
+
+  --border: rgba(11, 12, 14, 0.08);
+  --input: rgba(11, 12, 14, 0.10);
+  --ring: #002BBA;
+
+  --radius: 0.625rem;
+
+  --sidebar: #FBFBFC;
+  --sidebar-foreground: #0B0C0E;
+  --sidebar-primary: #002BBA;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EAEEFB;
+  --sidebar-accent-foreground: #002BBA;
+  --sidebar-border: rgba(11, 12, 14, 0.07);
+  --sidebar-ring: #002BBA;
+
+  /* Bklit / data visualization */
+  --chart-1: #F1F3FB;
+  --chart-2: #D5DCF5;
+  --chart-3: #9FB0EA;
+  --chart-4: #4C66D4;
+  --chart-5: #002BBA;
+
+  --chart-scale-01: #F1F3FB;
+  --chart-scale-02: #D5DCF5;
+  --chart-scale-03: #9FB0EA;
+  --chart-scale-04: #4C66D4;
+  --chart-scale-05: #002BBA;
+
+  /* Leadbase semantic foundation */
+  --lb-canvas: #EFF0F3;
+  --lb-page: #F6F7F9;
+  --lb-surface: #FFFFFF;
+  --lb-surface-subtle: #F7F8FA;
+  --lb-text: #0B0C0E;
+  --lb-text-secondary: #40454E;
+  --lb-text-muted: #6B7078;
+  --lb-border: rgba(11, 12, 14, 0.08);
+  --lb-border-strong: rgba(11, 12, 14, 0.13);
+
+  --lb-radius-control: 10px;
+  --lb-radius-badge: 6px;
+  --lb-radius-row: 11px;
+  --lb-radius-surface: 16px;
+  --lb-radius-frame: 22px;
+
+  --lb-shadow-xs: 0 1px 2px rgba(11, 12, 14, 0.03);
+  --lb-shadow-sm:
+    0 1px 2px rgba(11, 12, 14, 0.035),
+    0 6px 18px rgba(11, 12, 14, 0.025);
+  --lb-shadow-overlay:
+    0 24px 60px -18px rgba(11, 12, 14, 0.24);
+
+  --lb-focus-ring:
+    0 0 0 3px rgba(0, 43, 186, 0.12);
+}
+
+/* =========================================================
+   DARK TOKENS
+
+   Same hierarchy, not a simple inversion.
+   #002BBA remains the Leadbase accent.
+========================================================= */
+
+.dark {
+  --background: #0B0C0E;
+  --foreground: #F7F7F8;
+
+  --card: #111216;
+  --card-foreground: #F7F7F8;
+
+  --popover: #15161A;
+  --popover-foreground: #F7F7F8;
+
+  --primary: #002BBA;
+  --primary-foreground: #FFFFFF;
+
+  --secondary: #181A1F;
+  --secondary-foreground: #F0F1F3;
+
+  --muted: #16171B;
+  --muted-foreground: #8C9199;
+
+  --accent: color-mix(in srgb, #002BBA 24%, #111216);
+  --accent-foreground: #E8ECFF;
+
+  --destructive: #F06B6B;
+
+  --border: rgba(255, 255, 255, 0.10);
+  --input: rgba(255, 255, 255, 0.13);
+  --ring: color-mix(in srgb, #002BBA 72%, white);
+
+  --sidebar: #0D0E11;
+  --sidebar-foreground: #F7F7F8;
+  --sidebar-primary: #002BBA;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: color-mix(in srgb, #002BBA 22%, #111216);
+  --sidebar-accent-foreground: #E8ECFF;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: color-mix(in srgb, #002BBA 72%, white);
+
+  --chart-1: #171A25;
+  --chart-2: #273456;
+  --chart-3: #3A4E8B;
+  --chart-4: #3655BC;
+  --chart-5: #4D6FE8;
+
+  --chart-scale-01: #171A25;
+  --chart-scale-02: #273456;
+  --chart-scale-03: #3A4E8B;
+  --chart-scale-04: #3655BC;
+  --chart-scale-05: #4D6FE8;
+
+  --lb-canvas: #08090B;
+  --lb-page: #0B0C0E;
+  --lb-surface: #111216;
+  --lb-surface-subtle: #16171B;
+  --lb-text: #F7F7F8;
+  --lb-text-secondary: #C7CAD0;
+  --lb-text-muted: #8C9199;
+  --lb-border: rgba(255, 255, 255, 0.10);
+  --lb-border-strong: rgba(255, 255, 255, 0.16);
+
+  --lb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --lb-shadow-sm:
+    inset 0 1px 0 rgba(255, 255, 255, 0.018),
+    0 10px 26px rgba(0, 0, 0, 0.16);
+  --lb-shadow-overlay:
+    0 30px 80px -20px rgba(0, 0, 0, 0.62);
+
+  --lb-focus-ring:
+    0 0 0 3px color-mix(in srgb, #002BBA 28%, transparent);
+}
+
+/* =========================================================
+   GLOBAL TYPE / INTERACTION
+========================================================= */
+
+html,
+body {
+  font-family:
+    var(--font-geist-sans),
+    Geist,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-feature-settings:
+    "kern" 1,
+    "ss01" 1;
+}
+
+.font-mono,
+[data-leadbase-mono="true"] {
+  font-family:
+    var(--font-geist-mono),
+    "Geist Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  color: var(--foreground);
+  background:
+    color-mix(
+      in srgb,
+      #002BBA 18%,
+      transparent
+    );
+}
+
+:focus-visible {
+  outline: none;
+}
+
+/* =========================================================
+   SHARED SURFACE / ROW / TECHNICAL LABEL CLASSES
+========================================================= */
+
+.leadbase-surface {
+  border:
+    1px solid
+    var(--lb-border);
+  border-radius:
+    var(--lb-radius-surface);
+  background:
+    var(--lb-surface);
+  box-shadow:
+    var(--lb-shadow-xs);
+}
+
+.leadbase-subtle-surface {
+  border:
+    1px solid
+    var(--lb-border);
+  border-radius:
+    var(--lb-radius-surface);
+  background:
+    var(--lb-surface-subtle);
+}
+
+.leadbase-row {
+  border-radius:
+    var(--lb-radius-row);
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .leadbase-row:hover {
+    background:
+      color-mix(
+        in srgb,
+        var(--lb-text) 2.4%,
+        transparent
+      );
+  }
+}
+
+.leadbase-technical-label {
+  font-family:
+    var(--font-geist-mono),
+    "Geist Mono",
+    ui-monospace,
+    monospace;
+  font-size:
+    9px;
+  font-weight:
+    500;
+  line-height:
+    1.2;
+  letter-spacing:
+    0.10em;
+  text-transform:
+    uppercase;
+  color:
+    var(--lb-text-muted);
+}
+
+.leadbase-section-title {
+  font-size:
+    13.5px;
+  font-weight:
+    600;
+  letter-spacing:
+    -0.01em;
+  color:
+    var(--lb-text);
+}
+
+/* =========================================================
+   SEGMENTED CONTROL FOUNDATION
+========================================================= */
+
+.leadbase-segmented {
+  display:
+    inline-flex;
+  align-items:
+    center;
+  gap:
+    2px;
+  padding:
+    3px;
+  border-radius:
+    10px;
+  background:
+    color-mix(
+      in srgb,
+      var(--lb-text) 4.5%,
+      transparent
+    );
+}
+
+.leadbase-segmented-item {
+  min-height:
+    28px;
+  padding:
+    0 10px;
+  border:
+    0;
+  border-radius:
+    8px;
+  background:
+    transparent;
+  color:
+    var(--lb-text-muted);
+  font-size:
+    11px;
+  font-weight:
+    500;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.leadbase-segmented-item:hover {
+  color:
+    var(--lb-text);
+}
+
+.leadbase-segmented-item[data-active="true"],
+.leadbase-segmented-item[aria-selected="true"],
+.leadbase-segmented-item[data-selected] {
+  color:
+    var(--lb-text);
+  background:
+    var(--lb-surface);
+  box-shadow:
+    0 1px 2px rgba(11, 12, 14, 0.10);
+}
+
+.dark .leadbase-segmented-item[data-active="true"],
+.dark .leadbase-segmented-item[aria-selected="true"],
+.dark .leadbase-segmented-item[data-selected] {
+  background:
+    #1A1B20;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+/* =========================================================
+   LEGACY VISUAL FOUNDATION OVERRIDES
+
+   Existing pages keep all functionality. These selectors only
+   flatten the older gradient-heavy workspace look so pages
+   gradually inherit the approved dashboard design DNA before
+   their dedicated migration phases.
+========================================================= */
+
+.leadbase-page-surface,
+.leadbase-workspace-page,
+.leadbase-inbox-page {
+  background:
+    var(--background) !important;
+}
+
+.leadbase-workspace-header,
+.leadbase-workspace-card,
+.leadbase-subtle-panel {
+  border-color:
+    var(--lb-border) !important;
+  background:
+    var(--lb-surface) !important;
+  box-shadow:
+    var(--lb-shadow-xs) !important;
+}
+
+.leadbase-workspace-header {
+  border-radius:
+    var(--lb-radius-surface) !important;
+}
+
+.leadbase-workspace-header::after,
+.leadbase-workspace-stat::after,
+.leadbase-detail-metric::after {
+  display:
+    none !important;
+}
+
+.leadbase-workspace-card {
+  border-radius:
+    var(--lb-radius-surface) !important;
+}
+
+.leadbase-workspace-card:hover {
+  border-color:
+    var(--lb-border-strong) !important;
+  box-shadow:
+    var(--lb-shadow-xs) !important;
+}
+
+.leadbase-workspace-table {
+  border:
+    1px solid
+    var(--lb-border) !important;
+  border-radius:
+    var(--lb-radius-surface) !important;
+  background:
+    var(--lb-surface) !important;
+  box-shadow:
+    var(--lb-shadow-xs) !important;
+}
+
+.leadbase-workspace-segmented {
+  border:
+    0 !important;
+  border-radius:
+    10px !important;
+  background:
+    color-mix(
+      in srgb,
+      var(--lb-text) 4.5%,
+      transparent
+    ) !important;
+  box-shadow:
+    none !important;
+}
+
+.leadbase-workspace-empty {
+  background:
+    var(--lb-surface) !important;
+}
+
+.leadbase-inbox-header,
+.leadbase-inbox-folders {
+  background:
+    color-mix(
+      in srgb,
+      var(--lb-surface) 94%,
+      transparent
+    ) !important;
+  backdrop-filter:
+    blur(14px);
+}
+
+.leadbase-inbox-list-panel,
+.leadbase-inbox-thread-panel {
+  background:
+    var(--lb-surface) !important;
+}
+
+/* Existing form fields that are not yet using the shared primitives */
+.leadbase-workspace-page select {
+  min-height:
+    36px;
+  border:
+    1px solid
+    var(--input) !important;
+  border-radius:
+    var(--lb-radius-control) !important;
+  background:
+    var(--lb-surface) !important;
+  color:
+    var(--lb-text);
+  font-size:
+    13px;
+  box-shadow:
+    none !important;
+}
+
+.leadbase-workspace-page select:focus {
+  border-color:
+    #002BBA !important;
+  box-shadow:
+    var(--lb-focus-ring) !important;
+}
+
+/* =========================================================
+   OVERLAY / POPOVER NORMALIZATION
+========================================================= */
+
+[data-slot="dropdown-menu-content"],
+[data-slot="dialog-content"],
+[data-slot="sheet-content"],
+[data-slot="alert-dialog-content"],
+[data-slot="tooltip-content"] {
+  color:
+    var(--popover-foreground);
+}
+
+/* =========================================================
+   REDUCED MOTION
+========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior:
+      auto !important;
+  }
+
+  .leadbase-row,
+  .leadbase-segmented-item {
+    transition:
+      none !important;
+  }
+}
+
+/* =========================================================
+   HIGH-RESOLUTION WORKSPACES — 2K / 4K
+
+   Leadbase was originally tuned around laptop-size CSS
+   viewports. On 27" 1440p / 4K monitors the fixed 1600px
+   shell looked visually too small and left too much empty
+   canvas.
+
+   The app shell now expands on large monitors and, in
+   Chromium/WebKit where CSS zoom is supported, receives a
+   small compensated UI scale. The width/height compensation
+   keeps the app inside the actual viewport instead of simply
+   magnifying and clipping it.
+
+   Public proposal pages are intentionally NOT affected
+   because they do not render inside data-leadbase-app-shell.
+========================================================= */
+
+@media (min-width: 1900px) and (min-height: 900px) {
+  [data-leadbase-shell-frame] {
+    max-width: min(
+      2050px,
+      calc(100vw - 36px)
+    ) !important;
+  }
+
+  [data-leadbase-main] > [class*="max-w-"] {
+    max-width: min(
+      1820px,
+      calc(100% - 28px)
+    ) !important;
+  }
+
+  @supports (zoom: 1.07) {
+    [data-leadbase-app-shell] {
+      width: 100%;
+      height: 100dvh;
+      zoom: 1.07;
+    }
+  }
+}
+
+@media (min-width: 3000px) and (min-height: 1200px) {
+  [data-leadbase-shell-frame] {
+    max-width: min(
+      2920px,
+      calc(100vw - 48px)
+    ) !important;
+  }
+
+  [data-leadbase-main] > [class*="max-w-"] {
+    max-width: min(
+      2520px,
+      calc(100% - 36px)
+    ) !important;
+  }
+
+  @supports (zoom: 1.14) {
+    [data-leadbase-app-shell] {
+      width: 100%;
+      height: 100dvh;
+      zoom: 1.14;
+    }
+  }
+}
+
+/* =========================================================
+   UNIFIED WORKSPACE GUTTER — 2K / 4K
+
+   On large monitors some pages (Analytics, Projects,
+   Campaigns, etc.) still used centered max-width wrappers.
+   That created a much larger visual gap between the sidebar
+   and page content than Dashboard / Find Leads.
+
+   Normalize only the top page wrapper(s) inside the shared
+   authenticated app main area. Internal cards/dialogs keep
+   their own centering behavior.
+========================================================= */
+
+@media (min-width: 1900px) and (min-height: 900px) {
+  [data-leadbase-main] > [class*="mx-auto"][class*="max-w-"],
+  [data-leadbase-main] > * > [class*="mx-auto"][class*="max-w-"] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+  }
+
+  [data-leadbase-main] > [class*="mx-auto"][class*="max-w-"] {
+    min-width: 0;
+  }
+
+  [data-leadbase-main] > * > [class*="mx-auto"][class*="max-w-"] {
+    min-width: 0;
+  }
+}
+
+/* =========================================================
+   FULL-WIDTH HIGH-RES SHELL FIX
+
+   CSS `zoom` already participates in Chromium layout.
+   Dividing the outer shell width by the zoom factor caused
+   the visible ~7% empty strip on the right at 2K and ~12%
+   at 4K. Keep the scale, but let the authenticated app use
+   the complete viewport width.
+========================================================= */
+
+@media (min-width: 1900px) and (min-height: 900px) {
+  [data-leadbase-app-shell] {
+    max-width: none !important;
+  }
+
+  [data-leadbase-shell-frame] {
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+

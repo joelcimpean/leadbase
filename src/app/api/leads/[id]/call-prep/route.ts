@@ -11,6 +11,8 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
+
 export const runtime =
   "nodejs";
 
@@ -1009,6 +1011,8 @@ export async function POST(
       "\n"
     );
 
+    await assertAiUsageAvailable(user.id);
+
     const generated =
       await generateCallPrep({
         language,
@@ -1153,6 +1157,14 @@ export async function POST(
         500
       );
     }
+
+    await recordAiUsage({
+      userId: user.id,
+      feature: "call_prep",
+      model: generated.model,
+      usage: generated.usage,
+      metadata: { leadId: id },
+    });
 
     return NextResponse.json({
       ok:

@@ -3,7 +3,8 @@ import type {
 } from "next";
 
 import {
-  Inter,
+  Geist,
+  Geist_Mono,
 } from "next/font/google";
 
 import {
@@ -11,19 +12,32 @@ import {
 } from "@/components/theme-provider";
 
 import "./globals.css";
+import "./leadbase-design-system.css";
+import "./leadbase-app-migration.css";
+import "./leadbase-workspaces-v2.css";
 
 /* =========================================================
    FONT
 ========================================================= */
 
-const inter =
-  Inter({
+const geist =
+  Geist({
     subsets: [
       "latin",
     ],
 
     variable:
-      "--font-inter",
+      "--font-geist-sans",
+  });
+
+const geistMono =
+  Geist_Mono({
+    subsets: [
+      "latin",
+    ],
+
+    variable:
+      "--font-geist-mono",
   });
 
 /* =========================================================
@@ -81,7 +95,7 @@ export default function RootLayout({
       </head>
 
       <body
-        className={`${inter.variable} ${inter.className}`}
+        className={`${geist.variable} ${geistMono.variable}`}
       >
         <ThemeProvider>
           {children}

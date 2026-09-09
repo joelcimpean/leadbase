@@ -551,7 +551,7 @@ export function calculateSmartFollowUpPlan({
       baseline,
 
     reason:
-      "No customer engagement signal yet; standard 5-day follow-up remains.",
+      "No customer engagement signal yet; the configured standard follow-up remains.",
   };
 }
 

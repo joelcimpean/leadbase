@@ -25,7 +25,7 @@ import {
     "force-dynamic";
   
   export const maxDuration =
-    60;
+    300;
   
   const GIF_BUCKET =
     "preview-gifs";
@@ -462,8 +462,18 @@ import {
           rendererUrl
         );
   
+      const gifCacheKey =
+        Date.now()
+          .toString(36);
+
+      const previousStoragePath =
+        preview.preview_gif_path;
+
+      // Every regeneration gets a new public URL. This prevents
+      // browsers/email clients from showing an old cached GIF after
+      // the design itself was edited.
       const storagePath =
-        `${user.id}/${leadId}/${preview.id}-v1.gif`;
+        `${user.id}/${leadId}/${preview.id}-${gifCacheKey}.gif`;
   
       const {
         error:
@@ -484,7 +494,7 @@ import {
                 "image/gif",
   
               cacheControl:
-                "3600",
+                "60",
   
               upsert:
                 true,
@@ -549,7 +559,7 @@ import {
                 .byteLength,
   
             preview_gif_version:
-              1,
+              2,
           })
           .eq(
             "id",
@@ -568,6 +578,28 @@ import {
         );
       }
   
+      if (
+        previousStoragePath &&
+        previousStoragePath !==
+          storagePath
+      ) {
+        const { error: cleanupError } =
+          await admin.storage
+            .from(
+              GIF_BUCKET
+            )
+            .remove([
+              previousStoragePath,
+            ]);
+
+        if (cleanupError) {
+          console.warn(
+            "Fresh GIF saved, but the old cached file could not be removed:",
+            cleanupError
+          );
+        }
+      }
+
       return NextResponse.json({
         ok:
           true,

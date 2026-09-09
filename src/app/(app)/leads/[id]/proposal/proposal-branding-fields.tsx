@@ -8,172 +8,147 @@ import {
   Input,
 } from "@/components/ui/input";
 
-import {
-  Label,
-} from "@/components/ui/label";
-
-type ProposalBrandingFieldsProps = {
-  defaultAccentColor: string;
-  currentLogoUrl?: string | null;
-  firstTimeClient: boolean;
-  isGerman: boolean;
-  disabled?: boolean;
-};
-
-function normalizeColor(
-  value: string
-) {
-  const trimmed =
-    value.trim();
-
-  return /^#[0-9A-F]{6}$/i.test(
-    trimmed
-  )
-    ? trimmed.toUpperCase()
-    : "#002BBA";
-}
-
 export function ProposalBrandingFields({
   defaultAccentColor,
   currentLogoUrl,
   firstTimeClient,
   isGerman,
   disabled = false,
-}: ProposalBrandingFieldsProps) {
+}: {
+  defaultAccentColor: string;
+  currentLogoUrl?: string | null;
+  firstTimeClient: boolean;
+  isGerman: boolean;
+  disabled?: boolean;
+}) {
   const [accentColor, setAccentColor] =
     useState(
-      normalizeColor(
-        defaultAccentColor
-      )
+      /^#[0-9A-F]{6}$/i.test(defaultAccentColor)
+        ? defaultAccentColor.toUpperCase()
+        : "#002BBA"
     );
 
   return (
-    <div className="grid gap-5 sm:grid-cols-2">
-      <div className="space-y-2">
-        <Label htmlFor="accentColor">
+    <div>
+      <div>
+        <h3 className="text-[13.5px] font-semibold tracking-[-0.01em]">
           {isGerman
-            ? "Angebotsfarbe"
-            : "Proposal color"}
-        </Label>
-
-        <div className="flex items-center gap-3">
-          <input
-            aria-label={
-              isGerman
-                ? "Angebotsfarbe auswählen"
-                : "Choose proposal color"
-            }
-            type="color"
-            value={accentColor}
-            disabled={disabled}
-            onChange={(event) =>
-              setAccentColor(
-                event.target.value.toUpperCase()
-              )
-            }
-            className="h-10 w-12 cursor-pointer rounded-lg border bg-background p-1 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-
-          <Input
-            id="accentColor"
-            name="accentColor"
-            value={accentColor}
-            disabled={disabled}
-            onChange={(event) =>
-              setAccentColor(
-                event.target.value
-              )
-            }
-            onBlur={() =>
-              setAccentColor(
-                normalizeColor(
-                  accentColor
-                )
-              )
-            }
-            maxLength={7}
-            pattern="#[0-9A-Fa-f]{6}"
-            className="font-mono uppercase"
-          />
-        </div>
-
-        <p className="text-xs leading-5 text-muted-foreground">
+            ? "Branding & Konditionen"
+            : "Branding & terms"}
+        </h3>
+        <p className="mt-1 text-[11.5px] text-[#6B7078]">
           {isGerman
-            ? "Wird für Akzente, Buttons und die Angebots-PDF verwendet."
-            : "Used for accents, buttons, and the proposal PDF."}
+            ? "Logo, Akzentfarbe und Erstkunden-Garantie für dieses Angebot."
+            : "Logo, accent color and first-time-client guarantee for this proposal."}
         </p>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="logoFile">
-          {isGerman
-            ? "Logo im Angebot"
-            : "Proposal logo"}
-        </Label>
+      <div className="mt-[14px] grid gap-4 md:grid-cols-2">
+        <div className="rounded-[12px] border border-black/[0.08] p-3.5 dark:border-white/[0.08]">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">
+            {isGerman
+              ? "Angebotsfarbe"
+              : "Proposal color"}
+          </div>
 
-        <Input
-          id="logoFile"
-          name="logoFile"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          disabled={disabled}
-        />
-
-        <p className="text-xs leading-5 text-muted-foreground">
-          {isGerman
-            ? "PNG, JPG oder WebP · maximal 2 MB. Ohne Upload bleibt „Joel Cimpean“ als Wortmarke stehen."
-            : "PNG, JPG, or WebP · max. 2 MB. Without an upload, “Joel Cimpean” remains as the wordmark."}
-        </p>
-
-        {currentLogoUrl ? (
-          <div className="mt-3 rounded-xl border bg-muted/20 p-3">
-            <img
-              src={currentLogoUrl}
-              alt="Proposal logo"
-              className="max-h-20 max-w-[360px] object-contain object-left"
+          <div className="mt-2 flex items-center gap-2.5">
+            <input
+              aria-label={isGerman ? "Angebotsfarbe auswählen" : "Choose proposal color"}
+              type="color"
+              value={accentColor}
+              disabled={disabled}
+              onChange={(event) =>
+                setAccentColor(event.target.value.toUpperCase())
+              }
+              className="size-9 cursor-pointer rounded-[9px] border border-black/[0.09] bg-white p-1 disabled:opacity-50 dark:border-white/[0.10] dark:bg-[#15161A]"
             />
 
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                name="removeLogo"
-                value="1"
-                disabled={disabled}
-                className="size-4 rounded border"
-              />
-              {isGerman
-                ? "Logo entfernen"
-                : "Remove logo"}
-            </label>
+            <Input
+              id="accentColor"
+              name="accentColor"
+              value={accentColor}
+              disabled={disabled}
+              onChange={(event) =>
+                setAccentColor(event.target.value)
+              }
+              onBlur={() =>
+                setAccentColor(
+                  /^#[0-9A-F]{6}$/i.test(accentColor)
+                    ? accentColor.toUpperCase()
+                    : "#002BBA"
+                )
+              }
+              maxLength={7}
+              pattern="#[0-9A-Fa-f]{6}"
+              className="h-9 rounded-[9px] font-mono text-[12px] uppercase"
+            />
           </div>
-        ) : null}
-      </div>
+        </div>
 
-      <div className="sm:col-span-2">
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-4">
-          <input
-            type="checkbox"
-            name="firstTimeClient"
-            value="1"
-            defaultChecked={firstTimeClient}
+        <div className="rounded-[12px] border border-black/[0.08] p-3.5 dark:border-white/[0.08]">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">
+            {isGerman
+              ? "Logo im Angebot"
+              : "Proposal logo"}
+          </div>
+
+          <Input
+            id="logoFile"
+            name="logoFile"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
             disabled={disabled}
-            className="mt-0.5 size-4 rounded border"
+            className="mt-2 h-9 rounded-[9px] text-[11px]"
           />
 
-          <span>
-            <span className="block text-sm font-medium">
-              {isGerman
-                ? "Erstkunde · Geld-zurück-Garantie anzeigen"
-                : "First-time client · show money-back guarantee"}
-            </span>
-            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-              {isGerman
-                ? "Bei Folgeprojekten einfach deaktivieren. Dann erscheint die Garantie weder im Web-Angebot noch in der PDF."
-                : "Disable this for repeat projects. The guarantee will then be hidden from both the web proposal and PDF."}
-            </span>
-          </span>
-        </label>
+          {currentLogoUrl ? (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-[9px] bg-[#F7F8FA] p-2.5 dark:bg-white/[0.04]">
+              <img
+                src={currentLogoUrl}
+                alt="Proposal logo"
+                className="max-h-10 max-w-[180px] object-contain object-left"
+              />
+
+              <label className="flex cursor-pointer items-center gap-2 text-[10.5px] text-[#6B7078]">
+                <input
+                  type="checkbox"
+                  name="removeLogo"
+                  value="1"
+                  disabled={disabled}
+                  className="size-3.5 rounded border"
+                />
+                {isGerman
+                  ? "Entfernen"
+                  : "Remove"}
+              </label>
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-[12px] border border-black/[0.08] p-3.5 dark:border-white/[0.08]">
+        <input
+          type="checkbox"
+          name="firstTimeClient"
+          value="1"
+          defaultChecked={firstTimeClient}
+          disabled={disabled}
+          className="mt-0.5 size-4 rounded border accent-[#002BBA]"
+        />
+
+        <span>
+          <span className="block text-[12.5px] font-medium">
+            {isGerman
+              ? "Erstkunde · Geld-zurück-Garantie anzeigen"
+              : "First-time client · show money-back guarantee"}
+          </span>
+          <span className="mt-1 block text-[11px] leading-5 text-[#6B7078]">
+            {isGerman
+              ? "Bei Folgeprojekten deaktivieren. Die Garantie verschwindet dann aus Web-Angebot und PDF."
+              : "Disable for repeat projects. The guarantee then disappears from the web proposal and PDF."}
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

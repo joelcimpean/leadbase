@@ -1,0 +1,664 @@
+.page {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding: 14px 16px 16px;
+  background: var(--lb-page);
+}
+
+.pageHeader {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 58px;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: #002BBA;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #002BBA;
+}
+
+.titleRow {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 7px;
+}
+
+.title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -.035em;
+  color: var(--lb-text);
+}
+
+.titleMeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--lb-text-muted);
+}
+
+.headerActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+}
+
+.gmailStatus {
+  display: inline-flex;
+  height: 31px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--lb-border);
+  border-radius: 9px;
+  background: var(--lb-surface);
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--lb-text-muted);
+  white-space: nowrap;
+}
+
+.gmailStatusDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #2F6B3A;
+}
+
+.gmailStatusDisconnected {
+  color: #002bba;
+  text-decoration: none;
+  border-color: rgba(0, 43, 186, .18);
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.gmailStatusDisconnected:hover {
+  border-color: rgba(0, 43, 186, .34);
+  background: color-mix(in srgb, #002bba 5%, var(--lb-surface));
+}
+
+.gmailStatusDotDisconnected {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #9a5106;
+}
+
+.workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.listPanel,
+.threadPanel {
+  border: 1px solid var(--lb-border);
+  border-radius: 15px;
+  background: var(--lb-surface);
+  box-shadow: var(--lb-shadow-xs);
+}
+
+.listPanel {
+  display: flex;
+  width: 352px;
+  flex: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.threadPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.folderTabs {
+  flex: none;
+  padding: 10px 10px 0;
+}
+
+.folderTabsInner {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lb-text) 4.5%, transparent);
+}
+
+.folderTab {
+  display: inline-flex;
+  height: 29px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 0 7px 1px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--lb-text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.folderTabActive {
+  background: var(--lb-surface);
+  color: var(--lb-text);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(11, 12, 14, .10);
+}
+
+.listHeader {
+  flex: none;
+  padding: 9px 10px 7px;
+  border-bottom: 1px solid var(--lb-border);
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.listMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 7px;
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--lb-text-muted);
+}
+
+.densityButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--lb-text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-geist-sans), Geist, sans-serif;
+  font-size: 11.5px;
+}
+
+.threadHeader {
+  flex: none;
+  padding: 12px 16px 11px;
+  border-bottom: 1px solid var(--lb-border);
+}
+
+.threadHeaderTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.threadKicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--lb-text-muted);
+}
+
+.threadSubject {
+  margin: 7px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 620;
+  line-height: 1.2;
+  letter-spacing: -.025em;
+  color: var(--lb-text);
+}
+
+.threadMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--lb-text-muted);
+}
+
+.threadMetaText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.threadActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+}
+
+.threadScroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.messageStack {
+  min-height: 100%;
+}
+
+.messageCard {
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--lb-border) 82%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.messageSummary {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: start;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color 120ms ease;
+}
+
+.messageSummary:hover {
+  background: color-mix(in srgb, var(--lb-text) 2.3%, transparent);
+}
+
+.messageSummary::-webkit-details-marker {
+  display: none;
+}
+
+.messageAvatar {
+  display: flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--lb-surface-subtle);
+  color: var(--lb-text-muted);
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.messageCard[open] .messageAvatar {
+  background: #EAEEFB;
+  color: #002BBA;
+}
+
+.messageSenderRow {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.messageSender {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--lb-text);
+}
+
+.messageRole {
+  flex: none;
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 8.5px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--lb-text-muted);
+}
+
+.messageEmail,
+.messagePreview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lb-text-muted);
+}
+
+.messageEmail {
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
+.messagePreview {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.messageDate {
+  flex: none;
+  padding-top: 1px;
+  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--lb-text-muted);
+  white-space: nowrap;
+}
+
+.messageBodyWrap {
+  border-top: 1px solid color-mix(in srgb, var(--lb-border) 72%, transparent);
+}
+
+.messageBody {
+  max-width: 720px;
+  padding: 12px 16px 16px 53px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--lb-text-secondary);
+}
+
+.composerDock {
+  flex: none;
+  border-top: 1px solid var(--lb-border);
+  background: color-mix(in srgb, var(--lb-surface) 98%, var(--lb-page));
+}
+
+.emptyThread {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+@media (max-width: 1199px) {
+  .listPanel {
+    width: 320px;
+  }
+
+  .title {
+    font-size: 32px;
+  }
+
+  .titleMeta {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .page {
+    gap: 0;
+    padding: 0;
+  }
+
+  .pageHeader {
+    min-height: 68px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--lb-border);
+  }
+
+  .eyebrow,
+  .gmailStatus {
+    display: none;
+  }
+
+  .titleRow {
+    margin-top: 0;
+  }
+
+  .title {
+    font-size: 28px;
+  }
+
+  .workspace {
+    gap: 0;
+  }
+
+  .listPanel,
+  .threadPanel {
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .threadHeader {
+    padding: 9px 12px 10px;
+  }
+
+  .threadHeaderTop {
+    display: block;
+  }
+
+  .threadActions {
+    margin-top: 10px;
+  }
+
+  .threadSubject {
+    font-size: 17px;
+  }
+
+  .messageSummary {
+    grid-template-columns: 30px minmax(0, 1fr);
+    padding: 11px 12px;
+  }
+
+  .messageDate {
+    grid-column: 2;
+    margin-top: 3px;
+    padding: 0;
+  }
+
+  .messageBody {
+    padding: 12px 14px 16px;
+    font-size: 13px;
+  }
+}
+
+.hideOnMobile {
+  display: flex;
+}
+
+.threadHiddenOnMobile {
+  display: flex;
+}
+
+@media (max-width: 767px) {
+  .hideOnMobile {
+    display: none !important;
+  }
+
+  .threadHiddenOnMobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .workspace {
+    gap: 0;
+  }
+
+  .listPanel,
+  .threadPanel {
+    width: 100%;
+  }
+
+  .hideOnMobile,
+  .threadHiddenOnMobile {
+    display: none !important;
+  }
+}
+
+
+/* Phase 10N2.3 — large-screen inbox readability
+   Keep the compact workspace on laptops/tablets, but stop the inbox looking
+   miniaturised on wide desktop / 2K / 4K screens. */
+@media (min-width: 1536px) {
+  .page {
+    gap: 14px;
+    padding: 18px 20px 20px;
+  }
+
+  .pageHeader {
+    min-height: 64px;
+  }
+
+  .eyebrow {
+    font-size: 9.5px;
+  }
+
+  .title {
+    font-size: 38px;
+  }
+
+  .titleMeta {
+    font-size: 14px;
+  }
+
+  .headerActions {
+    gap: 8px;
+  }
+
+  .gmailStatus {
+    height: 34px;
+    padding: 0 11px;
+    font-size: 9.5px;
+  }
+
+  .workspace {
+    gap: 14px;
+  }
+
+  .listPanel {
+    width: 392px;
+  }
+
+  .folderTabs {
+    padding: 12px 12px 0;
+  }
+
+  .folderTab {
+    height: 32px;
+    padding: 0 9px 1px;
+    font-size: 12.5px;
+  }
+
+  .listHeader {
+    padding: 10px 12px 9px;
+  }
+
+  .listMetaRow {
+    margin-top: 8px;
+    font-size: 10px;
+  }
+
+  .densityButton {
+    font-size: 12px;
+  }
+
+  .threadHeader {
+    padding: 14px 18px 13px;
+  }
+
+  .threadKicker {
+    font-size: 10px;
+  }
+
+  .threadSubject {
+    font-size: 20px;
+  }
+
+  .threadMeta {
+    margin-top: 7px;
+    font-size: 12.5px;
+  }
+
+  .messageSummary {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    column-gap: 11px;
+    padding: 11px 18px;
+  }
+
+  .messageAvatar {
+    width: 29px;
+    height: 29px;
+    font-size: 8.5px;
+  }
+
+  .messageSender {
+    font-size: 13.5px;
+  }
+
+  .messageRole {
+    font-size: 9px;
+  }
+
+  .messageEmail {
+    font-size: 11.5px;
+  }
+
+  .messagePreview {
+    font-size: 12px;
+  }
+
+  .messageDate {
+    font-size: 10px;
+  }
+
+  .messageBody {
+    max-width: 820px;
+    padding: 14px 18px 18px 59px;
+    font-size: 13.5px;
+    line-height: 1.65;
+  }
+}

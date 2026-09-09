@@ -452,7 +452,7 @@ export async function LeadEmailHistory({
             href={`/inbox?lead=${encodeURIComponent(
               leadId
             )}`}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-[11px] font-medium transition-colors hover:bg-muted"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-2 py-1 text-[11.5px] font-medium text-[#002BBA] transition-[background-color,color,transform] duration-150 hover:bg-[#EAEEFB] hover:text-[#001E85] active:scale-[0.98]"
           >
             {de
               ? "In Inbox öffnen"

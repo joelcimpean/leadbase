@@ -23,6 +23,10 @@ import {
   getStockImageSets,
 } from "@/lib/stock-images";
 
+import {
+  protectTrustedMapEmbeds,
+} from "@/lib/design-map-embed";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -246,6 +250,15 @@ const MAX_OUTPUT_TOKENS =
 
 const REPAIR_MAX_OUTPUT_TOKENS =
   24_000;
+
+/*
+ * Astra is much stronger than Sol, but 24k output tokens plus
+ * high reasoning is excessive for our single-page HTML task.
+ * max_output_tokens includes BOTH visible output and reasoning
+ * tokens, so keep a generous but bounded Astra budget.
+ */
+const ASTRA_MAX_OUTPUT_TOKENS =
+  18_000;
 
 const MIN_HTML_LENGTH =
   8_000;
@@ -1701,8 +1714,13 @@ function sanitizeHtml(
   value:
     string
 ) {
+  const trustedMaps =
+    protectTrustedMapEmbeds(
+      value
+    );
+
   let html =
-    value;
+    trustedMaps.html;
 
   html =
     html.replace(
@@ -1746,7 +1764,9 @@ function sanitizeHtml(
       ""
     );
 
-  return html;
+  return trustedMaps.restore(
+    html
+  );
 }
 
 /* =========================================================
@@ -2674,6 +2694,7 @@ function addUsage({
 async function createGenerationResponse({
   openai,
   model,
+  reasoningEffort,
   prompt,
   candidates,
   visionByUrl,
@@ -2685,6 +2706,11 @@ async function createGenerationResponse({
 
   model:
     string;
+
+  reasoningEffort:
+    "low"
+    | "medium"
+    | "high";
 
   prompt:
     string;
@@ -2709,6 +2735,15 @@ async function createGenerationResponse({
     visionByUrl.size >
       0;
 
+  const resolvedMaxOutputTokens =
+    model ===
+      "gpt-6-astra"
+      ? Math.min(
+          maxOutputTokens,
+          ASTRA_MAX_OUTPUT_TOKENS
+        )
+      : maxOutputTokens;
+
   const firstContent =
     buildModelContent({
       prompt,
@@ -2728,11 +2763,11 @@ async function createGenerationResponse({
 
         reasoning: {
           effort:
-            "medium",
+            reasoningEffort,
         },
 
         max_output_tokens:
-          maxOutputTokens,
+          resolvedMaxOutputTokens,
 
         store:
           false,
@@ -2807,11 +2842,11 @@ Do not invent replacement stock photography.
 
         reasoning: {
           effort:
-            "medium",
+            reasoningEffort,
         },
 
         max_output_tokens:
-          maxOutputTokens,
+          resolvedMaxOutputTokens,
 
         store:
           false,
@@ -2892,6 +2927,8 @@ export async function generateSolStaticDesign({
   generationIndex,
   designResearch,
   previousDirections = [],
+  designModel,
+  reasoningEffort,
 }: {
   variantId:
     string;
@@ -2914,6 +2951,15 @@ export async function generateSolStaticDesign({
 
   previousDirections?:
     string[];
+
+  designModel?:
+    string
+    | null;
+
+  reasoningEffort?:
+    "low"
+    | "medium"
+    | "high";
 }): Promise<StaticDesignResult> {
   const apiKey =
     process.env
@@ -2930,12 +2976,18 @@ export async function generateSolStaticDesign({
   const openai =
     new OpenAI({
       apiKey,
+      maxRetries: 1,
     });
 
   const model =
-    process.env
+    designModel?.trim() ||
+    (process.env
       .OPENAI_REDESIGN_DESIGN_MODEL ??
-    "gpt-5.6-sol";
+    "gpt-5.6-sol");
+
+  const resolvedReasoningEffort =
+    reasoningEffort ??
+    "medium";
 
   const realCandidates =
     collectVisualCandidates({
@@ -3800,6 +3852,56 @@ The real logo may appear in both header and footer.
 Other photographs should normally appear once.
 
 =========================================================
+EMPTY / IMAGE-POOR WEBSITES — HARD RULE
+=========================================================
+
+If the real company website contains no usable photography,
+or only tiny/low-resolution imagery, do NOT leave the new
+website visually empty merely to mirror that weakness.
+
+When APPROVED STOCK image records are supplied:
+
+- use 2–4 relevant stock images where the page needs visual depth
+- choose imagery that clearly matches the ACTUAL industry/services
+- use it for atmosphere, service context, materials, tools, craft,
+  architecture or other non-factual visual support
+- do not invent image URLs
+- do not use unrelated fashionable imagery
+- never imply stock people are employees
+- never imply stock work is a real project/reference
+
+A visually empty source website is a reason to improve the visual
+communication, not a requirement to generate an empty redesign.
+
+=========================================================
+REAL LOCATION / MAP INTEGRATION — HARD RULE
+=========================================================
+
+If the supplied REAL company/site information contains a verified
+physical address or clearly verified business location, you MAY
+include a polished location/contact section with a REAL map embed.
+
+Preferred map pattern:
+
+<iframe
+  data-leadbase-map-embed="true"
+  src="https://www.google.com/maps?q=VERIFIED_ADDRESS&output=embed"
+  title="Location map"
+  loading="lazy"
+></iframe>
+
+Encode the verified address safely in the URL.
+
+The map must feel integrated into the art direction: clean crop,
+considered height/aspect ratio, useful address/contact information,
+and responsive mobile treatment.
+
+DO NOT create a fake pseudo-map with decorative diagonal streets,
+a giant colored circle, abstract grid lines or a made-up map marker.
+DO NOT invent an address, city, branch or additional location.
+If no verified location exists, omit the map entirely.
+
+=========================================================
 ART-DIRECTION QUALITY
 =========================================================
 
@@ -4065,6 +4167,12 @@ Verify:
 
 [ ] Several real relevant images are used when available.
 
+[ ] If the real website provides too few usable images, suitable industry-relevant generic imagery may be added to keep the design visually complete.
+
+[ ] Generic fallback imagery is never falsely presented as a real employee, real project, real premises, or real company photography.
+
+[ ] When a physical address or location is available, a tasteful location section or static-map style visual may be included.
+
 [ ] No unrelated image is used.
 
 [ ] No approved stock image is presented as a real employee, project, reference, premises or company photograph.
@@ -4128,11 +4236,20 @@ Return ONLY the finished complete HTML document.
      retry WITHOUT image attachments.
   ======================================================= */
 
+  const generationStartedAt =
+    Date.now();
+
+  const firstGenerationStartedAt =
+    Date.now();
+
   const firstGeneration =
     await createGenerationResponse({
       openai,
 
       model,
+
+      reasoningEffort:
+        resolvedReasoningEffort,
 
       prompt,
 
@@ -4146,6 +4263,10 @@ Return ONLY the finished complete HTML document.
       allowVision:
         true,
     });
+
+  const firstGenerationMs =
+    Date.now() -
+    firstGenerationStartedAt;
 
   addUsage({
     totals:
@@ -4187,6 +4308,9 @@ Return ONLY the finished complete HTML document.
   let repairVisionFallbackUsed =
     false;
 
+  let repairGenerationMs =
+    0;
+
   /* =======================================================
      AUTOMATIC STRUCTURAL REPAIR
   ======================================================= */
@@ -4204,14 +4328,12 @@ Return ONLY the finished complete HTML document.
 
     const repairPrompt =
       `
-${prompt}
+You are repairing an ALREADY GENERATED Leadbase website.
 
-=========================================================
-CRITICAL REPAIR ATTEMPT
-=========================================================
-
-Your previous attempt was structurally incomplete and is
-NOT acceptable.
+Do not redesign it from scratch.
+Do not change the art direction, brand, imagery, facts,
+layout concept, or tone unless required to fix a reported
+structural problem.
 
 The automatic quality checker reported:
 
@@ -4219,68 +4341,38 @@ ${quality.reasons.join(
   "\n"
 )}
 
-Previous attempt metrics:
+Current metrics:
+HTML characters: ${quality.htmlCharacters}
+Visible text characters: ${quality.visibleTextCharacters}
+Substantial sections: ${quality.sectionCount}
+Headings: ${quality.headingCount}
+Paragraphs: ${quality.paragraphCount}
+Images: ${quality.imageCount}
 
-HTML characters:
-${quality.htmlCharacters}
+Repair the supplied HTML with the SMALLEST set of changes
+needed to pass these requirements:
 
-Visible text characters:
-${quality.visibleTextCharacters}
-
-Substantial sections:
-${quality.sectionCount}
-
-Headings:
-${quality.headingCount}
-
-Paragraphs:
-${quality.paragraphCount}
-
-Images:
-${quality.imageCount}
-
-START AGAIN AND OUTPUT A COMPLETE FINISHED HOMEPAGE.
-
-Do not explain the failure.
-
-Do not discuss the previous attempt.
-
-Do not return a patch.
-
-Return the ENTIRE standalone HTML document from
-<!DOCTYPE html> through </html>.
-
-Mandatory repair requirements:
-
-- at least 7 substantial semantic content sections
+- complete standalone HTML document
+- at least 7 substantial semantic sections when the current
+  content supports them
 - at least 6 meaningful headings
-- meaningful supporting paragraphs
-- complete hero
-- complete services presentation
-- company / credibility content
-- real references or projects when available
-- team / people content when supported
-- strong conversion/contact ending
-- footer
+- supporting paragraphs
+- complete hero, services, credibility/about, references or
+  projects when already present/supported, contact ending, footer
 - all content visible without JavaScript
-- concise CSS
-- explicit responsive treatment
-- explicit @media (max-width: 768px)
-- explicit @media (max-width: 480px)
-- deliberate mobile hero
-- readable mobile services
-- strong mobile project imagery
-- no horizontal overflow at 375px
-- no horizontal overflow at 390px
-- do not stop early
-- do not output an unfinished document
+- explicit responsive treatment for 768px and 480px
+- no horizontal overflow at 375px or 390px
+- preserve all real URLs and existing company facts
+- invent no new facts
 
-The previous result failed because it looked like an
-unfinished page.
+CURRENT HTML TO REPAIR:
 
-This repair must be a COMPLETE CLIENT-PRESENTABLE WEBSITE.
+${firstRawHtml.slice(
+  0,
+  120_000
+)}
 
-Return ONLY the complete HTML.
+Return ONLY the full corrected HTML document.
       `.trim();
 
     /*
@@ -4289,11 +4381,22 @@ Return ONLY the complete HTML.
      * This prevents a bad company image from breaking an
      * expensive emergency repair.
      */
+    const repairGenerationStartedAt =
+      Date.now();
+
     const repairGeneration =
       await createGenerationResponse({
         openai,
 
         model,
+
+        reasoningEffort:
+          model ===
+            "gpt-6-astra" &&
+          resolvedReasoningEffort ===
+            "high"
+            ? "medium"
+            : resolvedReasoningEffort,
 
         prompt:
           repairPrompt,
@@ -4308,6 +4411,10 @@ Return ONLY the complete HTML.
         allowVision:
           false,
       });
+
+    repairGenerationMs =
+      Date.now() -
+      repairGenerationStartedAt;
 
     repairVisionFallbackUsed =
       repairGeneration
@@ -4455,6 +4562,14 @@ Return ONLY the complete HTML.
       "ENGINE=GPT-5.6-SOL-STATIC-V4-MOBILE",
 
       `MODEL=${model}`,
+
+      `REASONING_EFFORT=${resolvedReasoningEffort}`,
+
+      `FIRST_MODEL_MS=${firstGenerationMs}`,
+
+      `REPAIR_MODEL_MS=${repairGenerationMs}`,
+
+      `TOTAL_GENERATION_MS=${Date.now() - generationStartedAt}`,
 
       `GENERATION=${generationIndex}`,
 

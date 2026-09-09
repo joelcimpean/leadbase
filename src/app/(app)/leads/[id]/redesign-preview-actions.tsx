@@ -3,9 +3,11 @@
 import {
   Check,
   ChevronDown,
+  ChevronUp,
   Clock3,
   ExternalLink,
   Eye,
+  Film,
   Link2,
   Link2Off,
   Loader2,
@@ -37,6 +39,13 @@ import {
 import {
   useLanguage,
 } from "@/components/language-provider";
+
+import {
+  DESIGN_MODEL_OPTIONS,
+  isDesignModelOption,
+  type DesignMotionPreset,
+  type DesignReasoningEffort,
+} from "@/lib/design-generation-options";
 
 /* =========================================================
    TYPES
@@ -76,6 +85,12 @@ type DesignVariant = {
 
   createdAt:
     string;
+
+  motionApplied?:
+    boolean;
+
+  motionSourceGenerationIndex?:
+    number | null;
 };
 
 type DesignResponse = {
@@ -108,6 +123,137 @@ type DesignResponse = {
 
   variants?:
     DesignVariant[];
+};
+
+type GenerateOptions = {
+  motionPresetOverride?:
+    DesignMotionPreset;
+};
+
+function getVariantBaseNumber(
+  variant:
+    DesignVariant
+) {
+  return variant.motionApplied &&
+    variant.motionSourceGenerationIndex
+    ? variant.motionSourceGenerationIndex
+    : variant.generationIndex;
+}
+
+function buildVariantNumberMap(
+  variants:
+    DesignVariant[]
+) {
+  const numbers =
+    new Map<
+      string,
+      string
+    >();
+
+  const motionCounts =
+    new Map<
+      number,
+      number
+    >();
+
+  const ordered =
+    [...variants].sort(
+      (
+        a,
+        b
+      ) =>
+        a.generationIndex -
+          b.generationIndex ||
+        new Date(
+          a.createdAt
+        ).getTime() -
+          new Date(
+            b.createdAt
+          ).getTime()
+    );
+
+  for (
+    const variant of
+      ordered
+  ) {
+    const baseNumber =
+      getVariantBaseNumber(
+        variant
+      );
+
+    if (
+      !variant.motionApplied
+    ) {
+      numbers.set(
+        variant.id,
+        String(
+          variant.generationIndex
+        )
+      );
+      continue;
+    }
+
+    const nextCount =
+      (motionCounts.get(
+        baseNumber
+      ) ?? 0) + 1;
+
+    motionCounts.set(
+      baseNumber,
+      nextCount
+    );
+
+    numbers.set(
+      variant.id,
+      `${baseNumber}.${nextCount}`
+    );
+  }
+
+  return numbers;
+}
+
+function getVariantDisplayName({
+  variant,
+  variantLabel,
+  language,
+  numberMap,
+}: {
+  variant:
+    DesignVariant | null | undefined;
+  variantLabel:
+    string;
+  language:
+    "de" | "en";
+  numberMap:
+    Map<
+      string,
+      string
+    >;
+}) {
+  if (
+    !variant
+  ) {
+    return variantLabel;
+  }
+
+  const number =
+    numberMap.get(
+      variant.id
+    ) ??
+    String(
+      getVariantBaseNumber(
+        variant
+      )
+    );
+
+  return `${variantLabel} ${number}${variant.motionApplied ? language === "de" ? " mit Motion" : " with motion" : ""}`;
+}
+
+type MotionEnhanceResponse = {
+  ok?: boolean;
+  error?: string;
+  previewId?: string;
+  model?: string;
 };
 
 type ShareResponse = {
@@ -257,6 +403,36 @@ type PreviewVisitsResponse = {
 
 const copy = {
   de: {
+    studioEyebrow:
+      "Design Studio",
+
+    studioTitle:
+      "Design & Kundenvorschau",
+
+    studioDescription:
+      "Variante auswählen, Design bearbeiten und anschließend genau diese Version für den Kunden freigeben.",
+
+    designVariantTitle:
+      "Designvariante",
+
+    designVariantDescription:
+      "Die ausgewählte Variante wird für Outreach und Vorschau verwendet.",
+
+    customerPreviewTitle:
+      "Kundenvorschau",
+
+    customerPreviewDescription:
+      "Link ist aktiv und Besuchssignale werden getrennt ausgewertet.",
+
+    generationTimedOut:
+      "Die Design-Erstellung hat zu lange gedauert und wurde nach 3,5 Minuten abgebrochen. Bitte erneut versuchen oder die Qualität reduzieren.",
+
+    motionFailed:
+      "Die Motion-Effekte konnten nicht hinzugefügt werden.",
+
+    motionDone:
+      "Motion-Version erstellt. Das Original bleibt unverändert.",
+
     generate:
       "Redesign erstellen",
 
@@ -271,6 +447,75 @@ const copy = {
 
     regenerate:
       "Neue Variante",
+
+    generationSettings:
+      "Generierungseinstellungen",
+
+    generationSettingsDescription:
+      "Wähle Modell, Qualitätsstufe und Inspirationen für dieses Design.",
+
+    settingsHidden:
+      "Einstellungen ausblenden",
+
+    settingsVisible:
+      "Einstellungen anzeigen",
+
+    modelLabel:
+      "Design-KI",
+
+    reasoningLabel:
+      "Qualität",
+
+    motionLabel:
+      "Motion",
+
+    inspirationLabel:
+      "Inspiration / Briefing",
+
+    inspirationPlaceholder:
+      "z. B. weniger SaaS, mehr editorial, ruhiger premium Look, stärkere Typografie, bessere Hero-Komposition...",
+
+    inspirationLinksLabel:
+      "Inspiration-Links",
+
+    inspirationLinksPlaceholder:
+      "https://site-1.com\nhttps://site-2.com",
+
+    inspirationImagesLabel:
+      "Bild-URLs",
+
+    inspirationImagesPlaceholder:
+      "https://example.com/reference-1.jpg",
+
+    modelHelp:
+      "Astra für Premium-Designs, Sol/Terra/Luna für schnellere Runs.",
+
+    reasoningLow:
+      "Schnell",
+
+    reasoningMedium:
+      "High",
+
+    reasoningHigh:
+      "Max",
+
+    motionNone:
+      "Keine",
+
+    motionSubtle:
+      "Subtil",
+
+    motionPremium:
+      "Premium",
+
+    enhanceMotion:
+      "Enhance Motion",
+
+    motionGenerating:
+      "AI analysiert das ausgewählte Design und erstellt die Motion-Version...",
+
+    designModelFailed:
+      "Das gewählte Modell konnte nicht verwendet werden.",
 
     failed:
       "Das Redesign konnte nicht erstellt werden.",
@@ -400,6 +645,36 @@ const copy = {
   },
 
   en: {
+    studioEyebrow:
+      "Design Studio",
+
+    studioTitle:
+      "Design & client preview",
+
+    studioDescription:
+      "Choose a variation, edit the design, then publish exactly that version for the client.",
+
+    designVariantTitle:
+      "Design variation",
+
+    designVariantDescription:
+      "The selected variation is used for outreach and the client preview.",
+
+    customerPreviewTitle:
+      "Client preview",
+
+    customerPreviewDescription:
+      "The link is active and visit signals are tracked separately.",
+
+    generationTimedOut:
+      "Design generation took too long and was stopped after 3.5 minutes. Try again or reduce the quality level.",
+
+    motionFailed:
+      "Motion effects could not be added.",
+
+    motionDone:
+      "Motion version created. The original stays unchanged.",
+
     generate:
       "Create redesign",
 
@@ -414,6 +689,75 @@ const copy = {
 
     regenerate:
       "New variation",
+
+    generationSettings:
+      "Generation settings",
+
+    generationSettingsDescription:
+      "Choose the model, quality level, and inspiration inputs for this design.",
+
+    settingsHidden:
+      "Hide settings",
+
+    settingsVisible:
+      "Show settings",
+
+    modelLabel:
+      "Design AI",
+
+    reasoningLabel:
+      "Quality",
+
+    motionLabel:
+      "Motion",
+
+    inspirationLabel:
+      "Inspiration / brief",
+
+    inspirationPlaceholder:
+      "e.g. less SaaS, more editorial, quiet premium look, stronger typography, better hero composition...",
+
+    inspirationLinksLabel:
+      "Inspiration links",
+
+    inspirationLinksPlaceholder:
+      "https://site-1.com\nhttps://site-2.com",
+
+    inspirationImagesLabel:
+      "Image URLs",
+
+    inspirationImagesPlaceholder:
+      "https://example.com/reference-1.jpg",
+
+    modelHelp:
+      "Use Astra for premium designs; Sol, Terra, or Luna for faster runs.",
+
+    reasoningLow:
+      "Fast",
+
+    reasoningMedium:
+      "High",
+
+    reasoningHigh:
+      "Max",
+
+    motionNone:
+      "None",
+
+    motionSubtle:
+      "Subtle",
+
+    motionPremium:
+      "Premium",
+
+    enhanceMotion:
+      "Enhance Motion",
+
+    motionGenerating:
+      "AI is analyzing the selected design and building the motion version...",
+
+    designModelFailed:
+      "The selected model could not be used.",
 
     failed:
       "The redesign could not be generated.",
@@ -695,6 +1039,81 @@ function getVisitLocation(
     : fallback;
 }
 
+function parseLines(
+  value:
+    string
+) {
+  return value
+    .split(/\r?\n/)
+    .map((entry) =>
+      entry.trim()
+    )
+    .filter(Boolean);
+}
+
+function getModelLabel(
+  model:
+    string
+) {
+  switch (model) {
+    case "gpt-6-astra":
+      return "GPT-6 Astra";
+
+    case "gpt-5.6-sol":
+      return "GPT-5.6 Sol";
+
+    case "gpt-5.6-terra":
+      return "GPT-5.6 Terra";
+
+    case "gpt-5.6-luna":
+      return "GPT-5.6 Luna";
+
+    case "gpt-5-mini":
+      return "GPT-5 Mini";
+
+    default:
+      return model;
+  }
+}
+
+function getReasoningLabel(
+  value:
+    DesignReasoningEffort,
+  text:
+    (typeof copy)[keyof typeof copy]
+) {
+  switch (value) {
+    case "low":
+      return text.reasoningLow;
+
+    case "medium":
+      return text.reasoningMedium;
+
+    case "high":
+    default:
+      return text.reasoningHigh;
+  }
+}
+
+function getMotionLabel(
+  value:
+    DesignMotionPreset,
+  text:
+    (typeof copy)[keyof typeof copy]
+) {
+  switch (value) {
+    case "subtle":
+      return text.motionSubtle;
+
+    case "premium":
+      return text.motionPremium;
+
+    case "none":
+    default:
+      return text.motionNone;
+  }
+}
+
 /* =========================================================
    COMPONENT
 ========================================================= */
@@ -757,6 +1176,24 @@ export function RedesignPreviewActions({
     );
 
   const [
+    motionEnhancing,
+    setMotionEnhancing,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    motionMessage,
+    setMotionMessage,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
     selectingId,
     setSelectingId,
   ] =
@@ -782,6 +1219,66 @@ export function RedesignPreviewActions({
       string | null
     >(
       null
+    );
+
+  const [
+    settingsOpen,
+    setSettingsOpen,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    designModel,
+    setDesignModel,
+  ] =
+    useState(
+      "gpt-5.6-sol"
+    );
+
+  const [
+    reasoningEffort,
+    setReasoningEffort,
+  ] =
+    useState<
+      DesignReasoningEffort
+    >(
+      "medium"
+    );
+
+  const [
+    motionPreset,
+    setMotionPreset,
+  ] =
+    useState<
+      DesignMotionPreset
+    >(
+      "none"
+    );
+
+  const [
+    inspirationMemo,
+    setInspirationMemo,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    inspirationLinksValue,
+    setInspirationLinksValue,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    inspirationImagesValue,
+    setInspirationImagesValue,
+  ] =
+    useState(
+      ""
     );
 
   /* =======================================================
@@ -915,6 +1412,17 @@ export function RedesignPreviewActions({
       ?.id ??
     null;
 
+  const variantNumberMap =
+    useMemo(
+      () =>
+        buildVariantNumberMap(
+          variants
+        ),
+      [
+        variants,
+      ]
+    );
+
   const conceptSlug =
     useMemo(
       () =>
@@ -943,6 +1451,105 @@ export function RedesignPreviewActions({
       };
     },
     []
+  );
+
+  useEffect(
+    () => {
+      try {
+        const raw =
+          window.localStorage.getItem(
+            "leadbase-design-generation-settings-v2"
+          );
+
+        if (!raw) {
+          return;
+        }
+
+        const parsed = JSON.parse(raw) as {
+          designModel?: string;
+          reasoningEffort?: DesignReasoningEffort;
+          motionPreset?: DesignMotionPreset;
+          inspirationMemo?: string;
+          inspirationLinksValue?: string;
+          inspirationImagesValue?: string;
+        };
+
+        if (
+          isDesignModelOption(
+            parsed.designModel
+          )
+        ) {
+          setDesignModel(
+            parsed.designModel
+          );
+        }
+
+        if (
+          parsed.reasoningEffort === "low" ||
+          parsed.reasoningEffort === "medium" ||
+          parsed.reasoningEffort === "high"
+        ) {
+          setReasoningEffort(parsed.reasoningEffort);
+        }
+
+        if (
+          parsed.motionPreset === "none" ||
+          parsed.motionPreset === "subtle" ||
+          parsed.motionPreset === "premium"
+        ) {
+          setMotionPreset(parsed.motionPreset);
+        }
+
+        if (typeof parsed.inspirationMemo === "string") {
+          setInspirationMemo(parsed.inspirationMemo);
+        }
+
+        if (typeof parsed.inspirationLinksValue === "string") {
+          setInspirationLinksValue(parsed.inspirationLinksValue);
+        }
+
+        if (typeof parsed.inspirationImagesValue === "string") {
+          setInspirationImagesValue(parsed.inspirationImagesValue);
+        }
+      } catch (storageError) {
+        console.warn(
+          "Could not restore design generation settings:",
+          storageError
+        );
+      }
+    },
+    []
+  );
+
+  useEffect(
+    () => {
+      try {
+        window.localStorage.setItem(
+          "leadbase-design-generation-settings-v2",
+          JSON.stringify({
+            designModel,
+            reasoningEffort,
+            motionPreset,
+            inspirationMemo,
+            inspirationLinksValue,
+            inspirationImagesValue,
+          })
+        );
+      } catch (storageError) {
+        console.warn(
+          "Could not persist design generation settings:",
+          storageError
+        );
+      }
+    },
+    [
+      designModel,
+      reasoningEffort,
+      motionPreset,
+      inspirationMemo,
+      inspirationLinksValue,
+      inspirationImagesValue,
+    ]
   );
 
   /* =======================================================
@@ -1147,7 +1754,10 @@ export function RedesignPreviewActions({
      GENERATE
   ======================================================= */
 
-  async function generate() {
+  async function generate(
+    options?:
+      GenerateOptions
+  ) {
     if (
       generating
     ) {
@@ -1165,6 +1775,12 @@ export function RedesignPreviewActions({
     setVariantsOpen(
       false
     );
+
+    const effectiveMotionPreset =
+      options
+        ?.motionPresetOverride ??
+      motionPreset;
+
 
     try {
       const response =
@@ -1186,6 +1802,27 @@ export function RedesignPreviewActions({
                 regenerate:
                   variants.length >
                   0,
+
+                designModel,
+
+                reasoningEffort,
+
+                motionPreset:
+                  effectiveMotionPreset,
+
+                inspirationMemo:
+                  inspirationMemo.trim() ||
+                  null,
+
+                inspirationLinks:
+                  parseLines(
+                    inspirationLinksValue
+                  ),
+
+                inspirationImages:
+                  parseLines(
+                    inspirationImagesValue
+                  ),
               }),
           }
         );
@@ -1244,6 +1881,102 @@ export function RedesignPreviewActions({
       );
     } finally {
       setGenerating(
+        false
+      );
+    }
+  }
+
+  /* =======================================================
+     ENHANCE EXISTING DESIGN WITH MOTION
+  ======================================================= */
+
+  async function enhanceMotion() {
+    if (
+      !selectedVariantId ||
+      motionEnhancing ||
+      generating
+    ) {
+      return;
+    }
+
+    setMotionEnhancing(
+      true
+    );
+
+    setError(
+      null
+    );
+
+    setMotionMessage(
+      null
+    );
+
+
+    try {
+      const response =
+        await fetch(
+          `/api/design-preview/${encodeURIComponent(
+            selectedVariantId
+          )}/enhance-motion`,
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                designModel,
+
+                reasoningEffort,
+
+                motionPreset:
+                  motionPreset ===
+                  "none"
+                    ? "premium"
+                    : motionPreset,
+              }),
+          }
+        );
+
+      const result =
+        (await response.json()) as
+          MotionEnhanceResponse;
+
+      if (
+        !response.ok ||
+        !result.ok
+      ) {
+        throw new Error(
+          result.error ??
+          text.motionFailed
+        );
+      }
+
+      setMotionMessage(
+        text.motionDone
+      );
+
+      await loadDesigns();
+    } catch (
+      motionError
+    ) {
+      console.error(
+        "Could not enhance design motion:",
+        motionError
+      );
+
+      setError(
+        motionError instanceof
+          Error
+          ? motionError.message
+          : text.motionFailed
+      );
+    } finally {
+      setMotionEnhancing(
         false
       );
     }
@@ -1731,6 +2464,33 @@ export function RedesignPreviewActions({
       return;
     }
 
+    /*
+     * Existing client preview:
+     * copying the link must be instant and must NOT call the share
+     * endpoint again or show "Creating client preview...".
+     */
+    if (
+      shareUrl
+    ) {
+      setShareError(
+        null
+      );
+
+      setCopied(
+        false
+      );
+
+      await copyLink(
+        shareUrl
+      );
+
+      return;
+    }
+
+    /*
+     * No client preview exists yet:
+     * only this path creates one and may show the creation/loading state.
+     */
     setShareLoading(
       true
     );
@@ -2305,44 +3065,89 @@ export function RedesignPreviewActions({
      RENDER
   ======================================================= */
 
+  const hasInspiration =
+    Boolean(
+      inspirationMemo.trim() ||
+      inspirationLinksValue.trim() ||
+      inspirationImagesValue.trim()
+    );
+
+  const selectedVariantLabel =
+    getVariantDisplayName({
+      variant:
+        selectedVariant,
+
+      variantLabel:
+        text.variant,
+
+      language,
+
+      numberMap:
+        variantNumberMap,
+    });
+
   return (
     <>
-      <section className="leadbase-workspace-card min-w-0 overflow-visible rounded-[24px] border p-4 sm:p-5">
-        <div className="mb-4 flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-end">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="flex size-9 items-center justify-center rounded-xl border bg-primary/[0.08] text-primary">
-                <Sparkles className="size-4" />
-              </span>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">Design Studio</p>
-                <h2 className="mt-0.5 text-lg font-semibold tracking-tight">Design & Kundenvorschau</h2>
-              </div>
-            </div>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Variante auswählen, Design bearbeiten und anschließend genau diese Version für den Kunden freigeben.
-            </p>
+      <section className="min-w-0 overflow-visible rounded-[16px] border border-black/[0.08] bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(11,12,14,0.03)] dark:border-white/[0.08] dark:bg-[#111216]">
+        {/* =================================================
+            HEADER
+        ================================================= */}
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Sparkles className="size-3.5 shrink-0 text-[#002BBA]" />
+
+            <h2 className="whitespace-nowrap text-[13.5px] font-semibold tracking-[-0.01em]">
+              {
+                language === "de"
+                  ? "Design Studio"
+                  : "Design Studio"
+              }
+            </h2>
+
+            <span className="truncate text-[11.5px] text-[#6B7078]">
+              {
+                language === "de"
+                  ? "Variante wählen, bearbeiten, für den Kunden freigeben."
+                  : "Choose a variation, edit it, then publish exactly that version for the client."
+              }
+            </span>
           </div>
 
-          {shareUrl ? (
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              {text.active}
-            </span>
-          ) : null}
+          <button
+            type="button"
+            onClick={() =>
+              setSettingsOpen(
+                (
+                  current
+                ) =>
+                  !current
+              )
+            }
+            className="flex shrink-0 items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.08em] text-[#6B7078] transition-colors hover:text-[#0B0C0E] dark:hover:text-white"
+          >
+            {
+              language === "de"
+                ? "Einstellungen"
+                : "Settings"
+            }
+
+            <ChevronDown
+              className={`size-3 transition-transform duration-200 ${
+                settingsOpen
+                  ? "rotate-180"
+                  : ""
+              }`}
+            />
+          </button>
         </div>
 
-        <div className="rounded-2xl border bg-muted/15 p-3 sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Designvariante</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Die ausgewählte Variante wird für Outreach und Vorschau verwendet.</p>
-            </div>
-          </div>
+        {/* =================================================
+            MAIN TOOLBAR
+        ================================================= */}
 
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {variants.length ===
-          0 ? (
+        <div className="mt-[14px] flex min-w-0 flex-wrap items-center gap-2">
+          {variants.length === 0 ? (
             <button
               type="button"
               disabled={
@@ -2351,12 +3156,12 @@ export function RedesignPreviewActions({
               onClick={() =>
                 void generate()
               }
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border bg-background px-4 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-9"
+              className="inline-flex h-[34px] items-center justify-center gap-2 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] font-medium text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.10] dark:bg-[#111216] dark:text-white dark:hover:bg-white/[0.04]"
             >
               {generating ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Sparkles className="size-4" />
+                <Sparkles className="size-3.5 opacity-70" />
               )}
 
               {generating
@@ -2365,9 +3170,7 @@ export function RedesignPreviewActions({
             </button>
           ) : (
             <>
-              {/* =============================================
-                  VARIANT DROPDOWN
-              ============================================= */}
+              {/* VARIANT */}
 
               <div
                 ref={
@@ -2385,27 +3188,21 @@ export function RedesignPreviewActions({
                         !current
                     )
                   }
-                  className="inline-flex h-10 min-w-[200px] items-center justify-between gap-3 rounded-xl border bg-background px-3.5 text-sm font-medium shadow-sm transition-colors hover:border-primary/25 hover:bg-primary/[0.025]"
+                  className="flex h-[34px] min-w-[200px] max-w-[300px] items-center gap-[9px] rounded-[10px] border border-black/[0.09] bg-[#F7F8FA] px-3 text-[13px] font-medium text-[#0B0C0E] transition-colors hover:border-black/[0.16] dark:border-white/[0.10] dark:bg-white/[0.04] dark:text-white"
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {selectedVariant
-                      ?.selected ? (
-                      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                        <Check className="size-2.5" />
-                      </span>
-                    ) : null}
+                  <span className="relative size-3.5 shrink-0 text-[#002BBA]">
+                    <span className="absolute left-0 top-[1px] h-[7px] w-[11px] rounded-[2px] border border-current" />
+                    <span className="absolute bottom-[1px] right-0 h-[7px] w-[11px] rounded-[2px] border border-current bg-[#F7F8FA] dark:bg-[#15161A]" />
+                  </span>
 
-                    <span className="truncate">
-                      {text.variant}{" "}
-                      {
-                        selectedVariant
-                          ?.generationIndex
-                      }
-                    </span>
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {
+                      selectedVariantLabel
+                    }
                   </span>
 
                   <ChevronDown
-                    className={`size-4 shrink-0 transition-transform duration-200 ${
+                    className={`size-3 shrink-0 text-[#6B7078] transition-transform duration-200 ${
                       variantsOpen
                         ? "rotate-180"
                         : ""
@@ -2414,8 +3211,8 @@ export function RedesignPreviewActions({
                 </button>
 
                 {variantsOpen ? (
-                  <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[290px] overflow-hidden rounded-xl border bg-popover p-1.5 shadow-xl">
-                    <p className="px-2 py-1.5 text-[11px] font-medium text-muted-foreground">
+                  <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[300px] overflow-hidden rounded-[11px] border border-black/[0.08] bg-white p-1.5 shadow-[0_12px_36px_rgba(11,12,14,0.14)] dark:border-white/[0.10] dark:bg-[#15161A]">
+                    <p className="px-2 py-1.5 font-mono text-[8.5px] uppercase tracking-[0.08em] text-[#6B7078]">
                       {
                         text.variants
                       }
@@ -2430,15 +3227,28 @@ export function RedesignPreviewActions({
                             selectingId ===
                             variant.id;
 
+                          const label =
+                            getVariantDisplayName({
+                              variant,
+
+                              variantLabel:
+                                text.variant,
+
+                              language,
+
+                              numberMap:
+                                variantNumberMap,
+                            });
+
                           return (
                             <div
                               key={
                                 variant.id
                               }
-                              className={`flex items-center gap-1 rounded-lg ${
+                              className={`flex items-center gap-1 rounded-[9px] ${
                                 variant.selected
-                                  ? "bg-emerald-500/10"
-                                  : "hover:bg-muted"
+                                  ? "bg-[#EAEEFB]"
+                                  : "hover:bg-[#F7F8FA] dark:hover:bg-white/[0.05]"
                               }`}
                             >
                               <button
@@ -2454,13 +3264,13 @@ export function RedesignPreviewActions({
                                     variant.id
                                   )
                                 }
-                                className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
+                                className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left"
                               >
                                 <span
                                   className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${
                                     variant.selected
-                                      ? "border-emerald-500 bg-emerald-500 text-white"
-                                      : "border-border"
+                                      ? "border-[#002BBA] bg-[#002BBA] text-white"
+                                      : "border-black/[0.12] dark:border-white/[0.16]"
                                   }`}
                                 >
                                   {variant.selected ? (
@@ -2471,14 +3281,13 @@ export function RedesignPreviewActions({
                                 </span>
 
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium">
-                                    {text.variant}{" "}
+                                  <p className="truncate text-[12px] font-medium">
                                     {
-                                      variant.generationIndex
+                                      label
                                     }
                                   </p>
 
-                                  <p className="truncate text-[11px] text-muted-foreground">
+                                  <p className="mt-0.5 truncate text-[9.5px] text-[#6B7078]">
                                     {variant.selected
                                       ? text.selected
                                       : selecting
@@ -2494,9 +3303,12 @@ export function RedesignPreviewActions({
                                 }
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mr-1 flex size-8 shrink-0 items-center justify-center rounded-md border bg-background transition-colors hover:bg-muted"
+                                className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-[7px] border border-black/[0.08] bg-white text-[#6B7078] transition-colors hover:border-black/[0.16] hover:text-[#0B0C0E] dark:border-white/[0.10] dark:bg-[#15161A] dark:hover:text-white"
+                                title={
+                                  text.open
+                                }
                               >
-                                <ExternalLink className="size-3.5" />
+                                <ExternalLink className="size-3" />
                               </a>
                             </div>
                           );
@@ -2507,9 +3319,7 @@ export function RedesignPreviewActions({
                 ) : null}
               </div>
 
-              {/* =============================================
-                  OPEN DESIGN
-              ============================================= */}
+              {/* OPEN */}
 
               {selectedVariant ? (
                 <a
@@ -2518,42 +3328,35 @@ export function RedesignPreviewActions({
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex size-10 items-center justify-center rounded-lg border bg-background transition-colors hover:bg-muted sm:size-9"
+                  className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] border border-black/[0.09] bg-white text-[#6B7078] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] hover:text-[#0B0C0E] dark:border-white/[0.10] dark:bg-[#111216] dark:hover:text-white"
                   title={
                     text.open
                   }
                 >
-                  <ExternalLink className="size-4" />
+                  <ExternalLink className="size-3.5" />
                 </a>
               ) : null}
 
-              {/* =============================================
-                  EDIT DESIGN
-              ============================================= */}
+              <div className="mx-0.5 h-5 w-px shrink-0 bg-black/[0.09] dark:bg-white/[0.10]" />
+
+              {/* EDIT */}
 
               {selectedVariant ? (
                 <a
                   href={`/design-preview/${encodeURIComponent(
                     selectedVariant.id
                   )}/edit`}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-background px-3.5 text-sm font-semibold transition-colors hover:border-primary/25 hover:bg-primary/[0.035]"
-                  title={
+                  className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
+                >
+                  <Pencil className="size-3.5 opacity-60" />
+
+                  {
                     text.edit
                   }
-                >
-                  <Pencil className="size-4" />
-
-                  <span className="hidden xl:inline">
-                    {
-                      text.edit
-                    }
-                  </span>
                 </a>
               ) : null}
 
-              {/* =============================================
-                  NEW VARIANT
-              ============================================= */}
+              {/* NEW VARIATION */}
 
               <button
                 type="button"
@@ -2563,27 +3366,49 @@ export function RedesignPreviewActions({
                 onClick={() =>
                   void generate()
                 }
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border bg-background px-3.5 text-sm font-semibold transition-colors hover:border-primary/25 hover:bg-primary/[0.035] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
               >
                 {generating ? (
-                  <Loader2 className="size-4 animate-spin" />
+                  <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <RefreshCw className="size-4" />
+                  <Sparkles className="size-3.5 opacity-60" />
                 )}
 
-                <span className="hidden sm:inline">
-                  {
-                    text.regenerate
-                  }
-                </span>
+                {
+                  text.regenerate
+                }
               </button>
 
-              {/* =============================================
-                  CUSTOMER PREVIEW
-              ============================================= */}
+              <div className="ml-auto flex items-center gap-2">
+                {/* ENHANCE MOTION */}
 
-              {selectedVariant ? (
-                <>
+                {selectedVariant ? (
+                  <button
+                    type="button"
+                    disabled={
+                      generating ||
+                      motionEnhancing
+                    }
+                    onClick={() =>
+                      void enhanceMotion()
+                    }
+                    className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] bg-[#EAEEFB] px-3 text-[13px] font-medium text-[#002BBA] transition-colors hover:bg-[#DFE5F8] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#002BBA]/20 dark:text-[#8EA6FF] dark:hover:bg-[#002BBA]/28"
+                  >
+                    {motionEnhancing ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-3.5" />
+                    )}
+
+                    {
+                      text.enhanceMotion
+                    }
+                  </button>
+                ) : null}
+
+                {/* CLIENT PREVIEW */}
+
+                {selectedVariant ? (
                   <button
                     type="button"
                     disabled={
@@ -2592,23 +3417,20 @@ export function RedesignPreviewActions({
                     onClick={() =>
                       void createOrCopyCustomerPreview()
                     }
-                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      shareUrl
-                        ? "border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-                        : "border-primary/20 bg-primary/[0.08] text-primary hover:bg-primary/[0.12]"
-                    }`}
+                    className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] bg-[#EAEEFB] px-3 text-[13px] font-medium text-[#002BBA] transition-colors hover:bg-[#DFE5F8] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#002BBA]/20 dark:text-[#8EA6FF] dark:hover:bg-[#002BBA]/28"
                   >
                     {shareLoading ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <Loader2 className="size-3.5 animate-spin" />
                     ) : copied ? (
-                      <Check className="size-4" />
+                      <Check className="size-3.5" />
                     ) : shareUrl ? (
-                      <Link2 className="size-4" />
+                      <Link2 className="size-3.5" />
                     ) : (
-                      <ShieldCheck className="size-4" />
+                      <ShieldCheck className="size-3.5" />
                     )}
 
-                    {shareLoading
+                    {shareLoading &&
+                    !shareUrl
                       ? text.creatingClientPreview
                       : copied
                         ? text.copiedClientLink
@@ -2616,163 +3438,241 @@ export function RedesignPreviewActions({
                           ? text.copyClientLink
                           : text.createClientPreview}
                   </button>
-
-                  {shareUrl ? (
-                    <>
-                      <a
-                        href={
-                          shareUrl
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={
-                          text.openClientPreview
-                        }
-                        aria-label={
-                          text.openClientPreview
-                        }
-                        className="flex size-10 items-center justify-center rounded-lg border bg-background transition-colors hover:bg-muted sm:size-9"
-                      >
-                        <Eye className="size-4" />
-                      </a>
-
-                      <button
-                        type="button"
-                        disabled={
-                          shareLoading
-                        }
-                        onClick={() =>
-                          void deactivateCustomerPreview()
-                        }
-                        title={
-                          text.deactivateClientPreview
-                        }
-                        aria-label={
-                          text.deactivateClientPreview
-                        }
-                        className="flex size-10 items-center justify-center rounded-lg border bg-background text-muted-foreground transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-600 disabled:opacity-60 sm:size-9"
-                      >
-                        <Link2Off className="size-4" />
-                      </button>
-                    </>
-                  ) : null}
-                </>
-              ) : null}
+                ) : null}
+              </div>
             </>
           )}
-          </div>
         </div>
 
-        {/* ===================================================
-            GENERATING
-        =================================================== */}
+        {/* =================================================
+            GENERATION META
+        ================================================= */}
+
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t border-black/[0.07] pt-3 dark:border-white/[0.08]">
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-[#6B7078]">
+            {
+              language === "de"
+                ? "Generierung"
+                : "Generation"
+            }
+          </span>
+
+          <span className="rounded-[6px] bg-black/[0.05] px-2 py-[3px] font-mono text-[10px] uppercase text-[#40454E] dark:bg-white/[0.06] dark:text-[#B9BDC5]">
+            {
+              getModelLabel(
+                designModel
+              )
+            }
+          </span>
+
+          <span className="rounded-[6px] bg-black/[0.05] px-2 py-[3px] font-mono text-[10px] uppercase text-[#40454E] dark:bg-white/[0.06] dark:text-[#B9BDC5]">
+            {
+              language === "de"
+                ? "Qualität"
+                : "Quality"
+            }{" "}
+            {
+              getReasoningLabel(
+                reasoningEffort,
+                text
+              )
+            }
+          </span>
+
+          <span className="rounded-[6px] bg-black/[0.05] px-2 py-[3px] font-mono text-[10px] uppercase text-[#40454E] dark:bg-white/[0.06] dark:text-[#B9BDC5]">
+            {
+              language === "de"
+                ? "Inspiration"
+                : "Inspiration"
+            }{" "}
+            {
+              hasInspiration
+                ? language === "de"
+                  ? "Aktiv"
+                  : "Active"
+                : language === "de"
+                  ? "Keine"
+                  : "None"
+            }
+          </span>
+
+          <span className="min-w-0 truncate text-[11px] text-[#6B7078]">
+            {
+              text.modelHelp
+            }
+          </span>
+        </div>
+
+        {/* =================================================
+            CLIENT PREVIEW + EMAIL GIF
+            Visible in the default studio — not hidden in Settings.
+        ================================================= */}
+
+        <div className="mt-3 grid grid-cols-2 items-start gap-2.5 border-t border-black/[0.07] pt-3 max-[900px]:grid-cols-1 dark:border-white/[0.08]">
+          {/* CLIENT PREVIEW */}
+
+          <div className="flex min-h-[44px] min-w-0 self-start items-center gap-2.5 rounded-[10px] border border-black/[0.07] bg-[#FBFBFC] px-3 dark:border-white/[0.08] dark:bg-white/[0.025]">
+            <ShieldCheck
+              className={`size-3.5 shrink-0 ${
+                shareUrl
+                  ? "text-[#002BBA]"
+                  : "text-[#8A9099]"
+              }`}
+            />
+
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-[11.5px] font-medium text-[#0B0C0E] dark:text-white">
+                  {
+                    language === "de"
+                      ? "Kunden-Vorschau"
+                      : "Client preview"
+                  }
+                </span>
+
+                <span
+                  className={`shrink-0 rounded-[6px] px-1.5 py-[2px] font-mono text-[8px] uppercase tracking-[0.05em] ${
+                    shareUrl
+                      ? "bg-[#EAEEFB] text-[#002BBA] dark:bg-[#002BBA]/20 dark:text-[#8EA6FF]"
+                      : "bg-black/[0.05] text-[#6B7078] dark:bg-white/[0.06]"
+                  }`}
+                >
+                  {shareUrl
+                    ? language === "de"
+                      ? "Aktiv"
+                      : "Active"
+                    : language === "de"
+                      ? "Nicht erstellt"
+                      : "Not created"}
+                </span>
+              </div>
+
+              <p className="mt-0.5 truncate text-[9.5px] text-[#6B7078]">
+                {shareUrl
+                  ? `${viewCount} ${
+                      viewCount === 1
+                        ? text.view
+                        : text.views
+                    }`
+                  : language === "de"
+                    ? "Erstelle zuerst den Kunden-Link."
+                    : "Create the client link first."}
+              </p>
+            </div>
+
+            {shareUrl ? (
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  disabled={
+                    visitsLoading
+                  }
+                  onClick={() => {
+                    setVisitsOpen(
+                      true
+                    );
+
+                    void loadVisits();
+                  }}
+                  className="inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[10.5px] font-medium text-[#002BBA] transition-[background-color,color,transform] duration-150 hover:bg-[#EAEEFB] hover:text-[#001E85] active:scale-[0.98] disabled:opacity-50"
+                >
+                  {visitsLoading ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Eye className="size-3" />
+                  )}
+
+                  {
+                    text.visitDetails
+                  }
+                </button>
+
+                <a
+                  href={
+                    shareUrl
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[10.5px] font-medium text-[#002BBA] transition-[background-color,color,transform] duration-150 hover:bg-[#EAEEFB] hover:text-[#001E85] active:scale-[0.98]"
+                >
+                  {
+                    language === "de"
+                      ? "Öffnen"
+                      : "Open"
+                  }
+
+                  <ExternalLink className="size-3" />
+                </a>
+              </div>
+            ) : null}
+          </div>
+
+          {/* EMAIL GIF */}
+
+          {shareUrl ? (
+            <PreviewGifActions
+              leadId={
+                leadId
+              }
+              shareUrl={
+                shareUrl
+              }
+            />
+          ) : (
+            <div className="flex min-h-[44px] min-w-0 items-center gap-2.5 rounded-[10px] border border-black/[0.07] bg-[#FBFBFC] px-3 dark:border-white/[0.08] dark:bg-white/[0.025]">
+              <Film className="size-3.5 shrink-0 text-[#8A9099]" />
+
+              <div className="min-w-0">
+                <p className="text-[11.5px] font-medium">
+                  {
+                    language === "de"
+                      ? "E-Mail-GIF"
+                      : "Email GIF"
+                  }
+                </p>
+
+                <p className="mt-0.5 truncate text-[9.5px] text-[#6B7078]">
+                  {
+                    language === "de"
+                      ? "Kunden-Vorschau zuerst erstellen."
+                      : "Create the client preview first."
+                  }
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* =================================================
+            GENERATION / MOTION STATUS
+        ================================================= */}
 
         {generating ? (
-          <p className="mt-2 max-w-[420px] text-xs leading-5 text-muted-foreground">
+          <p className="mt-2 text-[10.5px] leading-5 text-[#6B7078]">
             {
               text.generating
             }
           </p>
         ) : null}
 
-        {/* ===================================================
-            SHARE STATUS + VISITOR TRACKING
-        =================================================== */}
-
-        {shareUrl ? (
-          <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.035] p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Kundenvorschau</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Link ist aktiv und Besuchssignale werden getrennt ausgewertet.</p>
-              </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-                <ShieldCheck className="size-3.5" />
-                {text.active}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
-              <ShieldCheck className="size-3.5" />
-
-              {
-                text.active
-              }
-            </span>
-
-            {visitSummary ? (
-              <>
-                <span className="font-medium text-foreground">
-                  {visitSummary.externalVisitors ??
-                    0}{" "}
-                  {
-                    text.external
-                  }
-                </span>
-
-                <span>
-                  {visitSummary.ownerSessions ??
-                    0}{" "}
-                  {
-                    text.own
-                  }
-                </span>
-
-                {(visitSummary.outreachSessions ??
-                  0) >
-                0 ? (
-                  <span className="text-violet-700 dark:text-violet-300">
-                    {visitSummary.outreachSessions}{" "}
-                    {
-                      text.outreach
-                    }
-                  </span>
-                ) : null}
-              </>
-            ) : (
-              <span>
-                {viewCount}{" "}
-                {viewCount ===
-                1
-                  ? text.view
-                  : text.views}
-              </span>
-            )}
-
-            <button
-              type="button"
-              disabled={
-                visitsLoading
-              }
-              onClick={() => {
-                setVisitsOpen(
-                  true
-                );
-
-                void loadVisits();
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {visitsLoading ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Eye className="size-3" />
-              )}
-
-              {
-                text.visitDetails
-              }
-            </button>
-            </div>
-          </div>
+        {motionEnhancing ? (
+          <p className="mt-2 text-[10.5px] leading-5 text-[#6B7078]">
+            {
+              text.motionGenerating
+            }
+          </p>
         ) : null}
 
-        {/* ===================================================
-            ERRORS
-        =================================================== */}
+        {motionMessage ? (
+          <p className="mt-2 text-[10.5px] leading-5 text-[#2F6B3A]">
+            {
+              motionMessage
+            }
+          </p>
+        ) : null}
 
         {error ? (
-          <p className="mt-1.5 max-w-[520px] break-words text-xs leading-5 text-red-600 dark:text-red-400">
+          <p className="mt-2 break-words text-[10.5px] leading-5 text-red-600 dark:text-red-400">
             {
               error
             }
@@ -2780,7 +3680,7 @@ export function RedesignPreviewActions({
         ) : null}
 
         {shareError ? (
-          <p className="mt-1.5 max-w-[520px] break-words text-xs leading-5 text-red-600 dark:text-red-400">
+          <p className="mt-2 break-words text-[10.5px] leading-5 text-red-600 dark:text-red-400">
             {
               shareError
             }
@@ -2789,19 +3689,333 @@ export function RedesignPreviewActions({
 
         {visitError &&
         shareUrl ? (
-          <p className="mt-1.5 max-w-[520px] break-words text-xs leading-5 text-amber-600 dark:text-amber-400">
+          <p className="mt-2 break-words text-[10.5px] leading-5 text-amber-600 dark:text-amber-400">
             {
               visitError
             }
           </p>
         ) : null}
 
-{shareUrl ? (
-  <PreviewGifActions
-    leadId={leadId}
-    shareUrl={shareUrl}
-  />
-) : null}
+        {/* =================================================
+            SETTINGS / SECONDARY FUNCTIONALITY
+            Hidden by default so the default Studio stays 1:1
+            with the approved Lead Detail design.
+        ================================================= */}
+
+        {settingsOpen ? (
+          <div className="mt-4 border-t border-black/[0.07] pt-4 dark:border-white/[0.08]">
+            <div className="grid gap-3 xl:grid-cols-3">
+              <label className="space-y-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                  {
+                    text.modelLabel
+                  }
+                </span>
+
+                <select
+                  value={
+                    designModel
+                  }
+                  onChange={(event) =>
+                    setDesignModel(
+                      event.target.value
+                    )
+                  }
+                  className="h-9 w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+                >
+                  {DESIGN_MODEL_OPTIONS.map(
+                    (
+                      model
+                    ) => (
+                      <option
+                        key={
+                          model
+                        }
+                        value={
+                          model
+                        }
+                      >
+                        {
+                          getModelLabel(
+                            model
+                          )
+                        }
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                  {
+                    text.reasoningLabel
+                  }
+                </span>
+
+                <select
+                  value={
+                    reasoningEffort
+                  }
+                  onChange={(event) =>
+                    setReasoningEffort(
+                      event.target.value as DesignReasoningEffort
+                    )
+                  }
+                  className="h-9 w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+                >
+                  <option value="low">
+                    {
+                      text.reasoningLow
+                    }
+                  </option>
+
+                  <option value="medium">
+                    {
+                      text.reasoningMedium
+                    }
+                  </option>
+
+                  <option value="high">
+                    {
+                      text.reasoningHigh
+                    }
+                  </option>
+                </select>
+              </label>
+
+              <label className="space-y-1.5">
+                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                  {
+                    text.motionLabel
+                  }
+                </span>
+
+                <select
+                  value={
+                    motionPreset
+                  }
+                  onChange={(event) =>
+                    setMotionPreset(
+                      event.target.value as DesignMotionPreset
+                    )
+                  }
+                  className="h-9 w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+                >
+                  <option value="none">
+                    {
+                      text.motionNone
+                    }
+                  </option>
+
+                  <option value="subtle">
+                    {
+                      text.motionSubtle
+                    }
+                  </option>
+
+                  <option value="premium">
+                    {
+                      text.motionPremium
+                    }
+                  </option>
+                </select>
+              </label>
+
+              <label className="space-y-1.5 xl:col-span-3">
+                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                  {
+                    text.inspirationLabel
+                  }
+                </span>
+
+                <textarea
+                  value={
+                    inspirationMemo
+                  }
+                  onChange={(event) =>
+                    setInspirationMemo(
+                      event.target.value
+                    )
+                  }
+                  rows={3}
+                  placeholder={
+                    text.inspirationPlaceholder
+                  }
+                  className="w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 py-2 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+                />
+              </label>
+
+              <label className="space-y-1.5 xl:col-span-3">
+                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                  {
+                    text.inspirationLinksLabel
+                  }
+                </span>
+
+                <textarea
+                  value={
+                    inspirationLinksValue
+                  }
+                  onChange={(event) =>
+                    setInspirationLinksValue(
+                      event.target.value
+                    )
+                  }
+                  rows={2}
+                  placeholder={
+                    text.inspirationLinksPlaceholder
+                  }
+                  className="w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 py-2 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+                />
+              </label>
+
+              <label className="space-y-1.5 xl:col-span-3">
+                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                  {
+                    text.inspirationImagesLabel
+                  }
+                </span>
+
+                <textarea
+                  value={
+                    inspirationImagesValue
+                  }
+                  onChange={(event) =>
+                    setInspirationImagesValue(
+                      event.target.value
+                    )
+                  }
+                  rows={2}
+                  placeholder={
+                    text.inspirationImagesPlaceholder
+                  }
+                  className="w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 py-2 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+                />
+              </label>
+            </div>
+
+            {/* ACTIVE CLIENT PREVIEW + VISITS */}
+
+            {shareUrl ? (
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[11px] border border-[#002BBA]/10 bg-[#EAEEFB]/45 px-3 py-2.5 text-[10.5px]">
+                <span className="inline-flex items-center gap-1.5 font-medium text-[#002BBA]">
+                  <ShieldCheck className="size-3.5" />
+
+                  {
+                    text.active
+                  }
+                </span>
+
+                {visitSummary ? (
+                  <>
+                    <span className="text-[#40454E]">
+                      <strong className="font-medium text-[#0B0C0E] dark:text-white">
+                        {
+                          visitSummary.externalVisitors ??
+                          0
+                        }
+                      </strong>{" "}
+                      {
+                        text.external
+                      }
+                    </span>
+
+                    <span className="text-[#6B7078]">
+                      {
+                        visitSummary.ownerSessions ??
+                        0
+                      }{" "}
+                      {
+                        text.own
+                      }
+                    </span>
+
+                    {(visitSummary.outreachSessions ??
+                      0) >
+                    0 ? (
+                      <span className="text-[#002BBA]">
+                        {
+                          visitSummary.outreachSessions
+                        }{" "}
+                        {
+                          text.outreach
+                        }
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-[#6B7078]">
+                    {
+                      viewCount
+                    }{" "}
+                    {viewCount === 1
+                      ? text.view
+                      : text.views}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  disabled={
+                    visitsLoading
+                  }
+                  onClick={() => {
+                    setVisitsOpen(
+                      true
+                    );
+
+                    void loadVisits();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[10.5px] text-[#002BBA] transition-colors hover:bg-[#EAEEFB] hover:text-[#001E85] disabled:opacity-50"
+                >
+                  {visitsLoading ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Eye className="size-3" />
+                  )}
+
+                  {
+                    text.visitDetails
+                  }
+                </button>
+
+                <a
+                  href={
+                    shareUrl
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[10.5px] text-[#002BBA] transition-colors hover:bg-[#EAEEFB] hover:text-[#001E85]"
+                >
+                  {
+                    text.openClientPreview
+                  }
+
+                  <ExternalLink className="size-3" />
+                </a>
+
+                <button
+                  type="button"
+                  disabled={
+                    shareLoading
+                  }
+                  onClick={() =>
+                    void deactivateCustomerPreview()
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 text-[10.5px] text-[#6B7078] transition-colors hover:bg-red-500/[0.06] hover:text-red-600 disabled:opacity-50"
+                >
+                  <Link2Off className="size-3" />
+
+                  {
+                    text.deactivateClientPreview
+                  }
+                </button>
+              </div>
+            ) : null}
+
+          </div>
+        ) : null}
       </section>
 
       {

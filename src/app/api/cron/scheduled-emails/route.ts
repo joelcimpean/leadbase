@@ -9,6 +9,7 @@ import {
 import {
   sendGmailMessage,
   sendGmailReply,
+  sendGmailThreadFollowUp,
 } from "@/lib/gmail-send";
 
 import {
@@ -52,7 +53,7 @@ const GMAIL_SEND_SCOPE =
 const MAX_EMAILS_PER_RUN =
   20;
 
-const FOLLOW_UP_DELAY_DAYS =
+const DEFAULT_FOLLOW_UP_DELAY_DAYS =
   5;
 
 /* =========================================================
@@ -102,6 +103,56 @@ type GmailConnection = {
   encrypted_refresh_token: string;
   scopes: unknown;
 };
+
+
+async function getFollowUpDelayDaysForUser(
+  userId:
+    string
+) {
+  const supabase =
+    createAdminClient();
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        "outreach_preferences"
+      )
+      .select(
+        "follow_up_delay_days"
+      )
+      .eq(
+        "user_id",
+        userId
+      )
+      .maybeSingle();
+
+  if (
+    error
+  ) {
+    console.warn(
+      "Could not load scheduled-outreach follow-up delay; using default:",
+      error.message
+    );
+
+    return DEFAULT_FOLLOW_UP_DELAY_DAYS;
+  }
+
+  const value =
+    Number(
+      data?.follow_up_delay_days
+    );
+
+  return Number.isInteger(
+    value
+  ) &&
+    value >= 1 &&
+    value <= 30
+    ? value
+    : DEFAULT_FOLLOW_UP_DELAY_DAYS;
+}
 
 /* =========================================================
    AUTH
@@ -598,7 +649,9 @@ async function processScheduledReply(
         )
         .select(`
           gmail_message_id,
-          gmail_thread_id
+          gmail_thread_id,
+          direction,
+          to_email
         `)
         .eq(
           "id",
@@ -611,10 +664,6 @@ async function processScheduledReply(
         .eq(
           "lead_id",
           schedule.lead_id
-        )
-        .eq(
-          "direction",
-          "INCOMING"
         )
         .maybeSingle();
 
@@ -703,34 +752,34 @@ async function processScheduledReply(
     let sendResult;
 
     try {
-      sendResult =
-        await sendGmailReply({
-          fromEmail:
-            gmailConnection.email_address,
+      if (replyTarget.direction === "OUTGOING") {
+        if (!replyTarget.to_email) {
+          throw new Error("Scheduled outreach target has no recipient.");
+        }
 
-          body:
-            schedule.body,
-
-          encryptedRefreshToken:
-            gmailConnection.encrypted_refresh_token,
-
-          replyToGmailMessageId:
-            replyTarget.gmail_message_id,
-
-          gmailThreadId:
-            replyTarget.gmail_thread_id,
-
-          ccEmails:
-            schedule.cc_emails ??
-            [],
-
-          bccEmails:
-            schedule.bcc_emails ??
-            [],
-
-          attachments:
-            gmailAttachments,
+        sendResult = await sendGmailThreadFollowUp({
+          fromEmail: gmailConnection.email_address,
+          toEmail: replyTarget.to_email,
+          body: schedule.body,
+          encryptedRefreshToken: gmailConnection.encrypted_refresh_token,
+          replyToGmailMessageId: replyTarget.gmail_message_id,
+          gmailThreadId: replyTarget.gmail_thread_id,
+          ccEmails: schedule.cc_emails ?? [],
+          bccEmails: schedule.bcc_emails ?? [],
+          attachments: gmailAttachments,
         });
+      } else {
+        sendResult = await sendGmailReply({
+          fromEmail: gmailConnection.email_address,
+          body: schedule.body,
+          encryptedRefreshToken: gmailConnection.encrypted_refresh_token,
+          replyToGmailMessageId: replyTarget.gmail_message_id,
+          gmailThreadId: replyTarget.gmail_thread_id,
+          ccEmails: schedule.cc_emails ?? [],
+          bccEmails: schedule.bcc_emails ?? [],
+          attachments: gmailAttachments,
+        });
+      }
     } catch (
       sendError
     ) {
@@ -1820,12 +1869,17 @@ async function processScheduledOutreach(
     );
   }
 
+  const followUpDelayDays =
+    await getFollowUpDelayDaysForUser(
+      schedule.user_id
+    );
+
   const nextFollowUp =
     new Date(
       new Date(
         sentAt
       ).getTime() +
-        FOLLOW_UP_DELAY_DAYS *
+        followUpDelayDays *
           24 *
           60 *
           60 *
@@ -1854,7 +1908,7 @@ async function processScheduledOutreach(
           "STANDARD",
 
         smart_follow_up_reason:
-          "No customer engagement signal yet; standard 5-day follow-up remains.",
+          `No customer engagement signal yet; standard ${followUpDelayDays}-day follow-up remains.`,
 
         smart_follow_up_updated_at:
           new Date()

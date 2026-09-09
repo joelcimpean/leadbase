@@ -32,6 +32,9 @@ const ALLOWED_RETENTION_DAYS =
     90,
   ]);
 
+const MIN_FOLLOW_UP_DELAY_DAYS = 1;
+const MAX_FOLLOW_UP_DELAY_DAYS = 30;
+
 
 type NotificationPayload = {
   variant:
@@ -196,6 +199,161 @@ export async function updateInboxPreferences(
 
   revalidatePath(
     "/inbox"
+  );
+}
+
+
+/* =========================================================
+   UPDATE DEFAULT FOLLOW-UP DELAY
+========================================================= */
+
+export async function updateFollowUpDelay(
+  formData:
+    FormData
+) {
+  const [
+    supabase,
+    language,
+  ] =
+    await Promise.all([
+      createClient(),
+      getAppLanguage(),
+    ]);
+
+  const rawValue =
+    formData.get(
+      "followUpDelayDays"
+    );
+
+  const value =
+    typeof rawValue ===
+      "string"
+      ? Number(
+          rawValue
+        )
+      : Number.NaN;
+
+  if (
+    !Number.isInteger(
+      value
+    ) ||
+    value <
+      MIN_FOLLOW_UP_DELAY_DAYS ||
+    value >
+      MAX_FOLLOW_UP_DELAY_DAYS
+  ) {
+    redirectWithNotice(
+      "/settings",
+      {
+        variant:
+          "warning",
+
+        title:
+          language ===
+          "de"
+            ? "Ungültige Follow-up-Verzögerung"
+            : "Invalid follow-up delay",
+
+        description:
+          language ===
+          "de"
+            ? "Wähle einen Wert zwischen 1 und 30 Tagen."
+            : "Choose a value between 1 and 30 days.",
+      }
+    );
+  }
+
+  const {
+    data: {
+      user,
+    },
+    error:
+      userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    redirect(
+      "/login"
+    );
+  }
+
+  const {
+    error,
+  } =
+    await supabase
+      .from(
+        "outreach_preferences"
+      )
+      .upsert(
+        {
+          user_id:
+            user.id,
+
+          follow_up_delay_days:
+            value,
+
+          updated_at:
+            new Date()
+              .toISOString(),
+        },
+        {
+          onConflict:
+            "user_id",
+        }
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Could not update follow-up delay preference:",
+      error
+    );
+
+    redirectWithNotice(
+      "/settings",
+      {
+        variant:
+          "error",
+
+        title:
+          language ===
+          "de"
+            ? "Follow-up-Verzögerung konnte nicht gespeichert werden"
+            : "Follow-up delay could not be saved",
+
+        description:
+          error.message,
+      }
+    );
+  }
+
+  revalidatePath(
+    "/settings"
+  );
+
+  redirectWithNotice(
+    "/settings",
+    {
+      variant:
+        "success",
+
+      title:
+        language ===
+        "de"
+          ? "Follow-up-Verzögerung gespeichert"
+          : "Follow-up delay saved",
+
+      description:
+        language ===
+        "de"
+          ? `Neue Outreach-Mails planen ihr Standard-Follow-up nach ${value} ${value === 1 ? "Tag" : "Tagen"}.`
+          : `New outreach emails will schedule their default follow-up after ${value} ${value === 1 ? "day" : "days"}.`,
+    }
   );
 }
 

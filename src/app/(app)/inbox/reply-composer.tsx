@@ -39,6 +39,7 @@ import {
 import {
   inboxCopy,
 } from "@/lib/inbox-i18n";
+import { queueUndoableSend } from "@/lib/undoable-send";
 
 /* =========================================================
    CONFIG
@@ -61,9 +62,15 @@ const SCHEDULE_TIME_ZONE =
 ========================================================= */
 
 type ReplyComposerProps = {
+  variant?: "default" | "dock";
+
   leadId: string;
 
-  replyToMessageId: string;
+  replyToMessageId: string | null;
+
+  replyToGmailMessageId?: string | null;
+
+  gmailThreadId?: string | null;
 
   recipientName: string;
 
@@ -851,11 +858,15 @@ function formatTimeOnly(
 ========================================================= */
 
 export function ReplyComposer({
+  variant = "default",
   leadId,
   replyToMessageId,
+  replyToGmailMessageId = null,
+  gmailThreadId = null,
   recipientName,
   recipientEmail,
 }: ReplyComposerProps) {
+  const dock = variant === "dock";
   const router =
     useRouter();
 
@@ -1527,6 +1538,8 @@ export function ReplyComposer({
               JSON.stringify({
                 leadId,
                 replyToMessageId,
+                replyToGmailMessageId,
+                gmailThreadId,
               }),
           }
         );
@@ -1928,79 +1941,51 @@ export function ReplyComposer({
       const attachments =
         await createAttachmentPayload();
 
-      const response =
-        await fetch(
-          "/api/inbox/reply",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                leadId,
-                replyToMessageId,
-
-                body:
-                  body.trim(),
-
-                cc,
-                bcc,
-
-                attachments,
-              }),
-          }
-        );
-
-      const result =
-        await parseJsonResponse<ReplyApiResponse>(
-          response,
-          text.serverError
-        );
-
-      if (
-        !response.ok ||
-        !result.ok
-      ) {
-        console.error(
-          "Reply API error:",
-          result.error
-        );
-
-        throw new Error(
-          text.replyCouldNotBeSent
-        );
-      }
-
-      setSchedule(
-        null
-      );
+      const snapshot = { body, cc, bcc, showCc, showBcc, files };
+      const requestBody = {
+        leadId,
+        replyToMessageId,
+        replyToGmailMessageId,
+        gmailThreadId,
+        body: body.trim(),
+        cc,
+        bcc,
+        attachments,
+      };
 
       clearSavedDraft();
-
       resetComposer();
+      setOpen(false);
 
-      setOpen(
-        false
-      );
-
-      setSent(
-        true
-      );
-
-      router.refresh();
-
-      window.setTimeout(
-        () =>
-          setSent(
-            false
-          ),
-        3500
-      );
+      queueUndoableSend({
+        label: language === "de" ? `E-Mail an ${recipientName}` : `Email to ${recipientName}`,
+        detail: language === "de" ? "Wird in 10 Sekunden gesendet." : "Will be sent in 10 seconds.",
+        commit: async () => {
+          const response = await fetch("/api/inbox/reply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+          });
+          const result = await parseJsonResponse<ReplyApiResponse>(response, text.serverError);
+          if (!response.ok || !result.ok) throw new Error(result.error || text.replyCouldNotBeSent);
+          setSchedule(null);
+          setSent(true);
+          router.refresh();
+        },
+        onUndo: () => {
+          setBody(snapshot.body); setCc(snapshot.cc); setBcc(snapshot.bcc);
+          setShowCc(snapshot.showCc); setShowBcc(snapshot.showBcc); setFiles(snapshot.files);
+          setOpen(true); setSent(false);
+          writeStoredReplyDraft(draftStorageKey, { body: snapshot.body, cc: snapshot.cc, bcc: snapshot.bcc, showCc: snapshot.showCc, showBcc: snapshot.showBcc, hadAttachments: snapshot.files.length > 0 });
+          setDraftExists(true);
+        },
+        onError: (sendError) => {
+          setBody(snapshot.body); setCc(snapshot.cc); setBcc(snapshot.bcc);
+          setShowCc(snapshot.showCc); setShowBcc(snapshot.showBcc); setFiles(snapshot.files);
+          setOpen(true); setDraftExists(true);
+          setError(sendError instanceof Error ? sendError.message : text.replyCouldNotBeSent);
+        },
+      });
     } catch (
       submitError
     ) {
@@ -2059,6 +2044,8 @@ export function ReplyComposer({
               JSON.stringify({
                 leadId,
                 replyToMessageId,
+                replyToGmailMessageId,
+                gmailThreadId,
 
                 body:
                   body.trim(),
@@ -2366,6 +2353,127 @@ export function ReplyComposer({
     !open
   ) {
     if (
+      dock &&
+      !scheduleLoading &&
+      schedule?.status !== "SCHEDULED" &&
+      schedule?.status !== "FAILED"
+    ) {
+      const replyLabel = language === "de"
+        ? `Antwort an ${recipientName} schreiben …`
+        : `Reply to ${recipientName} …`;
+
+      return (
+        <div className="flex items-center gap-2 p-2.5 sm:px-3">
+          <button
+            type="button"
+            onClick={openNewReply}
+            className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-3 text-left text-[11.5px] text-[var(--lb-text-muted)] transition-colors hover:border-[var(--lb-border-strong)]"
+          >
+            <MessageSquareReply className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {draftExists
+                ? text.continueDraft
+                : replyLabel}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              openNewReply();
+              void handleGenerateReply();
+            }}
+            className="hidden h-9 shrink-0 items-center gap-1.5 rounded-[9px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-3 text-[11.5px] font-medium text-[var(--lb-text-secondary)] transition-colors hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)] disabled:opacity-50 sm:inline-flex"
+          >
+            {generating ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Sparkles className="size-3 text-[#002BBA]" />
+            )}
+            {language === "de" ? "Entwurf vorschlagen" : "Suggest draft"}
+          </button>
+
+          <button
+            type="button"
+            onClick={openNewReply}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[9px] bg-[#002BBA] px-3.5 text-[11.5px] font-semibold text-white shadow-[0_1px_2px_rgba(0,43,186,.30)] transition-colors hover:bg-[#00229A]"
+          >
+            <MessageSquareReply className="size-3" />
+            <span className="hidden sm:inline">
+              {language === "de" ? "Antworten" : "Reply"}
+            </span>
+          </button>
+        </div>
+      );
+    }
+    if (dock && scheduleLoading) {
+      return (
+        <div className="flex items-center gap-2.5 border-t border-[var(--lb-border)] bg-[var(--lb-surface)] px-3 py-2.5">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[var(--lb-surface-subtle)] text-[var(--lb-text-muted)]">
+            <Loader2 className="size-3.5 animate-spin" />
+          </div>
+          <p className="text-[11.5px] text-[var(--lb-text-muted)]">{text.loadingReplyStatus}</p>
+        </div>
+      );
+    }
+
+    if (dock && schedule?.status === "SCHEDULED") {
+      return (
+        <div className="flex items-center gap-2.5 border-t border-[var(--lb-border)] bg-[var(--lb-surface)] px-3 py-2.5">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[#EAEEFB] text-[#002BBA]">
+            <Clock3 className="size-3.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] 2xl:text-[11.5px] font-medium text-[var(--lb-text)]">{text.replyScheduled}</p>
+            <p className="mt-0.5 truncate text-[10.5px] text-[var(--lb-text-muted)]">
+              {text.scheduledFor} {formatScheduledDate(schedule.scheduledFor, language)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openScheduleEditor}
+            className="inline-flex h-7 items-center gap-1.5 rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2 text-[9.5px] font-medium text-[var(--lb-text-secondary)] hover:border-[var(--lb-border-strong)]"
+          >
+            <Pencil className="size-3" />
+            {text.edit}
+          </button>
+          <button
+            type="button"
+            disabled={cancelling}
+            onClick={() => void cancelScheduledReply()}
+            className="flex size-7 items-center justify-center rounded-[8px] border border-[var(--lb-border)] text-[var(--lb-text-muted)] hover:bg-[#FDF0E3] hover:text-[#9A5106] disabled:opacity-50"
+            title={text.cancel}
+          >
+            {cancelling ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+          </button>
+        </div>
+      );
+    }
+
+    if (dock && schedule?.status === "FAILED") {
+      return (
+        <div className="flex items-center gap-2.5 border-t border-[var(--lb-border)] bg-[#FFF9F4] px-3 py-2.5 dark:bg-amber-950/20">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[#FDF0E3] text-[#9A5106]">
+            <Clock3 className="size-3.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] 2xl:text-[11.5px] font-medium text-[var(--lb-text)]">{text.scheduledReplyFailed}</p>
+            <p className="mt-0.5 truncate text-[10.5px] text-[var(--lb-text-muted)]">{text.scheduledReplyCouldNotBeSent}</p>
+          </div>
+          <button
+            type="button"
+            onClick={openFailedAsNew}
+            className="inline-flex h-7 items-center gap-1.5 rounded-[8px] bg-[#002BBA] px-2.5 text-[9.5px] font-medium text-white hover:bg-[#00229A]"
+          >
+            <Pencil className="size-3" />
+            {text.edit}
+          </button>
+        </div>
+      );
+    }
+
+    if (
       scheduleLoading
     ) {
       return (
@@ -2399,7 +2507,7 @@ export function ReplyComposer({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-semibold">
+                  <h3 className={dock ? "text-[12.5px] font-semibold tracking-[-.01em]" : "text-sm font-semibold"}>
                     {
                       text.replyScheduled
                     }
@@ -2512,7 +2620,7 @@ export function ReplyComposer({
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold">
+              <h3 className={dock ? "text-[12.5px] font-semibold tracking-[-.01em]" : "text-sm font-semibold"}>
                 {
                   text.scheduledReplyCancelled
                 }
@@ -2555,7 +2663,7 @@ export function ReplyComposer({
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold">
+              <h3 className={dock ? "text-[12.5px] font-semibold tracking-[-.01em]" : "text-sm font-semibold"}>
                 {
                   text.scheduledReplyFailed
                 }
@@ -2607,7 +2715,7 @@ export function ReplyComposer({
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-semibold">
+              <h3 className={dock ? "text-[12.5px] font-semibold tracking-[-.01em]" : "text-sm font-semibold"}>
                 {
                   text.draftSaved
                 }
@@ -2662,7 +2770,7 @@ export function ReplyComposer({
           </div>
 
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold">
+            <h3 className={dock ? "text-[12.5px] font-semibold tracking-[-.01em]" : "text-sm font-semibold"}>
               {
                 text.reply
               }
@@ -2712,10 +2820,19 @@ export function ReplyComposer({
   ======================================================= */
 
   return (
-    <div className="mt-8 overflow-visible rounded-xl border bg-background shadow-sm">
-      <div className="flex items-center justify-between border-b px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg border bg-muted/20">
+    <div className={dock
+      ? "overflow-visible bg-[var(--lb-surface)]"
+      : "mt-8 overflow-visible rounded-xl border bg-background shadow-sm"
+    }>
+      <div className={dock
+        ? "flex items-center justify-between border-b border-[var(--lb-border)] px-3 py-2"
+        : "flex items-center justify-between border-b px-5 py-4"
+      }>
+        <div className={dock ? "flex items-center gap-2" : "flex items-center gap-3"}>
+          <div className={dock
+            ? "flex size-7 items-center justify-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface-subtle)] text-[var(--lb-text-muted)]"
+            : "flex size-8 items-center justify-center rounded-lg border bg-muted/20"
+          } >
             {editingSchedule ? (
               <Clock3 className="size-4" />
             ) : (
@@ -2724,13 +2841,13 @@ export function ReplyComposer({
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold">
+            <h3 className={dock ? "text-[12.5px] font-semibold tracking-[-.01em]" : "text-sm font-semibold"}>
               {editingSchedule
                 ? text.editScheduledReply
                 : text.reply}
             </h3>
 
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className={dock ? "mt-0.5 text-[10.5px] text-[var(--lb-text-muted)]" : "mt-0.5 text-xs text-muted-foreground"}>
               {editingSchedule
                 ? text.updateScheduledMessage
                 : draftExists
@@ -2748,7 +2865,10 @@ export function ReplyComposer({
           onClick={
             closeComposer
           }
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          className={dock
+            ? "flex size-7 items-center justify-center rounded-[8px] text-[var(--lb-text-muted)] transition-colors hover:bg-[var(--lb-surface-subtle)] hover:text-[var(--lb-text)] disabled:opacity-50"
+            : "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          }
           title={
             text.close
           }
@@ -2761,9 +2881,9 @@ export function ReplyComposer({
           RECIPIENT
       =================================================== */}
 
-      <div className="border-b bg-muted/10">
-        <div className="flex min-h-12 items-center gap-3 px-5 text-sm">
-          <span className="w-8 shrink-0 text-xs text-muted-foreground">
+      <div className={dock ? "border-b border-[var(--lb-border)] bg-[var(--lb-surface-subtle)]/50" : "border-b bg-muted/10"}>
+        <div className={dock ? "flex min-h-9 items-center gap-2 px-3 text-[12px]" : "flex min-h-12 items-center gap-3 px-5 text-sm"}>
+          <span className={dock ? "w-7 shrink-0 font-mono text-[9.5px] uppercase tracking-[.08em] text-[var(--lb-text-muted)]" : "w-8 shrink-0 text-xs text-muted-foreground"}>
             {
               text.to
             }
@@ -2776,7 +2896,7 @@ export function ReplyComposer({
               }
             </span>
 
-            <span className="truncate text-xs text-muted-foreground">
+            <span className={dock ? "truncate text-[10.5px] 2xl:text-[11.5px] text-[var(--lb-text-muted)]" : "truncate text-xs text-muted-foreground"}>
               &lt;{recipientEmail}&gt;
             </span>
           </div>
@@ -2793,7 +2913,7 @@ export function ReplyComposer({
                     true
                   )
                 }
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className={dock ? "text-[10.5px] 2xl:text-[11.5px] text-[var(--lb-text-muted)] hover:text-[var(--lb-text)]" : "text-xs text-muted-foreground hover:text-foreground"}
               >
                 Cc
               </button>
@@ -2810,7 +2930,7 @@ export function ReplyComposer({
                     true
                   )
                 }
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className={dock ? "text-[10.5px] 2xl:text-[11.5px] text-[var(--lb-text-muted)] hover:text-[var(--lb-text)]" : "text-xs text-muted-foreground hover:text-foreground"}
               >
                 Bcc
               </button>
@@ -2819,8 +2939,8 @@ export function ReplyComposer({
         </div>
 
         {showCc ? (
-          <div className="flex min-h-11 items-center gap-3 border-t px-5">
-            <span className="w-8 text-xs text-muted-foreground">
+          <div className={dock ? "flex min-h-9 2xl:min-h-10 items-center gap-2 border-t border-[var(--lb-border)] px-3 2xl:px-4" : "flex min-h-11 items-center gap-3 border-t px-5"}>
+            <span className={dock ? "w-7 2xl:w-8 font-mono text-[9.5px] 2xl:text-[10px] uppercase tracking-[.08em] text-[var(--lb-text-muted)]" : "w-8 text-xs text-muted-foreground"}>
               Cc
             </span>
 
@@ -2839,7 +2959,7 @@ export function ReplyComposer({
                 )
               }
               placeholder="name@example.com"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className={dock ? "min-w-0 flex-1 bg-transparent text-[12px] 2xl:text-[13px] outline-none" : "min-w-0 flex-1 bg-transparent text-sm outline-none"}
             />
 
             <button
@@ -2863,8 +2983,8 @@ export function ReplyComposer({
         ) : null}
 
         {showBcc ? (
-          <div className="flex min-h-11 items-center gap-3 border-t px-5">
-            <span className="w-8 text-xs text-muted-foreground">
+          <div className={dock ? "flex min-h-9 2xl:min-h-10 items-center gap-2 border-t border-[var(--lb-border)] px-3 2xl:px-4" : "flex min-h-11 items-center gap-3 border-t px-5"}>
+            <span className={dock ? "w-7 2xl:w-8 font-mono text-[9.5px] 2xl:text-[10px] uppercase tracking-[.08em] text-[var(--lb-text-muted)]" : "w-8 text-xs text-muted-foreground"}>
               Bcc
             </span>
 
@@ -2883,7 +3003,7 @@ export function ReplyComposer({
                 )
               }
               placeholder="hidden@example.com"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              className={dock ? "min-w-0 flex-1 bg-transparent text-[12px] 2xl:text-[13px] outline-none" : "min-w-0 flex-1 bg-transparent text-sm outline-none"}
             />
 
             <button
@@ -2912,7 +3032,7 @@ export function ReplyComposer({
           handleSubmit
         }
       >
-        <div className="px-4 py-5 sm:px-5">
+        <div className={dock ? "px-3 py-2.5 2xl:px-4 2xl:py-3" : "px-4 py-5 sm:px-5"}>
           <textarea
             value={
               body
@@ -2933,10 +3053,11 @@ export function ReplyComposer({
                 ? text.generatingReply
                 : text.writeYourReply
             }
-            rows={
-              8
+            rows={dock ? 4 : 8}
+            className={dock
+              ? "min-h-[92px] 2xl:min-h-[108px] w-full resize-y bg-transparent p-0 text-[12.5px] 2xl:text-[13.5px] leading-6 2xl:leading-7 outline-none disabled:opacity-60"
+              : "min-h-[180px] w-full resize-y bg-transparent p-0 text-sm leading-7 outline-none disabled:opacity-60"
             }
-            className="min-h-[180px] w-full resize-y bg-transparent p-0 text-sm leading-7 outline-none disabled:opacity-60"
           />
 
           {/* =================================================
@@ -2953,7 +3074,7 @@ export function ReplyComposer({
                   }
                 </p>
 
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[12px] text-muted-foreground">
                   {formatFileSize(
                     files.reduce(
                       (
@@ -2990,7 +3111,7 @@ export function ReplyComposer({
                           }
                         </p>
 
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-[12px] text-muted-foreground">
                           {formatFileSize(
                             file.size
                           )}
@@ -3048,7 +3169,7 @@ export function ReplyComposer({
                           }
                         </p>
 
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-[12px] text-muted-foreground">
                           {formatFileSize(
                             attachment.size
                           )}
@@ -3059,7 +3180,7 @@ export function ReplyComposer({
                 )}
               </div>
 
-              <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+              <p className="mt-2 text-[12px] leading-5 text-muted-foreground">
                 {
                   text.existingAttachmentsDescription
                 }
@@ -3172,7 +3293,7 @@ export function ReplyComposer({
               SIGNATURE
           ================================================= */}
 
-          <div className="mt-6 border-t pt-5 text-sm leading-6">
+          <div className={dock ? "mt-3 border-t border-[var(--lb-border)] pt-3 text-[10.5px] 2xl:text-[11.5px] leading-5" : "mt-6 border-t pt-5 text-sm leading-6"}>
             <p className="text-muted-foreground">
               {language ===
               "de"
@@ -3196,7 +3317,10 @@ export function ReplyComposer({
             FOOTER
         ================================================= */}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-4 py-3 sm:px-5">
+        <div className={dock
+          ? "flex flex-wrap items-center justify-between gap-2 2xl:gap-2.5 border-t border-[var(--lb-border)] bg-[var(--lb-surface-subtle)]/45 px-3 2xl:px-4 py-2 2xl:py-2.5"
+          : "flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 px-4 py-3 sm:px-5"
+        }>
           <div className="flex flex-wrap items-center gap-2">
             <input
               ref={
@@ -3225,7 +3349,10 @@ export function ReplyComposer({
                   .current
                   ?.click()
               }
-              className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+              className={dock
+                ? "flex size-8 2xl:size-9 items-center justify-center rounded-[8px] text-[var(--lb-text-muted)] hover:bg-[var(--lb-surface)] hover:text-[var(--lb-text)] disabled:opacity-40"
+                : "flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+              }
               title={
                 editingSchedule
                   ? text.attachmentsPreserved
@@ -3243,7 +3370,10 @@ export function ReplyComposer({
               onClick={
                 handleGenerateReply
               }
-              className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              className={dock
+                ? "inline-flex h-8 2xl:h-9 items-center gap-1.5 rounded-[8px] px-2.5 2xl:px-3 text-[11px] 2xl:text-[12px] font-medium text-[var(--lb-text-muted)] hover:bg-[var(--lb-surface)] hover:text-[var(--lb-text)] disabled:opacity-50"
+                : "inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+              }
             >
               {generating ? (
                 <>
@@ -3275,7 +3405,10 @@ export function ReplyComposer({
                 onClick={
                   closeComposer
                 }
-                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                className={dock
+                  ? "inline-flex h-8 2xl:h-9 items-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 2xl:px-3 text-[11px] 2xl:text-[12px] font-medium text-[var(--lb-text-secondary)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)] disabled:opacity-50"
+                  : "inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                }
               >
                 {
                   text.discardChanges
@@ -3314,7 +3447,10 @@ export function ReplyComposer({
                 onClick={
                   discardDraft
                 }
-                className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                className={dock
+                  ? "inline-flex size-8 2xl:size-9 items-center justify-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] text-[var(--lb-text-muted)] hover:bg-[#FDF0E3] hover:text-[#9A5106] disabled:opacity-50"
+                  : "inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                }
                 title={
                   text.discardDraft
                 }
@@ -3333,21 +3469,27 @@ export function ReplyComposer({
                 onClick={
                   closeComposer
                 }
-                className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                className={dock
+                  ? "inline-flex h-8 2xl:h-9 items-center rounded-[8px] border border-[var(--lb-border)] bg-[var(--lb-surface)] px-2.5 2xl:px-3 text-[11px] 2xl:text-[12px] font-medium text-[var(--lb-text-secondary)] hover:border-[var(--lb-border-strong)] hover:bg-[var(--lb-surface-subtle)] disabled:opacity-50"
+                  : "inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
+                }
               >
                 {
                   text.close
                 }
               </button>
 
-              <div className="relative flex">
+              <div className="relative flex items-center gap-1">
                 <button
                   type="submit"
                   disabled={
                     busy ||
                     !body.trim()
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-l-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  className={dock
+                    ? "inline-flex h-8 2xl:h-9 items-center gap-1.5 rounded-[8px] bg-[#002BBA] px-3 2xl:px-3.5 text-[11px] 2xl:text-[12px] font-semibold text-white shadow-[0_1px_2px_rgba(0,43,186,.30)] hover:bg-[#00229A] disabled:opacity-50"
+                    : "inline-flex h-9 items-center gap-2 rounded-l-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  }
                 >
                   {sending ? (
                     <>
@@ -3382,7 +3524,10 @@ export function ReplyComposer({
                         !current
                     )
                   }
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  className={dock
+                    ? "inline-flex h-8 w-8 2xl:h-9 2xl:w-9 items-center justify-center rounded-[8px] bg-[#002BBA] text-white shadow-[0_1px_2px_rgba(0,43,186,.30)] hover:bg-[#00229A] disabled:opacity-50"
+                    : "inline-flex h-9 w-9 items-center justify-center rounded-r-md border-l border-background/20 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                  }
                   aria-label={
                     text.scheduleSend
                   }
@@ -3391,15 +3536,18 @@ export function ReplyComposer({
                 </button>
 
                 {scheduleMenuOpen ? (
-                  <div className="absolute bottom-11 right-0 z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl">
-                    <div className="px-2 py-2">
-                      <p className="text-xs font-semibold">
+                  <div className={dock
+                    ? "absolute bottom-10 2xl:bottom-11 right-0 z-50 w-[248px] 2xl:w-[272px] overflow-hidden rounded-[12px] border border-[var(--lb-border)] bg-[var(--lb-surface)] p-1.5 text-[var(--lb-text)] shadow-[0_18px_36px_-18px_rgba(11,12,14,.24)]"
+                    : "absolute bottom-11 right-0 z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 text-popover-foreground shadow-xl"
+                  }>
+                    <div className={dock ? "px-2.5 pb-2 pt-2" : "px-2 py-2"}>
+                      <p className={dock ? "text-[12px] 2xl:text-[13px] font-semibold tracking-[-.01em] text-[var(--lb-text)]" : "text-xs font-semibold"}>
                         {
                           text.sendLater
                         }
                       </p>
 
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      <p className={dock ? "mt-0.5 font-mono text-[9.5px] 2xl:text-[10px] uppercase tracking-[.06em] text-[var(--lb-text-muted)]" : "mt-0.5 text-[12px] text-muted-foreground"}>
                         Europe/Berlin
                       </p>
                     </div>
@@ -3416,18 +3564,20 @@ export function ReplyComposer({
                             laterToday.toISOString()
                           );
                         }}
-                        className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                        className={dock ? "group flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--lb-surface-subtle)]" : "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"}
                       >
-                        <Clock3 className="size-4 text-muted-foreground" />
+                        <span className={dock ? "flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[#EAEEFB] text-[#002BBA]" : "contents"}>
+                          <Clock3 className={dock ? "size-3.5" : "size-4 text-muted-foreground"} />
+                        </span>
 
-                        <div>
-                          <p className="text-sm font-medium">
+                        <div className="min-w-0">
+                          <p className={dock ? "text-[10.5px] 2xl:text-[11.5px] font-medium text-[var(--lb-text)]" : "text-sm font-medium"}>
                             {
                               text.laterToday
                             }
                           </p>
 
-                          <p className="text-xs text-muted-foreground">
+                          <p className={dock ? "mt-0.5 font-mono text-[9px] 2xl:text-[10px] text-[var(--lb-text-muted)]" : "text-xs text-muted-foreground"}>
                             {formatTimeOnly(
                               laterToday,
                               language
@@ -3461,18 +3611,20 @@ export function ReplyComposer({
                           iso
                         );
                       }}
-                      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                      className={dock ? "group flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--lb-surface-subtle)]" : "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"}
                     >
-                      <CalendarClock className="size-4 text-muted-foreground" />
+                      <span className={dock ? "flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[#EAEEFB] text-[#002BBA]" : "contents"}>
+                        <CalendarClock className={dock ? "size-3.5" : "size-4 text-muted-foreground"} />
+                      </span>
 
-                      <div>
-                        <p className="text-sm font-medium">
+                      <div className="min-w-0">
+                        <p className={dock ? "text-[10.5px] 2xl:text-[11.5px] font-medium text-[var(--lb-text)]" : "text-sm font-medium"}>
                           {
                             text.tomorrowMorning
                           }
                         </p>
 
-                        <p className="text-xs text-muted-foreground">
+                        <p className={dock ? "mt-0.5 font-mono text-[9px] 2xl:text-[10px] text-[var(--lb-text-muted)]" : "text-xs text-muted-foreground"}>
                           09:00
                         </p>
                       </div>
@@ -3489,18 +3641,20 @@ export function ReplyComposer({
                           true
                         );
                       }}
-                      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"
+                      className={dock ? "group flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-left transition-colors hover:bg-[var(--lb-surface-subtle)]" : "flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-muted"}
                     >
-                      <CalendarClock className="size-4 text-muted-foreground" />
+                      <span className={dock ? "flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[#EAEEFB] text-[#002BBA]" : "contents"}>
+                        <CalendarClock className={dock ? "size-3.5" : "size-4 text-muted-foreground"} />
+                      </span>
 
-                      <div>
-                        <p className="text-sm font-medium">
+                      <div className="min-w-0">
+                        <p className={dock ? "text-[10.5px] 2xl:text-[11.5px] font-medium text-[var(--lb-text)]" : "text-sm font-medium"}>
                           {
                             text.customDateTime
                           }
                         </p>
 
-                        <p className="text-xs text-muted-foreground">
+                        <p className={dock ? "mt-0.5 text-[9.5px] 2xl:text-[10.5px] leading-[1.35] text-[var(--lb-text-muted)]" : "text-xs text-muted-foreground"}>
                           {
                             text.chooseSendTime
                           }

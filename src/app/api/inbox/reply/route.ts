@@ -8,6 +8,7 @@ import {
   
   import {
     sendGmailReply,
+    sendGmailThreadFollowUp,
   } from "@/lib/gmail-send";
   
   import {
@@ -66,6 +67,10 @@ import {
     leadId?: unknown;
   
     replyToMessageId?: unknown;
+
+    replyToGmailMessageId?: unknown;
+
+    gmailThreadId?: unknown;
   
     body?: unknown;
   
@@ -478,9 +483,6 @@ import {
         typeof payload.leadId !==
           "string" ||
         !payload.leadId ||
-        typeof payload.replyToMessageId !==
-          "string" ||
-        !payload.replyToMessageId ||
         typeof payload.body !==
           "string"
       ) {
@@ -493,7 +495,23 @@ import {
         payload.leadId;
   
       const replyToMessageId =
-        payload.replyToMessageId;
+        typeof payload.replyToMessageId === "string" && payload.replyToMessageId
+          ? payload.replyToMessageId
+          : null;
+
+      const replyToGmailMessageId =
+        typeof payload.replyToGmailMessageId === "string" && payload.replyToGmailMessageId
+          ? payload.replyToGmailMessageId
+          : null;
+
+      const directGmailThreadId =
+        typeof payload.gmailThreadId === "string" && payload.gmailThreadId
+          ? payload.gmailThreadId
+          : null;
+
+      if (!replyToMessageId && !(replyToGmailMessageId && directGmailThreadId)) {
+        return jsonError("No reply target was provided.");
+      }
   
       const body =
         normalizeMessage(
@@ -586,63 +604,94 @@ import {
          REPLY TARGET
       ===================================================== */
   
-      const {
-        data:
-          replyTarget,
-  
-        error:
-          replyTargetError,
-      } =
-        await supabase
-          .from(
-            "email_messages"
-          )
+      let replyTarget: {
+        outreach_draft_id: string | null;
+        gmail_message_id: string;
+        gmail_thread_id: string;
+        direction: "INCOMING" | "OUTGOING";
+        to_email: string | null;
+      } | null = null;
+
+      if (replyToMessageId) {
+        const { data: storedTarget, error: replyTargetError } = await supabase
+          .from("email_messages")
           .select(`
             id,
             lead_id,
             outreach_draft_id,
             gmail_message_id,
-            gmail_thread_id
+            gmail_thread_id,
+            direction,
+            to_email
           `)
-          .eq(
-            "id",
-            replyToMessageId
-          )
-          .eq(
-            "lead_id",
-            leadId
-          )
-          .eq(
-            "user_id",
-            user.id
-          )
-          .eq(
-            "direction",
-            "INCOMING"
-          )
+          .eq("id", replyToMessageId)
+          .eq("lead_id", leadId)
+          .eq("user_id", user.id)
           .maybeSingle();
-  
-      if (
-        replyTargetError
-      ) {
-        console.error(
-          "Could not load reply target:",
-          replyTargetError
-        );
-  
-        return jsonError(
-          `Could not load reply target: ${replyTargetError.message}`,
-          500
-        );
+
+        if (replyTargetError) {
+          console.error("Could not load reply target:", replyTargetError);
+          return jsonError(`Could not load reply target: ${replyTargetError.message}`, 500);
+        }
+
+        if (storedTarget?.gmail_message_id && storedTarget.gmail_thread_id &&
+            (storedTarget.direction === "INCOMING" || storedTarget.direction === "OUTGOING")) {
+          replyTarget = {
+            outreach_draft_id: storedTarget.outreach_draft_id ?? null,
+            gmail_message_id: storedTarget.gmail_message_id,
+            gmail_thread_id: storedTarget.gmail_thread_id,
+            direction: storedTarget.direction,
+            to_email: storedTarget.to_email ?? null,
+          };
+        }
       }
-  
-      if (
-        !replyTarget
-      ) {
-        return jsonError(
-          "The email you are replying to could not be found.",
-          404
-        );
+
+      if (!replyTarget && replyToGmailMessageId && directGmailThreadId) {
+        const { data: draftTarget, error: draftTargetError } = await supabase
+          .from("outreach_drafts")
+          .select(`
+            id,
+            gmail_message_id,
+            gmail_thread_id,
+            sent_to,
+            gmail_follow_up_message_id,
+            gmail_follow_up_thread_id,
+            follow_up_sent_to
+          `)
+          .eq("user_id", user.id)
+          .eq("lead_id", leadId)
+          .eq("status", "SENT")
+          .not("sent_at", "is", null)
+          .order("sent_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (draftTargetError) {
+          console.error("Could not verify outreach reply target:", draftTargetError);
+          return jsonError("Could not verify the outreach thread.", 500);
+        }
+
+        const isInitial =
+          draftTarget?.gmail_message_id === replyToGmailMessageId &&
+          draftTarget?.gmail_thread_id === directGmailThreadId;
+
+        const isFollowUp =
+          draftTarget?.gmail_follow_up_message_id === replyToGmailMessageId &&
+          draftTarget?.gmail_follow_up_thread_id === directGmailThreadId;
+
+        if (draftTarget && (isInitial || isFollowUp)) {
+          replyTarget = {
+            outreach_draft_id: draftTarget.id,
+            gmail_message_id: replyToGmailMessageId,
+            gmail_thread_id: directGmailThreadId,
+            direction: "OUTGOING",
+            to_email: (isFollowUp ? (draftTarget.follow_up_sent_to ?? draftTarget.sent_to) : draftTarget.sent_to) ?? null,
+          };
+        }
+      }
+
+      if (!replyTarget) {
+        return jsonError("The email you are replying to could not be found.", 404);
       }
   
       /* =====================================================
@@ -723,32 +772,34 @@ import {
       let sendResult;
   
       try {
-        sendResult =
-          await sendGmailReply({
-            fromEmail:
-              gmailConnection.email_address,
-  
-            body:
-              fullBody,
-  
-            encryptedRefreshToken:
-              gmailConnection.encrypted_refresh_token,
-  
-            replyToGmailMessageId:
-              replyTarget.gmail_message_id,
-  
-            gmailThreadId:
-              replyTarget.gmail_thread_id,
-  
-            ccEmails:
-              parsedCc.emails,
-  
-            bccEmails:
-              parsedBcc.emails,
-  
-            attachments:
-              attachmentResult.attachments,
+        if (replyTarget.direction === "OUTGOING") {
+          if (!replyTarget.to_email) {
+            return jsonError("Could not determine the outreach recipient.", 400);
+          }
+
+          sendResult = await sendGmailThreadFollowUp({
+            fromEmail: gmailConnection.email_address,
+            toEmail: replyTarget.to_email,
+            body: fullBody,
+            encryptedRefreshToken: gmailConnection.encrypted_refresh_token,
+            replyToGmailMessageId: replyTarget.gmail_message_id,
+            gmailThreadId: replyTarget.gmail_thread_id,
+            ccEmails: parsedCc.emails,
+            bccEmails: parsedBcc.emails,
+            attachments: attachmentResult.attachments,
           });
+        } else {
+          sendResult = await sendGmailReply({
+            fromEmail: gmailConnection.email_address,
+            body: fullBody,
+            encryptedRefreshToken: gmailConnection.encrypted_refresh_token,
+            replyToGmailMessageId: replyTarget.gmail_message_id,
+            gmailThreadId: replyTarget.gmail_thread_id,
+            ccEmails: parsedCc.emails,
+            bccEmails: parsedBcc.emails,
+            attachments: attachmentResult.attachments,
+          });
+        }
       } catch (error) {
         console.error(
           "Could not send Gmail reply:",
