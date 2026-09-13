@@ -1052,124 +1052,100 @@ function detectContactForm(
   const $ =
     load(html);
 
-  return $("form")
-    .toArray()
-    .some(
-      (formElement) => {
-        const form =
-          $(formElement);
+  const formLooksLikeContact = (root: any) => {
+    const text = normalizeText(root.text()).toLowerCase();
+    const inputs = root.find("input, textarea, select");
+    const fieldMetadata = inputs
+      .toArray()
+      .map((field: any) => [
+        $(field).attr("name"),
+        $(field).attr("id"),
+        $(field).attr("placeholder"),
+        $(field).attr("aria-label"),
+        $(field).attr("type"),
+      ].filter(Boolean).join(" ").toLowerCase())
+      .join(" ");
 
-        const text =
-          normalizeText(
-            form.text()
-          ).toLowerCase();
+    const hasEmail =
+      root.find('input[type="email"]').length > 0 ||
+      /\b(e-?mail|email-address|mailadresse)\b/i.test(fieldMetadata);
 
-        const inputs =
-          form.find(
-            "input, textarea, select"
-          );
+    const hasMessage =
+      root.find("textarea").length > 0 ||
+      /\b(message|nachricht|anfrage|frage|subject|betreff)\b/i.test(fieldMetadata);
 
-        const hasEmail =
-          form.find(
-            'input[type="email"]'
-          ).length > 0 ||
-          inputs
-            .toArray()
-            .some(
-              (field) => {
-                const value =
-                  [
-                    $(field).attr(
-                      "name"
-                    ),
+    const looksLikeContact =
+      containsAny(text, [
+        "kontakt",
+        "contact",
+        "nachricht",
+        "ihre frage",
+        "anfrage",
+        "betreff",
+        "e-mail",
+        "email",
+        "senden",
+        "send",
+      ]);
 
-                    $(field).attr(
-                      "id"
-                    ),
+    return inputs.length >= 2 && (hasEmail || hasMessage || looksLikeContact);
+  };
 
-                    $(field).attr(
-                      "placeholder"
-                    ),
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                    .toLowerCase();
+  if (
+    $("form")
+      .toArray()
+      .some((formElement) => formLooksLikeContact($(formElement)))
+  ) {
+    return true;
+  }
 
-                return (
-                  value.includes(
-                    "email"
-                  ) ||
-                  value.includes(
-                    "e-mail"
-                  )
-                );
-              }
-            );
+  /*
+   * Some builders (notably Squarespace, HubSpot, Wix/Webflow embeds and a
+   * number of JS form widgets) do not expose a literal <form> element in the
+   * first server-rendered HTML response. Detect their contact-form wrappers
+   * and field metadata as deterministic evidence instead of calling the form
+   * missing just because hydration has not run.
+   */
+  const builderRoots = $(
+    [
+      ".sqs-block-form",
+      ".form-wrapper",
+      ".form-block",
+      ".w-form",
+      ".hs-form",
+      "[data-form-id]",
+      "[data-form-block-id]",
+      "[data-block-type='9']",
+      "[class*='contact-form']",
+      "[class*='contactForm']",
+    ].join(",")
+  );
 
-        const hasMessage =
-          form.find(
-            "textarea"
-          ).length > 0 ||
-          inputs
-            .toArray()
-            .some(
-              (field) => {
-                const value =
-                  [
-                    $(field).attr(
-                      "name"
-                    ),
+  if (
+    builderRoots
+      .toArray()
+      .some((element) => formLooksLikeContact($(element)))
+  ) {
+    return true;
+  }
 
-                    $(field).attr(
-                      "id"
-                    ),
+  const source = html.toLowerCase();
+  const hasBuilderMarker = [
+    "sqs-block-form",
+    "data-form-id",
+    "form-wrapper",
+    "form-field",
+    "hs-form",
+    "w-form",
+    "formspree",
+    "hubspot",
+  ].some((marker) => source.includes(marker));
 
-                    $(field).attr(
-                      "placeholder"
-                    ),
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                    .toLowerCase();
+  const hasEmailSignal = /type=["']email["']|e-mail-adresse|email address|mailadresse/.test(source);
+  const hasMessageSignal = /<textarea|nachricht|message|betreff|subject/.test(source);
+  const hasSubmitSignal = />\s*(senden|send|submit)\s*</i.test(html) || /type=["']submit["']/.test(source);
 
-                return (
-                  value.includes(
-                    "message"
-                  ) ||
-                  value.includes(
-                    "nachricht"
-                  ) ||
-                  value.includes(
-                    "frage"
-                  )
-                );
-              }
-            );
-
-        const looksLikeContact =
-          containsAny(
-            text,
-            [
-              "kontakt",
-              "contact",
-              "nachricht",
-              "ihre frage",
-              "anfrage",
-              "e-mail",
-              "email",
-            ]
-          );
-
-        return (
-          inputs.length >= 2 &&
-          (
-            hasEmail ||
-            hasMessage ||
-            looksLikeContact
-          )
-        );
-      }
-    );
+  return hasBuilderMarker && hasEmailSignal && hasMessageSignal && hasSubmitSignal;
 }
 
 /* =========================================================

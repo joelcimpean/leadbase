@@ -21,6 +21,10 @@ import {
   } from "@/lib/supabase/server";
 
   import {
+    getLeadbasePlanAccess,
+  } from "@/lib/plan-access";
+
+  import {
     assertAiUsageAvailable,
     recordAiUsage,
   } from "@/lib/ai-usage";
@@ -931,6 +935,9 @@ import {
         }
       );
     }
+
+    const planAccess = await getLeadbasePlanAccess(user.id);
+    const planResultLimit = planAccess.entitlements.limits.aiLeadSearchMaxResultsPerRun;
   
     /* =======================================================
        CAMPAIGN
@@ -999,8 +1006,15 @@ import {
         >
       >;
   
+    let usageReservationKey: string | null = null;
+
     try {
-      await assertAiUsageAvailable(user.id);
+      const usageGuard = await assertAiUsageAvailable(user.id, {
+        feature: "ai_lead_search",
+        model: process.env.OPENAI_LEAD_SEARCH_MODEL ?? "gpt-5-mini",
+        metadata: { campaignId },
+      });
+      usageReservationKey = usageGuard.reservationKey;
 
       intent =
         await interpretPrompt({
@@ -1041,8 +1055,15 @@ import {
       feature: "ai_lead_search",
       model: intent._model,
       usage: intent._usage,
+      requestKey: `ai-lead-search:${campaignId}:${crypto.randomUUID()}`,
+      reservationKey: usageReservationKey,
       metadata: { campaignId, prompt: prompt.slice(0, 240) },
     });
+
+    intent = {
+      ...intent,
+      resultLimit: Math.min(intent.resultLimit, planResultLimit),
+    };
 
     /* =======================================================
        CLARIFICATION

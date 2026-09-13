@@ -562,7 +562,11 @@ import {
          GENERATE
       ===================================================== */
   
-      await assertAiUsageAvailable(user.id);
+      const usageGuard = await assertAiUsageAvailable(user.id, {
+        feature: "reply_generation",
+        model: "gpt-5.6-luna",
+        metadata: { leadId },
+      });
 
       const generated =
         await generateReply({
@@ -616,6 +620,7 @@ import {
         feature: "reply_generation",
         model: generated.model,
         usage: generated.usage,
+        reservationKey: usageGuard.reservationKey,
         metadata: {
           leadId: typeof leadId === "string" ? leadId : null,
           replyToMessageId: typeof replyToMessageId === "string" ? replyToMessageId : null,

@@ -235,7 +235,12 @@ export async function POST(
       );
     }
 
-    await assertAiUsageAvailable(user.id);
+    const usageGuard = await assertAiUsageAvailable(user.id, {
+      feature: "proposal_autofill",
+      model: MODEL,
+      reasoningEffort: "low",
+      metadata: { leadId },
+    });
 
     const openai =
       new OpenAI({ apiKey });
@@ -250,7 +255,7 @@ export async function POST(
           {
             role: "system",
             content: `
-Du erstellst einen AngebotsENTWURF für Joel Cimpean, selbstständiger Webdesigner/Webentwickler.
+Du erstellst einen AngebotsENTWURF für den aktuell angemeldeten Leadbase-Nutzer. Nutze dessen Profil- und Angebotsdaten als Absenderkontext und erfinde keine Identität.
 
 WICHTIGE REGELN:
 - Verwende Lead-Daten und E-Mail-Verlauf als primäre Quelle.
@@ -318,7 +323,10 @@ ${conversation}
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
         totalTokens: response.usage?.total_tokens ?? 0,
+        input_tokens_details: response.usage?.input_tokens_details ?? null,
       },
+      requestKey: `proposal-autofill:${leadId}:${response.id}`,
+      reservationKey: usageGuard.reservationKey,
       metadata: { leadId },
     });
 

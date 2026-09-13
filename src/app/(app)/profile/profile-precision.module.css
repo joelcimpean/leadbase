@@ -547,3 +547,14 @@
 :global(.dark) .usageSetup code {
   background: rgba(255,255,255,.06);
 }
+
+:global(.dark) .usageDisclaimer {
+  background: #17181c;
+  border: 1px solid rgba(255,255,255,.07);
+  color: #aeb2ba;
+}
+
+@media (min-width: 761px) {
+  .modalBackdrop { padding: clamp(12px, 2.4vh, 20px); }
+  .modal, .modalWide { max-height: min(84dvh, 720px); }
+}

@@ -28,6 +28,14 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  cancelPendingFollowUps,
+  logFollowUpEvent,
+  looksLikeUnsubscribe,
+  markOutreachOutcome,
+  suppressEmail,
+} from "@/lib/outreach-pipeline";
+
 /* =========================================================
    CONFIG
 ========================================================= */
@@ -155,6 +163,10 @@ type LeadContext = {
     | null;
 
   contactName:
+    string
+    | null;
+
+  contactEmail:
     string
     | null;
 
@@ -2047,6 +2059,10 @@ export async function syncGmailRepliesForCurrentUser({
           contact?.full_name ??
           null,
 
+        contactEmail:
+          contact?.email ??
+          null,
+
         currentStatus:
           lead.status ??
           null,
@@ -3228,6 +3244,45 @@ export async function syncGmailRepliesForCurrentUser({
       new Date()
         .toISOString();
 
+    const unsubscribe = looksLikeUnsubscribe({
+      subject: message.subject,
+      body: message.body_text,
+    });
+
+    if (unsubscribe) {
+      try {
+        await suppressEmail({
+          supabase,
+          userId: user.id,
+          email: message.from_email,
+          leadId,
+          reason: "unsubscribe",
+          source: "gmail_sync",
+        });
+        await cancelPendingFollowUps({
+          supabase,
+          userId: user.id,
+          leadId,
+          reason: "unsubscribe",
+          detail: "Follow-up stopped because the contact requested no further email.",
+        });
+        await supabase.from("leads").update({ status: "DO_NOT_CONTACT" })
+          .eq("user_id", user.id).eq("id", leadId);
+        await markOutreachOutcome({
+          supabase,
+          userId: user.id,
+          leadId,
+          gmailThreadId: message.gmail_thread_id,
+          replyAt: message.received_at,
+          replyCategory: "UNSUBSCRIBE",
+          unsubscribed: true,
+        });
+      } catch (unsubscribeError) {
+        console.error("Could not apply unsubscribe suppression:", unsubscribeError);
+      }
+      continue;
+    }
+
     /* -----------------------------------------------------
        BOUNCE
     ----------------------------------------------------- */
@@ -3314,6 +3369,34 @@ export async function syncGmailRepliesForCurrentUser({
           "Bounce was stored but follow-up could not be stopped:",
           bounceFollowUpError
         );
+      }
+
+      try {
+        await suppressEmail({
+          supabase,
+          userId: user.id,
+          email: leadContext?.contactEmail ?? null,
+          leadId,
+          reason: "bounce",
+          source: "gmail_sync",
+        });
+        await cancelPendingFollowUps({
+          supabase,
+          userId: user.id,
+          leadId,
+          reason: "bounce",
+          detail: "Follow-up stopped because the address bounced.",
+        });
+        await markOutreachOutcome({
+          supabase,
+          userId: user.id,
+          leadId,
+          gmailThreadId: message.gmail_thread_id,
+          bounced: true,
+          replyCategory: "BOUNCE",
+        });
+      } catch (bouncePipelineError) {
+        console.error("Could not persist bounce suppression/outcome:", bouncePipelineError);
       }
 
       continue;
@@ -3416,6 +3499,16 @@ export async function syncGmailRepliesForCurrentUser({
             "OOO reply was stored but follow-up date could not be postponed:",
             oooUpdateError
           );
+        } else {
+          await logFollowUpEvent({
+            supabase,
+            userId: user.id,
+            leadId,
+            status: "rescheduled",
+            scheduledFor: nextFollowUp,
+            rescheduledFrom: leadContext?.nextFollowUpAt ?? null,
+            metadata: { reason: "out_of_office", gmailMessageId: message.gmail_message_id },
+          });
         }
       }
 
@@ -3429,6 +3522,28 @@ export async function syncGmailRepliesForCurrentUser({
        schedule. A later-contact request can then set a new
        CRM follow-up date below.
     ----------------------------------------------------- */
+
+    // Stop pending cold follow-ups as soon as a real human reply is known.
+    // This happens before interested/not-interested classification is acted on.
+    try {
+      await cancelPendingFollowUps({
+        supabase,
+        userId: user.id,
+        leadId,
+        reason: "human_reply",
+        detail: `Cancelled after human reply classified as ${classification}.`,
+      });
+      await markOutreachOutcome({
+        supabase,
+        userId: user.id,
+        leadId,
+        gmailThreadId: message.gmail_thread_id,
+        replyAt: message.received_at,
+        replyCategory: classification,
+      });
+    } catch (replyPipelineError) {
+      console.error("Could not persist reply outcome/auto-stop history:", replyPipelineError);
+    }
 
     const {
       error:

@@ -2609,10 +2609,10 @@ function buildModelContent({
 
       text:
         `
-${candidate.role.startsWith("APPROVED STOCK") ? "APPROVED STOCK CONCEPT IMAGE" : "REAL WEBSITE IMAGE"} ${index + 1}
+${candidate.role.startsWith("USER REFERENCE") ? "USER-PROVIDED VISUAL REFERENCE" : candidate.role.startsWith("APPROVED STOCK") ? "APPROVED STOCK CONCEPT IMAGE" : "REAL WEBSITE IMAGE"} ${index + 1}
 
 SOURCE TYPE:
-${candidate.role.startsWith("APPROVED STOCK") ? "STOCK — SUPPORTING CONCEPT IMAGE ONLY" : "REAL COMPANY WEBSITE"}
+${candidate.role.startsWith("USER REFERENCE") ? "VISUAL INSPIRATION ONLY — NEVER USE THIS IMAGE URL IN THE OUTPUT" : candidate.role.startsWith("APPROVED STOCK") ? "STOCK — SUPPORTING CONCEPT IMAGE ONLY" : "REAL COMPANY WEBSITE"}
 
 CRAWLER ROLE:
 ${candidate.role}
@@ -2929,6 +2929,7 @@ export async function generateSolStaticDesign({
   previousDirections = [],
   designModel,
   reasoningEffort,
+  referenceImages = [],
 }: {
   variantId:
     string;
@@ -2960,6 +2961,9 @@ export async function generateSolStaticDesign({
     "low"
     | "medium"
     | "high";
+
+  referenceImages?:
+    string[];
 }): Promise<StaticDesignResult> {
   const apiKey =
     process.env
@@ -3042,17 +3046,39 @@ export async function generateSolStaticDesign({
     ...stockCandidates,
   ];
 
+  // User uploads are genuine multimodal inspiration. They are deliberately
+  // separated from `candidates`: those URLs may influence composition, type,
+  // spacing and art direction, but they are NOT approved customer assets and
+  // therefore can never survive output-image sanitisation.
+  const referenceCandidates: VisualCandidate[] = referenceImages
+    .filter((url) => typeof url === "string" && /^https?:\/\//i.test(url))
+    .slice(0, 5)
+    .map((url, index) => ({
+      url,
+      role: `USER REFERENCE ${index + 1} — VISUAL INSPIRATION ONLY — NEVER USE URL IN OUTPUT`,
+      alt: "User-provided design inspiration",
+      context: "Study only composition, typography, spacing, visual rhythm and interaction direction. Do not copy branding, text, people, photography or the image itself.",
+    }));
+
+  const modelCandidates = [
+    ...referenceCandidates,
+    ...candidates,
+  ];
+
   const mandate =
     getVariantMandate(
       generationIndex
     );
 
-  const visionImages =
-    await prepareVisionImages(
-      createVisionCandidateOrder(
-        candidates
-      )
-    );
+  const [referenceVisionImages, companyVisionImages] = await Promise.all([
+    prepareVisionImages(referenceCandidates),
+    prepareVisionImages(createVisionCandidateOrder(candidates)),
+  ]);
+
+  const visionImages = [
+    ...referenceVisionImages,
+    ...companyVisionImages,
+  ];
 
   const visionByUrl =
     new Map(
@@ -3588,6 +3614,12 @@ ${compactJson(
   analysis.visualAnalysis,
   5_000
 )}
+
+=========================================================
+USER-PROVIDED REFERENCE IMAGES
+=========================================================
+
+${referenceCandidates.length > 0 ? `The user attached ${referenceCandidates.length} visual reference image(s). They are provided as multimodal inputs. Study ONLY their design language: composition, typography, spacing, density, visual rhythm, section treatment and motion feel. NEVER copy their branding, logos, people, photography, text or factual content. NEVER use a USER REFERENCE URL in the generated HTML. The output sanitizer only permits approved company/stock assets.` : "No user reference images were supplied."}
 
 =========================================================
 MAXIBESTOF ART DIRECTION
@@ -4253,7 +4285,7 @@ Return ONLY the finished complete HTML document.
 
       prompt,
 
-      candidates,
+      candidates: modelCandidates,
 
       visionByUrl,
 
@@ -4401,7 +4433,7 @@ Return ONLY the full corrected HTML document.
         prompt:
           repairPrompt,
 
-        candidates,
+        candidates: modelCandidates,
 
         visionByUrl,
 

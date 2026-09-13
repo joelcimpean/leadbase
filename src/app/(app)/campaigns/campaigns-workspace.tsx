@@ -73,6 +73,7 @@ export type CampaignWorkspaceIdea = {
   category: string;
   fit: string;
   description: string;
+  geography?: string;
 };
 
 type Tab =
@@ -1063,7 +1064,7 @@ export function CampaignsWorkspace({
               {ideas.map((idea) => (
                 <Link
                   key={idea.id}
-                  href={`/campaigns/new?idea=${idea.id}`}
+                  href={`/campaigns/new?idea=${encodeURIComponent(idea.id)}${idea.geography ? `&geo=${encodeURIComponent(idea.geography)}` : ""}`}
                   className="block rounded-[11px] px-2.5 py-[11px] transition-colors hover:bg-[#F7F8FA] dark:hover:bg-white/[0.035]"
                 >
                   <div className="flex items-center gap-2">

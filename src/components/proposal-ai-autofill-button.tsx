@@ -12,6 +12,10 @@ import {
   Button,
 } from "@/components/ui/button";
 
+import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+
 import type {
   ProposalCustomSection,
 } from "@/lib/proposal-sections";
@@ -176,17 +180,10 @@ export function ProposalAiAutofillButton({
         )
       );
 
-      const tokens =
-        data.usage?.totalTokens ?? 0;
-
       setMessage(
         isGerman
-          ? tokens > 0
-            ? `Entwurf eingefügt · ${tokens.toLocaleString("de-DE")} Tokens`
-            : "Entwurf eingefügt."
-          : tokens > 0
-            ? `Draft inserted · ${tokens.toLocaleString("en-US")} tokens`
-            : "Draft inserted."
+          ? "Entwurf eingefügt · Credits wurden nach tatsächlicher Nutzung abgerechnet."
+          : "Draft inserted · Credits were charged based on actual usage."
       );
     } catch (error) {
       setMessage(
@@ -222,6 +219,14 @@ export function ProposalAiAutofillButton({
               : isGerman
                 ? "Kein sinnvoller Verlauf"
                 : "No useful thread"}
+
+          {available && !loading ? (
+            <CreditEstimatePill
+              feature="proposal_autofill"
+              language={isGerman ? "de" : "en"}
+              hideOnSmall
+            />
+          ) : null}
         </button>
 
         {message ? (
@@ -254,17 +259,25 @@ export function ProposalAiAutofillButton({
             : isGerman
               ? "Mit AI aus Verlauf erstellen"
               : "Create from thread with AI"}
+
+        {available && !loading ? (
+          <CreditEstimatePill
+            feature="proposal_autofill"
+            language={isGerman ? "de" : "en"}
+            hideOnSmall
+          />
+        ) : null}
       </Button>
 
       <p className="max-w-xl text-xs leading-5 text-muted-foreground">
         {message ??
           (!available
             ? isGerman
-              ? "AI wird erst aktiviert, wenn Leadbase einen echten E-Mail-Austausch mit mindestens einer sinnvollen Kundenantwort erkannt hat. Bis dahin werden keine OpenAI-Tokens verbraucht."
-              : "AI is only enabled after Leadbase detects a real email exchange with at least one useful customer reply. Until then, no OpenAI tokens are used."
+              ? "AI wird erst aktiviert, wenn Leadbase einen echten E-Mail-Austausch mit mindestens einer sinnvollen Kundenantwort erkannt hat. Bis dahin werden keine Credits verbraucht."
+              : "AI is only enabled after Leadbase detects a real email exchange with at least one useful customer reply. Until then, no Credits are used."
             : isGerman
-              ? "Liest Lead-Daten und E-Mail-Historie. Verbraucht eine kleine Menge OpenAI-Tokens; nichts wird automatisch gesendet."
-              : "Reads lead data and email history. Uses a small amount of OpenAI tokens; nothing is sent automatically.")}
+              ? "Liest Lead-Daten und E-Mail-Historie. Verbraucht nur bei Ausführung Credits; nichts wird automatisch gesendet."
+              : "Reads lead data and email history. Uses Credits only when run; nothing is sent automatically.")}
       </p>
     </div>
   );

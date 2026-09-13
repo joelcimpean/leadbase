@@ -11,6 +11,7 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+import { resolveAccountCurrency } from "@/lib/account-currency";
 
 /* =========================================================
    WEBSITE DOMAIN
@@ -103,6 +104,16 @@ export async function saveCandidateAsLead(
       "/login"
     );
   }
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   /* =======================================================
      LOAD CANDIDATE
@@ -664,6 +675,9 @@ export async function saveCandidateAsLead(
 
           opportunity_score:
             candidate.opportunity_score,
+
+          currency:
+            accountCurrency,
         })
         .select(
           "id"

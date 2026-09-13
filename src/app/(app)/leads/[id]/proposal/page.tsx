@@ -103,6 +103,10 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+import {
+  LEADBASE_CURRENCIES,
+  resolveAccountCurrency,
+} from "@/lib/account-currency";
 
 import {
   defaultProposalCustomSections,
@@ -249,9 +253,20 @@ export default async function ProposalPage({
     notFound();
   }
 
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
+
   const userProposalBranding = (user.user_metadata?.leadbase_proposal_branding ?? {}) as {
     accentColor?: unknown;
     logoUrl?: unknown;
+    templateId?: unknown;
   };
 
   const userDefaultAccentColor =
@@ -263,6 +278,11 @@ export default async function ProposalPage({
     typeof userProposalBranding.logoUrl === "string" && userProposalBranding.logoUrl.trim()
       ? userProposalBranding.logoUrl.trim()
       : null;
+
+  const userDefaultDesignTemplate =
+    normalizeProposalDesignTemplate(
+      userProposalBranding.templateId
+    );
 
   const {
     data: lead,
@@ -510,8 +530,8 @@ export default async function ProposalPage({
     : Number(proposal?.price ?? lead.estimated_project_value ?? 0);
 
   const activeCurrency = selectedPayload
-    ? templateString(selectedPayload.currency) || proposal?.currency || lead.currency || "EUR"
-    : proposal?.currency ?? lead.currency ?? "EUR";
+    ? templateString(selectedPayload.currency) || proposal?.currency || lead.currency || accountCurrency
+    : proposal?.currency ?? lead.currency ?? accountCurrency;
 
   const activeNotes = selectedPayload
     ? materializeTemplateText(selectedPayload.notes, companyName, contactName)
@@ -533,9 +553,11 @@ export default async function ProposalPage({
     : proposal?.first_time_client ?? true;
 
   const activeDesignTemplate =
-    normalizeProposalDesignTemplate(
-      proposal?.design_template
-    );
+    proposal?.design_template
+      ? normalizeProposalDesignTemplate(
+          proposal.design_template
+        )
+      : userDefaultDesignTemplate;
 
   const storedCustomSections =
     normalizeProposalSections(
@@ -903,7 +925,7 @@ export default async function ProposalPage({
                       {isGerman ? "Projektpreis" : "Project price"}
                     </ProposalLabel>
                     <div className="mt-1.5 flex h-9 items-center gap-2 rounded-[10px] border border-[#002BBA]/45 bg-white px-[11px] shadow-[0_0_0_3px_rgba(0,43,186,0.10)] dark:bg-[#111216]">
-                      <span className="text-[13px] font-medium text-[#002BBA]">€</span>
+                      <span className="text-[12px] font-medium text-[#002BBA]">{activeCurrency}</span>
                       <input
                         id="price"
                         name="price"
@@ -922,10 +944,9 @@ export default async function ProposalPage({
                         disabled={isAccepted}
                         className="h-6 rounded-[7px] border-0 bg-black/[0.05] px-[7px] font-mono text-[10.5px] text-[#40454E] outline-none dark:bg-white/[0.07] dark:text-white"
                       >
-                        <option value="EUR">EUR</option>
-                        <option value="USD">USD</option>
-                        <option value="CHF">CHF</option>
-                        <option value="GBP">GBP</option>
+                        {LEADBASE_CURRENCIES.map((currency) => (
+                          <option key={currency} value={currency}>{currency}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

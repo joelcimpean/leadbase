@@ -236,3 +236,12 @@ export const COUNTRY_DIAL_CODES: CountryDialCode[] = [
 export function countryFlag(iso2: string) {
   return iso2.toUpperCase().replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
 }
+
+export function dialCodeFromLocale(locale: string | null | undefined) {
+  if (!locale) return "";
+  const normalized = locale.replace("_", "-");
+  const parts = normalized.split("-");
+  const region = parts.find((part, index) => index > 0 && /^[A-Za-z]{2}$/.test(part));
+  if (!region) return "";
+  return COUNTRY_DIAL_CODES.find((country) => country.iso2 === region.toUpperCase())?.dialCode ?? "";
+}

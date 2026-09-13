@@ -11,6 +11,12 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  assertPlanFeatureAvailable,
+  isPlanAccessError,
+  planAccessMessage,
+} from "@/lib/plan-access";
+
 export const runtime =
   "nodejs";
 
@@ -639,6 +645,18 @@ export async function POST(
         "Not authenticated.",
         401
       );
+    }
+
+    try {
+      await assertPlanFeatureAvailable(user.id, "competitor_research");
+    } catch (error) {
+      if (isPlanAccessError(error)) {
+        return jsonError(
+          planAccessMessage(error, language) ?? "Competitor research is not included in your plan.",
+          403
+        );
+      }
+      throw error;
     }
 
     const {

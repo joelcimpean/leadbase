@@ -1011,7 +1011,11 @@ export async function POST(
       "\n"
     );
 
-    await assertAiUsageAvailable(user.id);
+    const usageGuard = await assertAiUsageAvailable(user.id, {
+      feature: "call_prep",
+      model: "gpt-5.6-luna",
+      metadata: { leadId: id },
+    });
 
     const generated =
       await generateCallPrep({
@@ -1163,6 +1167,7 @@ export async function POST(
       feature: "call_prep",
       model: generated.model,
       usage: generated.usage,
+      reservationKey: usageGuard.reservationKey,
       metadata: { leadId: id },
     });
 

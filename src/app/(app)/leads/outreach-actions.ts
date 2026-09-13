@@ -47,20 +47,15 @@ import {
   assertAiUsageAvailable,
   recordAiUsage,
 } from "@/lib/ai-usage";
+import { assertPlanFeatureAvailable } from "@/lib/plan-access";
+
+import { getAppLanguage } from "@/lib/i18n-server";
+import { readLeadbaseUserIdentity } from "@/lib/user-identity";
+import { assertOutboundAllowed, logSuccessfulOutreach, logFollowUpEvent } from "@/lib/outreach-pipeline";
 
 /* =========================================================
    CONFIG
 ========================================================= */
-
-const OUTREACH_SIGNATURE = [
-  "Mit freundlichen Grüßen / Kind regards,",
-  "",
-  "Joel Cimpean",
-  "hello@joelcimpean.com / joelcimpean.com",
-].join("\n");
-
-const SIGNATURE_MARKER =
-  "Mit freundlichen Grüßen / Kind regards,";
 
 const GMAIL_SEND_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
@@ -267,50 +262,43 @@ function normalizeTextBlock(
 }
 
 function removeExistingSignature(
-  value:
-    string
+  value: string,
+  signature?: string | null
 ) {
-  const normalized =
-    normalizeTextBlock(
-      value
-    );
+  let normalized = normalizeTextBlock(value);
 
-  const signatureIndex =
-    normalized.indexOf(
-      SIGNATURE_MARKER
-    );
-
-  if (
-    signatureIndex ===
-      -1
-  ) {
-    return normalized;
+  const exactSignature = signature?.trim();
+  if (exactSignature && normalized.endsWith(exactSignature)) {
+    normalized = normalized.slice(0, -exactSignature.length).trim();
   }
 
-  return normalized
-    .slice(
-      0,
-      signatureIndex
-    )
-    .trim();
+  const legacyMarkers = [
+    "Mit freundlichen Grüßen / Kind regards,",
+    "Mit freundlichen Grüßen,",
+    "Kind regards,",
+    "Best regards,",
+  ];
+
+  for (const marker of legacyMarkers) {
+    const index = normalized.lastIndexOf(marker);
+    if (index > 0 && index >= normalized.length * 0.55) {
+      return normalized.slice(0, index).trim();
+    }
+  }
+
+  return normalized;
 }
 
 function ensureSignature(
-  value:
-    string
+  value: string,
+  signature?: string | null
 ) {
-  const message =
-    removeExistingSignature(
-      value
-    );
+  const message = removeExistingSignature(value, signature);
+  const normalizedSignature = signature?.trim() ?? "";
 
-  if (
-    !message
-  ) {
-    return OUTREACH_SIGNATURE;
-  }
-
-  return `${message}\n\n${OUTREACH_SIGNATURE}`;
+  if (!normalizedSignature) return message;
+  if (!message) return normalizedSignature;
+  return `${message}\n\n${normalizedSignature}`;
 }
 
 function replaceOpeningGreeting(
@@ -1234,84 +1222,38 @@ function getOutreachPreviewUrl(
 ========================================================= */
 
 function addCustomerPreviewToBody(
-  value:
-    string,
-  previewUrl:
-    string
-    | null
+  value: string,
+  previewUrl: string | null,
+  language: "de" | "en",
+  signature?: string | null
 ) {
-  const message =
-    removeExistingSignature(
-      value
-    );
+  const message = removeExistingSignature(value, signature);
+  if (!previewUrl) return message;
 
-  if (
-    !previewUrl
-  ) {
-    return message;
-  }
+  const trackedPreviewUrl = getOutreachPreviewUrl(previewUrl);
+  if (message.includes(previewUrl) || message.includes(trackedPreviewUrl)) return message;
 
-  const trackedPreviewUrl =
-    getOutreachPreviewUrl(
-      previewUrl
-    );
+  const previewCopy = language === "de"
+    ? "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:"
+    : "I also prepared a no-obligation design preview based on your current website. It shows one possible direction – a final concept would of course be tailored more closely to your company, goals and content:";
 
-  if (
-    message.includes(
-      previewUrl
-    ) ||
-    message.includes(
-      trackedPreviewUrl
-    )
-  ) {
-    return message;
-  }
-
-  const previewBlock = [
-    "Ich habe Ihnen auf Basis Ihres aktuellen Webauftritts außerdem eine unverbindliche Designvorschau vorbereitet. Sie zeigt eine mögliche Richtung – ein finales Konzept würde selbstverständlich noch individueller auf Ihr Unternehmen, Ihre Ziele und Inhalte abgestimmt werden:",
-    trackedPreviewUrl,
-  ].join(
-    "\n"
-  );
-
-  return `${message}\n\n${previewBlock}`;
+  return `${message}\n\n${previewCopy}\n${trackedPreviewUrl}`;
 }
 
 function addCustomerPreviewToFollowUp(
-  value:
-    string,
-  previewUrl:
-    string
-    | null
+  value: string,
+  previewUrl: string | null,
+  language: "de" | "en",
+  signature?: string | null
 ) {
-  const message =
-    removeExistingSignature(
-      value
-    );
+  const message = removeExistingSignature(value, signature);
+  if (!previewUrl) return message;
 
-  if (
-    !previewUrl
-  ) {
-    return message;
-  }
+  const trackedPreviewUrl = getOutreachPreviewUrl(previewUrl);
+  if (message.includes(previewUrl) || message.includes(trackedPreviewUrl)) return message;
 
-  const trackedPreviewUrl =
-    getOutreachPreviewUrl(
-      previewUrl
-    );
-
-  if (
-    message.includes(
-      previewUrl
-    ) ||
-    message.includes(
-      trackedPreviewUrl
-    )
-  ) {
-    return message;
-  }
-
-  return `${message}\n\nHier ist die Vorschau noch einmal:\n${trackedPreviewUrl}`;
+  const label = language === "de" ? "Hier ist die Vorschau noch einmal:" : "Here is the preview again:";
+  return `${message}\n\n${label}\n${trackedPreviewUrl}`;
 }
 
 /* =========================================================
@@ -1594,7 +1536,54 @@ async function createLeadOutreachDraft({
       visual?.outreachAngle
     );
 
-  await assertAiUsageAvailable(userId);
+  const language = await getAppLanguage();
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  const identity = readLeadbaseUserIdentity(
+    (authUser?.user_metadata ?? {}) as Record<string, unknown>,
+    authUser?.email ?? null,
+  );
+
+  type EvidenceAuditRow = {
+    id: string;
+    hook_category: string | null;
+    hook_strength: number | null;
+    hook_value: string | null;
+    hook_evidence: string | null;
+    hook_sentence: string | null;
+    findings: unknown;
+  };
+
+  let evidenceAudit: EvidenceAuditRow | null = null;
+  try {
+    const { data } = await supabase
+      .from("lead_audits")
+      .select("id,hook_category,hook_strength,hook_value,hook_evidence,hook_sentence,findings")
+      .eq("user_id", userId)
+      .eq("lead_id", lead.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    evidenceAudit = data as EvidenceAuditRow | null;
+  } catch (auditError) {
+    console.error("Could not load deterministic audit evidence for outreach:", auditError);
+  }
+
+  const verifiedEvidence = Array.isArray(evidenceAudit?.findings)
+    ? (evidenceAudit!.findings as Array<Record<string, unknown>>)
+        .filter((finding) => finding && typeof finding.evidence === "string")
+        .slice(0, 8)
+        .map((finding) => String(finding.evidence))
+    : [];
+
+  const outreachTemplateVersion = language === "de" ? "cold_de_evidence_v1" : "cold_en_evidence_v1";
+  const subjectVariant = "subject_ai_v1";
+  const openerVariant = "opener_ai_v1";
+
+  const usageGuard = await assertAiUsageAvailable(userId, {
+    feature: "outreach_generation",
+    model: "gpt-5.6-luna",
+    metadata: { leadId: lead.id },
+  });
 
   const generated =
     await generateOutreachDraft({
@@ -1663,26 +1652,46 @@ async function createLeadOutreachDraft({
         Boolean(
           customerPreviewUrl
         ),
+
+      language,
+      senderName: identity.senderName,
+      senderRole: identity.outreachRole,
+      senderCompany: identity.company,
+      senderWebsite: identity.website,
+      senderEmail: identity.replyEmail,
+      verifiedEvidence,
+      primaryHook: evidenceAudit
+        ? {
+            category: evidenceAudit.hook_category,
+            strength: evidenceAudit.hook_strength,
+            value: evidenceAudit.hook_value,
+            evidence: evidenceAudit.hook_evidence,
+            sentence: evidenceAudit.hook_sentence,
+          }
+        : null,
     });
 
-  const finalBody =
-    ensureSignature(
-      addCustomerPreviewToBody(
-        generated.body,
-        customerPreviewUrl
-      )
-    );
+  const finalBody = ensureSignature(
+    addCustomerPreviewToBody(
+      generated.body,
+      customerPreviewUrl,
+      language,
+      identity.signature,
+    ),
+    identity.signature,
+  );
 
-  const finalFollowUp =
-    generated.followUpBody
-      ?.trim()
-      ? ensureSignature(
-          addCustomerPreviewToFollowUp(
-            generated.followUpBody,
-            customerPreviewUrl
-          )
-        )
-      : null;
+  const finalFollowUp = generated.followUpBody?.trim()
+    ? ensureSignature(
+        addCustomerPreviewToFollowUp(
+          generated.followUpBody,
+          customerPreviewUrl,
+          language,
+          identity.signature,
+        ),
+        identity.signature,
+      )
+    : null;
 
   const channel =
     contact?.email
@@ -1714,7 +1723,7 @@ async function createLeadOutreachDraft({
         channel,
 
         language:
-          "DE",
+          language === "de" ? "DE" : "EN",
 
         subject:
           generated.subject,
@@ -1742,6 +1751,16 @@ async function createLeadOutreachDraft({
 
         total_tokens:
           generated.usage.totalTokens,
+
+        audit_id: evidenceAudit?.id ?? null,
+        hook_category: evidenceAudit?.hook_category ?? null,
+        hook_strength: evidenceAudit?.hook_strength ?? null,
+        hook_value: evidenceAudit?.hook_value ?? null,
+        hook_evidence: evidenceAudit?.hook_evidence ?? null,
+        hook_sentence: evidenceAudit?.hook_sentence ?? null,
+        template_version: outreachTemplateVersion,
+        subject_variant: subjectVariant,
+        opener_variant: openerVariant,
       })
       .select(
         "id"
@@ -1764,6 +1783,7 @@ async function createLeadOutreachDraft({
     model: generated.model,
     usage: generated.usage,
     requestKey: `outreach-draft:${draft.id}`,
+    reservationKey: usageGuard.reservationKey,
     metadata: { leadId: lead.id, draftId: draft.id },
   });
 
@@ -2005,6 +2025,8 @@ export async function generateLeadOutreachDraftForBulk(
   }
 
   try {
+    await assertPlanFeatureAvailable(user.id, "bulk_outreach");
+
     const result =
       await createLeadOutreachDraft({
         supabase,
@@ -2443,6 +2465,11 @@ export async function updateOutreachDraft(
     );
   }
 
+  const identity = readLeadbaseUserIdentity(
+    (user.user_metadata ?? {}) as Record<string, unknown>,
+    user.email ?? null,
+  );
+
   const {
     data:
       updatedDraft,
@@ -2458,13 +2485,15 @@ export async function updateOutreachDraft(
 
         body:
           ensureSignature(
-            body
+            body,
+            identity.signature
           ),
 
         follow_up_body:
           followUp
             ? ensureSignature(
-                followUp
+                followUp,
+                identity.signature
               )
             : null,
 
@@ -3202,6 +3231,11 @@ export async function sendApprovedOutreachDraft(
     );
   }
 
+  const senderIdentity = readLeadbaseUserIdentity(
+    (user.user_metadata ?? {}) as Record<string, unknown>,
+    user.email ?? null,
+  );
+
   const preSendQuality =
     await getPreSendQualityOrError({
       supabase,
@@ -3285,12 +3319,20 @@ export async function sendApprovedOutreachDraft(
       .select(`
         id,
         lead_id,
+        campaign_id,
         channel,
         status,
         subject,
         body,
         language,
-        sent_at
+        sent_at,
+        audit_id,
+        hook_category,
+        hook_strength,
+        hook_value,
+        template_version,
+        subject_variant,
+        opener_variant
       `)
       .eq(
         "id",
@@ -3386,6 +3428,11 @@ export async function sendApprovedOutreachDraft(
         id,
         status,
         outreach_gif_enabled,
+
+        company:companies (
+          industry,
+          location
+        ),
 
         primary_contact:contacts (
           id,
@@ -3576,6 +3623,27 @@ export async function sendApprovedOutreachDraft(
     );
   }
 
+  // Final send-time guard. Re-read the latest lead + suppression state
+  // *after* claiming the draft so a reply/unsubscribe racing with this worker
+  // cannot slip through using stale state.
+  try {
+    await assertOutboundAllowed({
+      supabase,
+      userId: user.id,
+      leadId,
+      recipientEmail,
+    });
+  } catch (safetyError) {
+    await supabase
+      .from("outreach_drafts")
+      .update({ status: "APPROVED", sending_started_at: null, send_error: safetyError instanceof Error ? safetyError.message : "Send blocked by safety check." })
+      .eq("id", draft.id)
+      .eq("user_id", user.id)
+      .eq("status", "SENDING");
+    revalidateLead(leadId);
+    redirect(`/leads/${leadId}#outreach`);
+  }
+
   let htmlBody:
     | string
     | null =
@@ -3704,6 +3772,9 @@ export async function sendApprovedOutreachDraft(
       await sendGmailMessage({
         fromEmail:
           gmailConnection.email_address,
+
+        fromName:
+          senderIdentity.senderName || senderIdentity.fullName || null,
 
         toEmail:
           recipientEmail,
@@ -3852,6 +3923,36 @@ export async function sendApprovedOutreachDraft(
     );
   }
 
+  try {
+    const companySnapshot = getSingleRelation(lead.company);
+    await logSuccessfulOutreach({
+      supabase,
+      userId: user.id,
+      leadId,
+      campaignId: draft.campaign_id ?? null,
+      draftId: draft.id,
+      channel: draft.channel,
+      sentAt,
+      gmailMessageId: gmailResult.messageId,
+      gmailThreadId: gmailResult.threadId,
+      sendId: `initial:${draft.id}`,
+      sequenceStep: 0,
+      industry: companySnapshot?.industry ?? null,
+      region: companySnapshot?.location ?? null,
+      auditId: draft.audit_id ?? null,
+      hookCategory: draft.hook_category ?? null,
+      hookStrength: draft.hook_strength ?? null,
+      hookValue: draft.hook_value ?? null,
+      templateVersion: draft.template_version ?? null,
+      subjectVariant: draft.subject_variant ?? null,
+      openerVariant: draft.opener_variant ?? null,
+      snapshot: { subject: draft.subject, recipientEmail, language: draft.language },
+    });
+  } catch (loggingError) {
+    // The email has already left Gmail. Never retry-send because analytics logging failed.
+    console.error("Outreach sent but event logging failed:", loggingError);
+  }
+
   const nextFollowUp =
     new Date(
       Date.now() +
@@ -3909,6 +4010,16 @@ export async function sendApprovedOutreachDraft(
       "Email was sent, but lead status could not be updated:",
       leadUpdateError
     );
+  } else {
+    await logFollowUpEvent({
+      supabase,
+      userId: user.id,
+      leadId: lead.id,
+      draftId: draft.id,
+      status: "scheduled",
+      scheduledFor: nextFollowUp,
+      metadata: { sequenceStep: 1, source: "initial_outreach" },
+    });
   }
 
   const {
@@ -4005,6 +4116,11 @@ export async function sendFollowUpOutreachDraft(
     );
   }
 
+  const senderIdentity = readLeadbaseUserIdentity(
+    (user.user_metadata ?? {}) as Record<string, unknown>,
+    user.email ?? null,
+  );
+
   const emailSafety =
     await loadLeadEmailSafety({
       supabase,
@@ -4084,12 +4200,20 @@ export async function sendFollowUpOutreachDraft(
       .select(`
         id,
         lead_id,
+        campaign_id,
         status,
         subject,
         follow_up_body,
         follow_up_sent_at,
         gmail_message_id,
-        gmail_thread_id
+        gmail_thread_id,
+        audit_id,
+        hook_category,
+        hook_strength,
+        hook_value,
+        template_version,
+        subject_variant,
+        opener_variant
       `)
       .eq(
         "id",
@@ -4170,6 +4294,12 @@ export async function sendFollowUpOutreachDraft(
         id,
         status,
         next_follow_up_at,
+        manual_follow_up_stopped_at,
+
+        company:companies (
+          industry,
+          location
+        ),
 
         primary_contact:contacts (
           id,
@@ -4200,7 +4330,8 @@ export async function sendFollowUpOutreachDraft(
 
   if (
     lead.status ===
-    "DO_NOT_CONTACT"
+    "DO_NOT_CONTACT" ||
+    lead.manual_follow_up_stopped_at
   ) {
     console.warn(
       "Follow-up blocked because lead is Do Not Contact."
@@ -4370,6 +4501,39 @@ export async function sendFollowUpOutreachDraft(
     );
   }
 
+  // Re-check the newest lead and suppression state after the atomic claim.
+  // This closes the race where a reply/unsubscribe arrives milliseconds before Gmail send.
+  try {
+    await assertOutboundAllowed({
+      supabase,
+      userId: user.id,
+      leadId,
+      recipientEmail,
+    });
+  } catch (safetyError) {
+    await supabase
+      .from("outreach_drafts")
+      .update({
+        follow_up_sending_started_at: null,
+        follow_up_send_error: safetyError instanceof Error ? safetyError.message : "Follow-up blocked by safety check.",
+      })
+      .eq("id", draft.id)
+      .eq("user_id", user.id);
+    await logFollowUpEvent({
+      supabase,
+      userId: user.id,
+      leadId,
+      draftId: draft.id,
+      status: "cancelled",
+      cancelReason: "suppressed",
+      cancelledAt: new Date().toISOString(),
+      scheduledFor: lead.next_follow_up_at,
+      metadata: { reason: safetyError instanceof Error ? safetyError.message : "blocked" },
+    });
+    revalidateLead(leadId);
+    redirect(`/leads/${leadId}#outreach`);
+  }
+
   let gmailResult: {
     messageId:
       string;
@@ -4386,6 +4550,9 @@ export async function sendFollowUpOutreachDraft(
         ? await sendGmailThreadFollowUp({
             fromEmail:
               gmailConnection.email_address,
+
+            fromName:
+              senderIdentity.senderName || senderIdentity.fullName || null,
 
             toEmail:
               recipientEmail,
@@ -4405,6 +4572,9 @@ export async function sendFollowUpOutreachDraft(
         : await sendGmailMessage({
             fromEmail:
               gmailConnection.email_address,
+
+            fromName:
+              senderIdentity.senderName || senderIdentity.fullName || null,
 
             toEmail:
               recipientEmail,
@@ -4532,6 +4702,44 @@ export async function sendFollowUpOutreachDraft(
     redirect(
       `/leads/${leadId}#outreach`
     );
+  }
+
+  try {
+    const companySnapshot = getSingleRelation(lead.company);
+    await logSuccessfulOutreach({
+      supabase,
+      userId: user.id,
+      leadId,
+      campaignId: draft.campaign_id ?? null,
+      draftId: draft.id,
+      channel: "email",
+      sentAt,
+      gmailMessageId: gmailResult.messageId,
+      gmailThreadId: gmailResult.threadId,
+      sendId: `followup:${draft.id}:1`,
+      sequenceStep: 1,
+      industry: companySnapshot?.industry ?? null,
+      region: companySnapshot?.location ?? null,
+      auditId: draft.audit_id ?? null,
+      hookCategory: draft.hook_category ?? null,
+      hookStrength: draft.hook_strength ?? null,
+      hookValue: draft.hook_value ?? null,
+      templateVersion: draft.template_version ?? null,
+      subjectVariant: draft.subject_variant ?? null,
+      openerVariant: draft.opener_variant ?? null,
+      snapshot: { subject: draft.subject, recipientEmail, sequenceStep: 1 },
+    });
+    await logFollowUpEvent({
+      supabase,
+      userId: user.id,
+      leadId,
+      draftId: draft.id,
+      status: "sent",
+      sentAt,
+      scheduledFor: lead.next_follow_up_at,
+    });
+  } catch (loggingError) {
+    console.error("Follow-up sent but pipeline logging failed:", loggingError);
   }
 
   const {

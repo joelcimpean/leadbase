@@ -17,6 +17,14 @@ import {
   Button,
 } from "@/components/ui/button";
 
+import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+
+import {
+  useLanguage,
+} from "@/components/language-provider";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -70,6 +78,8 @@ function SubmitButton({
     pending,
   } = useFormStatus();
 
+  const { language } = useLanguage();
+
   return (
     <Button
       type="submit"
@@ -84,15 +94,25 @@ function SubmitButton({
         <>
           <RefreshCw className="size-3.5 animate-spin" />
 
-          Generating draft...
+          {language === "de" ? "Entwurf wird erstellt..." : "Generating draft..."}
         </>
       ) : (
         <>
           <Sparkles className="size-3.5" />
 
           {hasDraft
-            ? "Regenerate draft"
-            : "Generate draft"}
+            ? language === "de"
+              ? "Entwurf neu erstellen"
+              : "Regenerate draft"
+            : language === "de"
+              ? "Entwurf erstellen"
+              : "Generate draft"}
+
+          <CreditEstimatePill
+            feature="outreach_generation"
+            language={language}
+            hideOnSmall
+          />
         </>
       )}
     </Button>

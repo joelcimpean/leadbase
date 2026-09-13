@@ -1025,12 +1025,12 @@ export default async function SettingsPage({
   const workspaceName =
     typeof metadataName === "string" && metadataName.trim()
       ? metadataName.trim()
-      : "Joel Cimpean";
+      : (user?.email?.split("@")[0] || (language === "de" ? "Leadbase-Nutzer" : "Leadbase user"));
 
   const workspaceEmail =
     user?.email ??
     gmailConnection?.email_address ??
-    "hello@joelcimpean.com";
+    "";
 
   const notice =
     gmailParam === "connected" ? (

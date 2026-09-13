@@ -25,6 +25,10 @@ import {
 } from "@/components/language-provider";
 
 import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+
+import {
   Button,
 } from "@/components/ui/button";
 
@@ -1246,6 +1250,13 @@ export function AiLeadSearchChat({
             </div>
           </div>
         </form>
+
+        <div className="mx-auto mt-2 flex max-w-3xl justify-end px-1">
+          <CreditEstimatePill
+            feature="ai_lead_search"
+            language={language}
+          />
+        </div>
 
         {/* =================================================
             EXAMPLES

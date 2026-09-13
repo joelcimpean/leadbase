@@ -29,6 +29,18 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    assertAiUsageAvailable,
+    recordAiUsage,
+    releaseAiUsageReservation,
+  } from "@/lib/ai-usage";
+
+  import {
+    assertPlanFeatureAvailable,
+    isPlanAccessError,
+    planAccessMessage,
+  } from "@/lib/plan-access";
   
   import {
     captureWebsiteScreenshots,
@@ -137,6 +149,23 @@ import {
             401,
         }
       );
+    }
+
+    try {
+      await assertPlanFeatureAvailable(user.id, "design_generation");
+    } catch (error) {
+      if (isPlanAccessError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              planAccessMessage(error, "en") ??
+              "AI design is not included in your plan.",
+          },
+          { status: 403 }
+        );
+      }
+      throw error;
     }
   
     /* =======================================================
@@ -450,8 +479,18 @@ import {
     ======================================================= */
   
     let designResearch;
+    let researchReservationKey: string | null = null;
   
     try {
+      const researchModel = process.env.OPENAI_REDESIGN_RESEARCH_MODEL ?? "gpt-5.6-luna";
+      const usageGuard = await assertAiUsageAvailable(user.id, {
+        feature: "design_generation",
+        model: researchModel,
+        reasoningEffort: "low",
+        metadata: { leadId, stage: "legacy_design_research" },
+      });
+      researchReservationKey = usageGuard.reservationKey;
+
       designResearch =
         await researchMaxiBestOfDesign({
           accessToken:
@@ -468,9 +507,20 @@ import {
           visualAnalysis:
             lead.visual_analysis,
         });
+
+      await recordAiUsage({
+        userId: user.id,
+        feature: "design_generation",
+        model: designResearch.model,
+        usage: designResearch.usage,
+        requestKey: `legacy-design-research:${leadId}:${Date.now()}`,
+        reservationKey: researchReservationKey,
+        metadata: { leadId, stage: "legacy_design_research" },
+      });
     } catch (
       error
     ) {
+      await releaseAiUsageReservation(user.id, researchReservationKey);
       const message =
         error instanceof
           Error
@@ -527,8 +577,18 @@ import {
     ======================================================= */
   
     let generated;
+    let generationReservationKey: string | null = null;
   
     try {
+      const generationModel = process.env.OPENAI_REDESIGN_MODEL ?? "gpt-5.6-terra";
+      const usageGuard = await assertAiUsageAvailable(user.id, {
+        feature: "design_generation",
+        model: generationModel,
+        reasoningEffort: "low",
+        metadata: { leadId, stage: "legacy_design_generation" },
+      });
+      generationReservationKey = usageGuard.reservationKey;
+
       generated =
         await generateRedesignPreview({
           source,
@@ -558,6 +618,8 @@ import {
           ? error.message
           : "Redesign generation failed.";
   
+      await releaseAiUsageReservation(user.id, generationReservationKey);
+
       console.error(
         "Redesign generation failed:",
         message
@@ -578,6 +640,16 @@ import {
       );
     }
   
+    await recordAiUsage({
+      userId: user.id,
+      feature: "design_generation",
+      model: generated.model,
+      usage: generated.usage,
+      requestKey: `legacy-design-generation:${leadId}:${Date.now()}`,
+      reservationKey: generationReservationKey,
+      metadata: { leadId, stage: "legacy_design_generation" },
+    });
+
     /* =======================================================
        SAVE
     ======================================================= */

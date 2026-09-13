@@ -44,9 +44,21 @@ import {
   } from "@/lib/supabase/server";
 
   import {
+    createAdminClient,
+  } from "@/lib/supabase/admin";
+
+  import {
     assertAiUsageAvailable,
     recordAiUsage,
+    releaseAiUsageReservation,
   } from "@/lib/ai-usage";
+
+  import {
+    assertPlanAiSelectionAvailable,
+    assertPlanFeatureAvailable,
+    isPlanAccessError,
+    planAccessMessage,
+  } from "@/lib/plan-access";
   
   /* =========================================================
      CONFIG
@@ -74,6 +86,9 @@ import {
   
   type PostBody = {
     regenerate?:
+      unknown;
+
+    bulk?:
       unknown;
 
     designModel?:
@@ -752,7 +767,7 @@ import {
     const selectedReasoningEffort =
       normalizeDesignReasoningEffort(
         body.reasoningEffort,
-        "high"
+        "medium"
       );
 
     const selectedMotionPreset =
@@ -771,10 +786,10 @@ import {
         body.inspirationLinks
       );
 
-    const inspirationImages =
+    const inspirationImagePaths =
       normalizeStringArray(
         body.inspirationImages
-      );
+      ).slice(0, 5);
   
     const supabase =
       await createClient();
@@ -811,7 +826,68 @@ import {
         }
       );
     }
+
+    try {
+      await assertPlanAiSelectionAvailable(user.id, {
+        feature: "design_generation",
+        model: selectedDesignModel,
+        reasoningEffort: selectedReasoningEffort,
+      });
+
+      if (selectedMotionPreset !== "none") {
+        await assertPlanFeatureAvailable(user.id, "design_motion");
+      }
+
+      if (body.bulk === true) {
+        await assertPlanFeatureAvailable(user.id, "bulk_design");
+      }
+    } catch (error) {
+      if (isPlanAccessError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              planAccessMessage(error, "en") ??
+              "This design option is not included in your plan.",
+          },
+          { status: 403 }
+        );
+      }
+      throw error;
+    }
   
+    const invalidInspirationPath = inspirationImagePaths.some(
+      (path) =>
+        !path.startsWith(`${user.id}/`) ||
+        path.includes("..") ||
+        path.startsWith("/")
+    );
+
+    if (invalidInspirationPath) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid design inspiration image." },
+        { status: 400 }
+      );
+    }
+
+    let inspirationImageUrls: string[] = [];
+
+    if (inspirationImagePaths.length > 0) {
+      const admin = createAdminClient();
+      const signed = await Promise.all(
+        inspirationImagePaths.map(async (path) => {
+          const { data, error } = await admin.storage
+            .from("design-inspiration")
+            .createSignedUrl(path, 60 * 60);
+          if (error || !data?.signedUrl) {
+            throw new Error("Could not load a private reference image.");
+          }
+          return data.signedUrl;
+        })
+      );
+      inspirationImageUrls = signed;
+    }
+
     /* =======================================================
        EXISTING
     ======================================================= */
@@ -1175,39 +1251,47 @@ import {
       if (
         accessToken
       ) {
-        researchPromise =
-          researchMaxiBestOfDesign({
-            accessToken,
-  
-            source,
-  
-            company:
-              analysis.company,
-  
-            researchSummary:
-              analysis.researchSummary,
-  
-            visualAnalysis:
-              analysis.visualAnalysis,
-          })
-            .then(
-              (
-                result
-              ) =>
-                result.text
-            )
-            .catch(
-              (
-                error
-              ) => {
-                console.warn(
-                  "MaxiBestOf inspiration research failed. Continuing without external inspiration:",
-                  error
-                );
-  
-                return null;
-              }
+        researchPromise = (async () => {
+          const researchModel = process.env.OPENAI_REDESIGN_RESEARCH_MODEL ?? "gpt-5.6-luna";
+          let researchReservationKey: string | null = null;
+
+          try {
+            const usageGuard = await assertAiUsageAvailable(user.id, {
+              feature: "design_generation",
+              model: researchModel,
+              reasoningEffort: "low",
+              metadata: { leadId, generationIndex, stage: "design_research" },
+            });
+            researchReservationKey = usageGuard.reservationKey;
+
+            const result = await researchMaxiBestOfDesign({
+              accessToken,
+              source,
+              company: analysis.company,
+              researchSummary: analysis.researchSummary,
+              visualAnalysis: analysis.visualAnalysis,
+            });
+
+            await recordAiUsage({
+              userId: user.id,
+              feature: "design_generation",
+              model: result.model,
+              usage: result.usage,
+              requestKey: `design-research:${leadId}:${generationIndex}`,
+              reservationKey: researchReservationKey,
+              metadata: { leadId, generationIndex, stage: "design_research" },
+            });
+
+            return result.text;
+          } catch (error) {
+            await releaseAiUsageReservation(user.id, researchReservationKey);
+            console.warn(
+              "MaxiBestOf inspiration research failed or was blocked by Credits. Continuing without external inspiration:",
+              error
             );
+            return null;
+          }
+        })();
       }
     }
   
@@ -1229,7 +1313,7 @@ import {
 
         inspirationLinks,
 
-        inspirationImages,
+        inspirationImages: inspirationImageUrls,
 
         motionPreset:
           selectedMotionPreset,
@@ -1249,8 +1333,16 @@ import {
         >
       >;
   
+    let usageReservationKey: string | null = null;
+
     try {
-      await assertAiUsageAvailable(user.id);
+      const usageGuard = await assertAiUsageAvailable(user.id, {
+        feature: "design_generation",
+        model: selectedDesignModel,
+        reasoningEffort: selectedReasoningEffort,
+        metadata: { leadId, variantId },
+      });
+      usageReservationKey = usageGuard.reservationKey;
 
       generated =
         await generateSolStaticDesign({
@@ -1265,6 +1357,9 @@ import {
           generationIndex,
   
           designResearch,
+
+          referenceImages:
+            inspirationImageUrls,
   
           previousDirections:
             existing.previousDirections,
@@ -1284,6 +1379,8 @@ import {
           ? error.message
           : "Unknown Sol design generation error.";
   
+      await releaseAiUsageReservation(user.id, usageReservationKey);
+
       console.error(
         "Sol static design generation failed:",
         message
@@ -1310,6 +1407,7 @@ import {
       model: generated.model,
       usage: generated.usage,
       requestKey: `design-generation:${variantId}`,
+      reservationKey: usageReservationKey,
       metadata: { leadId, variantId },
     });
 
@@ -1384,7 +1482,7 @@ import {
 
               inspirationLinks,
 
-              inspirationImages,
+              inspirationImages: inspirationImagePaths,
             },
           },
   

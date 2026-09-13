@@ -94,6 +94,9 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import { normalizeLeadbaseDesignDefaults } from "@/lib/design-defaults";
+import { resolveAccountCurrency } from "@/lib/account-currency";
+
 import {
   WorkspacePageMotion,
 } from "@/components/workspace-page-motion";
@@ -136,6 +139,57 @@ type WebsiteFinding = {
   label: string;
   passed: boolean;
   detail?: string;
+};
+
+type EvidenceFindingView = {
+  key?: string;
+  category?: string;
+  severity?: string;
+  label?: string;
+  value?: string | number;
+  evidence?: string;
+  hookEligible?: boolean;
+};
+
+type EvidenceAuditView = {
+  id: string;
+  created_at: string;
+  audit_version: string;
+  mobile_score: number | null;
+  desktop_score: number | null;
+  lcp_ms: number | null;
+  cls: number | null;
+  tbt_ms: number | null;
+  https_valid: boolean | null;
+  has_viewport: boolean | null;
+  has_contact_form: boolean | null;
+  contact_form_reachable: boolean | null;
+  broken_link_count: number | null;
+  meta_description_present: boolean | null;
+  cms: string | null;
+  raw_results_json: unknown;
+  findings: unknown;
+  hook_category: string | null;
+  hook_strength: number | null;
+  hook_value: string | null;
+  hook_evidence: string | null;
+  hook_sentence: string | null;
+};
+
+type OutreachEventView = {
+  id: string;
+  status: string;
+  channel: string;
+  sent_at: string;
+  hook_category: string | null;
+  hook_strength: number | null;
+  hook_value: string | null;
+  template_version: string | null;
+  subject_variant: string | null;
+  opener_variant: string | null;
+  sequence_step: number;
+  gmail_message_id: string | null;
+  gmail_thread_id: string | null;
 };
 
 type VisualAnalysis = {
@@ -794,6 +848,17 @@ export default async function LeadDetailPage({
 
   const text = leadsCopy[language];
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const designDefaults = normalizeLeadbaseDesignDefaults(user?.user_metadata?.leadbase_design_defaults);
+  const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   const {
     data: lead,
@@ -893,7 +958,7 @@ export default async function LeadDetailPage({
     (editableCampaignsData ??
       []) as LeadEditDialogCampaign[];
 
-  const [redesignResult, proposalResult] = await Promise.all([
+  const [redesignResult, proposalResult, evidenceResult, outreachEventsResult] = await Promise.all([
     supabase
       .from("redesign_previews")
       .select("public_token, generation_index")
@@ -906,13 +971,30 @@ export default async function LeadDetailPage({
       .select("id")
       .eq("lead_id", id)
       .maybeSingle(),
+    supabase
+      .from("lead_audits")
+      .select("id,created_at,audit_version,mobile_score,desktop_score,lcp_ms,cls,tbt_ms,https_valid,has_viewport,has_contact_form,contact_form_reachable,broken_link_count,meta_description_present,cms,raw_results_json,findings,hook_category,hook_strength,hook_value,hook_evidence,hook_sentence")
+      .eq("lead_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("outreach_events")
+      .select("id,status,channel,sent_at,hook_category,hook_strength,hook_value,template_version,subject_variant,opener_variant,sequence_step,gmail_message_id,gmail_thread_id")
+      .eq("lead_id", id)
+      .order("sent_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (redesignResult.error) console.error("Could not load latest redesign preview:", redesignResult.error);
   if (proposalResult.error) console.error("Could not load proposal state:", proposalResult.error);
+  if (evidenceResult.error) console.error("Could not load latest evidence audit:", evidenceResult.error);
+  if (outreachEventsResult.error) console.error("Could not load outreach event log:", outreachEventsResult.error);
 
   const latestRedesignPreview = redesignResult.data;
   const existingProposal = proposalResult.data;
+  const latestEvidenceAudit = (evidenceResult.data ?? null) as EvidenceAuditView | null;
+  const outreachEvents = (outreachEventsResult.data ?? []) as OutreachEventView[];
   const company = getSingleRelation(lead.company);
   const contact = getSingleRelation(lead.primary_contact);
   const campaign = getSingleRelation(lead.campaign);
@@ -1028,7 +1110,7 @@ export default async function LeadDetailPage({
   const money = lead.estimated_project_value !== null
     ? new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", {
         style: "currency",
-        currency: lead.currency ?? "EUR",
+        currency: lead.currency ?? accountCurrency,
         maximumFractionDigits: 0,
       }).format(lead.estimated_project_value)
     : null;
@@ -1272,6 +1354,7 @@ export default async function LeadDetailPage({
                 leadId={lead.id}
                 initialPreviewToken={latestRedesignPreview?.public_token ?? null}
                 initialGenerationIndex={latestRedesignPreview?.generation_index ?? 0}
+                initialDesignDefaults={designDefaults}
               />
             </div>
           ) : null}
@@ -1311,8 +1394,14 @@ export default async function LeadDetailPage({
                 error={lead.analysis_error}
               />
             }
+            evidence={<EvidenceAuditCard language={language} audit={latestEvidenceAudit} />}
             outreach={<div id="outreach"><OutreachSection leadId={lead.id} /></div>}
-            history={<LeadEmailHistory leadId={lead.id} />}
+            history={
+              <div className="space-y-5">
+                <OutreachEventLogCard language={language} events={outreachEvents} />
+                <LeadEmailHistory leadId={lead.id} />
+              </div>
+            }
             notes={
               <div className="p-1">
                 <div className="flex items-center justify-between gap-4">
@@ -1382,6 +1471,205 @@ export default async function LeadDetailPage({
           </section>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   EVIDENCE + OUTREACH EVENT VISIBILITY
+========================================================= */
+
+function EvidenceAuditCard({
+  language,
+  audit,
+}: {
+  language: AppLanguage;
+  audit: EvidenceAuditView | null;
+}) {
+  const de = language === "de";
+
+  if (!audit) {
+    return (
+      <div className="rounded-[12px] border border-dashed border-black/[0.10] bg-[#FBFBFC] px-4 py-5 dark:border-white/[0.10] dark:bg-white/[0.025]">
+        <p className="text-[12.5px] font-medium">
+          {de ? "Noch kein Evidence Audit" : "No Evidence Audit yet"}
+        </p>
+        <p className="mt-1 text-[11px] leading-5 text-[#6B7078]">
+          {de
+            ? "Klicke auf „Website analysieren“. Leadbase speichert danach messbare Website-Nachweise hier separat von der AI-Bewertung."
+            : "Click “Analyze website”. Leadbase will store measurable website evidence here separately from the AI assessment."}
+        </p>
+      </div>
+    );
+  }
+
+  const findings = Array.isArray(audit.findings)
+    ? (audit.findings as EvidenceFindingView[])
+    : [];
+
+  const raw = audit.raw_results_json && typeof audit.raw_results_json === "object"
+    ? audit.raw_results_json as Record<string, unknown>
+    : {};
+  const pageSpeed = raw.pageSpeed && typeof raw.pageSpeed === "object"
+    ? raw.pageSpeed as Record<string, unknown>
+    : {};
+  const pageSpeedConfigured = pageSpeed.configured === true;
+  const hasPerformanceData = [audit.mobile_score, audit.desktop_score, audit.lcp_ms, audit.cls, audit.tbt_ms]
+    .some((value) => value !== null && value !== undefined);
+
+  const performanceMetrics = [
+    { label: "Mobile", value: audit.mobile_score === null ? "—" : `${audit.mobile_score}/100` },
+    { label: "Desktop", value: audit.desktop_score === null ? "—" : `${audit.desktop_score}/100` },
+    { label: "LCP", value: audit.lcp_ms === null ? "—" : `${(audit.lcp_ms / 1000).toFixed(1)}s` },
+    { label: "CLS", value: audit.cls === null ? "—" : String(audit.cls) },
+    { label: "TBT", value: audit.tbt_ms === null ? "—" : `${audit.tbt_ms}ms` },
+  ];
+
+  const technicalMetrics = [
+    { label: "HTTPS", value: audit.https_valid === null ? "—" : audit.https_valid ? "✓" : "✕" },
+    { label: de ? "Viewport" : "Viewport", value: audit.has_viewport === null ? "—" : audit.has_viewport ? "✓" : "✕" },
+    { label: de ? "Kontaktformular" : "Contact form", value: audit.has_contact_form === null ? "—" : audit.has_contact_form ? "✓" : "✕" },
+    { label: de ? "Kaputte Links" : "Broken links", value: audit.broken_link_count === null ? "—" : String(audit.broken_link_count) },
+    { label: "CMS", value: audit.cms || "—" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.10em] text-[#6B7078]">
+            {de ? "Verifizierte Website-Daten" : "Verified website data"}
+          </div>
+          <p className="mt-1 text-[11px] text-[#6B7078]">
+            {de ? "Audit" : "Audit"} {audit.audit_version} · {formatDateTime(audit.created_at, language)}
+          </p>
+        </div>
+        <span className="rounded-[7px] bg-[#E9F0EA] px-2 py-1 font-mono text-[8.5px] uppercase tracking-[0.06em] text-[#2F6B3A]">
+          {de ? "Messdaten" : "Measured"}
+        </span>
+      </div>
+
+      {hasPerformanceData ? (
+        <div>
+          <div className="mb-2 font-mono text-[8.5px] uppercase tracking-[0.09em] text-[#6B7078]">Performance</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            {performanceMetrics.map((metric) => (
+              <div key={metric.label} className="rounded-[10px] border border-black/[0.07] bg-[#FBFBFC] px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.025]">
+                <div className="font-mono text-[8.5px] uppercase tracking-[0.08em] text-[#6B7078]">{metric.label}</div>
+                <div className="mt-1 text-[15px] font-semibold tabular-nums">{metric.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-[10px] border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-3 dark:bg-amber-500/[0.08]">
+          <p className="text-[11.5px] font-medium">{de ? "PageSpeed-Messwerte noch nicht verfügbar" : "PageSpeed metrics are not available yet"}</p>
+          <p className="mt-1 text-[10.5px] leading-4 text-[#6B7078]">
+            {pageSpeedConfigured
+              ? (de ? "Der PageSpeed-Aufruf lieferte bei diesem Audit keine Performance-Daten. Ein erneuter Analyze-Lauf versucht es erneut." : "PageSpeed returned no performance data for this audit. Running Analyze again will retry it.")
+              : (de ? "Setze GOOGLE_PAGESPEED_API_KEY in deiner Umgebung, damit Mobile, Desktop, LCP, CLS und TBT gemessen werden." : "Set GOOGLE_PAGESPEED_API_KEY in your environment to measure Mobile, Desktop, LCP, CLS and TBT.")}
+          </p>
+        </div>
+      )}
+
+      <div>
+        <div className="mb-2 font-mono text-[8.5px] uppercase tracking-[0.09em] text-[#6B7078]">{de ? "Technische Checks" : "Technical checks"}</div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          {technicalMetrics.map((metric) => (
+            <div key={metric.label} className="rounded-[10px] border border-black/[0.07] bg-[#FBFBFC] px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.025]">
+              <div className="font-mono text-[8.5px] uppercase tracking-[0.08em] text-[#6B7078]">{metric.label}</div>
+              <div className="mt-1 truncate text-[15px] font-semibold tabular-nums">{metric.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[11px] border border-[#002BBA]/20 bg-[#002BBA]/[0.045] px-4 py-3 dark:bg-[#002BBA]/10">
+        <div className="font-mono text-[8.5px] uppercase tracking-[0.08em] text-[#002BBA] dark:text-[#8EA6FF]">
+          {de ? "Primärer Outreach-Hook" : "Primary outreach hook"}
+        </div>
+        <p className="mt-1 text-[12.5px] font-medium">
+          {audit.hook_sentence || audit.hook_evidence || (de ? "Kein starker Hook gefunden" : "No strong hook found")}
+        </p>
+        {audit.hook_category ? (
+          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.05em] text-[#6B7078]">
+            {audit.hook_category} · {de ? "Stärke" : "strength"} {audit.hook_strength ?? 0}/3{audit.hook_value ? ` · ${audit.hook_value}` : ""}
+          </p>
+        ) : null}
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-[12.5px] font-semibold">{de ? "Findings" : "Findings"}</h3>
+          <span className="font-mono text-[9px] text-[#6B7078]">{findings.length}</span>
+        </div>
+        {findings.length === 0 ? (
+          <p className="text-[11px] text-[#6B7078]">{de ? "Keine strukturierten Findings gespeichert." : "No structured findings stored."}</p>
+        ) : (
+          <div className="divide-y divide-black/[0.07] rounded-[11px] border border-black/[0.07] dark:divide-white/[0.07] dark:border-white/[0.08]">
+            {findings.map((finding, index) => (
+              <div key={`${finding.key ?? "finding"}-${index}`} className="flex gap-3 px-3.5 py-3">
+                <span className={`mt-1.5 size-2 shrink-0 rounded-full ${finding.severity === "strong" ? "bg-red-500" : finding.severity === "warning" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="text-[11.5px] font-medium">{finding.label || finding.key || "Finding"}</span>
+                    {finding.value !== undefined ? <span className="font-mono text-[10px] text-[#6B7078]">{String(finding.value)}</span> : null}
+                  </div>
+                  {finding.evidence ? <p className="mt-1 text-[10.5px] leading-4 text-[#6B7078]">{finding.evidence}</p> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OutreachEventLogCard({
+  language,
+  events,
+}: {
+  language: AppLanguage;
+  events: OutreachEventView[];
+}) {
+  const de = language === "de";
+
+  return (
+    <div className="rounded-[12px] border border-black/[0.07] bg-[#FBFBFC] px-4 py-4 dark:border-white/[0.08] dark:bg-white/[0.025]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-[12.5px] font-semibold">{de ? "Outreach-Log" : "Outreach log"}</h3>
+          <p className="mt-1 text-[10.5px] text-[#6B7078]">
+            {de ? "Unveränderliche Send-Snapshots für spätere Analytics." : "Immutable send snapshots used by future analytics."}
+          </p>
+        </div>
+        <span className="font-mono text-[9px] text-[#6B7078]">{events.length}</span>
+      </div>
+
+      {events.length === 0 ? (
+        <p className="mt-3 text-[11px] text-[#6B7078]">
+          {de ? "Noch kein erfolgreich geloggter Versand für diesen Lead." : "No successfully logged send for this lead yet."}
+        </p>
+      ) : (
+        <div className="mt-3 divide-y divide-black/[0.07] dark:divide-white/[0.07]">
+          {events.map((event) => (
+            <div key={event.id} className="grid gap-1 py-2.5 sm:grid-cols-[150px_1fr_auto] sm:items-center sm:gap-3">
+              <span className="font-mono text-[9px] uppercase tracking-[0.05em] text-[#6B7078]">{formatDateTime(event.sent_at, language)}</span>
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-medium">
+                  {event.sequence_step === 0 ? (de ? "Initialmail" : "Initial email") : `${de ? "Follow-up" : "Follow-up"} ${event.sequence_step}`}
+                  {event.hook_category ? ` · ${event.hook_category}` : ""}
+                </p>
+                <p className="mt-0.5 truncate font-mono text-[8.5px] uppercase tracking-[0.04em] text-[#6B7078]">
+                  {[event.template_version, event.subject_variant, event.opener_variant].filter(Boolean).join(" · ") || (de ? "Snapshot gespeichert" : "Snapshot stored")}
+                </p>
+              </div>
+              <span className="font-mono text-[8.5px] uppercase tracking-[0.05em] text-[#2F6B3A] dark:text-emerald-300">{event.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

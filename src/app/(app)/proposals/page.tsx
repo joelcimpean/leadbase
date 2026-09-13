@@ -4,6 +4,7 @@ import { ProposalsPrecisionClient } from "./proposals-precision-client";
 import { WorkspacePageMotion } from "@/components/workspace-page-motion";
 import { getAppLanguage } from "@/lib/i18n-server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveAccountCurrency } from "@/lib/account-currency";
 
 export type ProposalListStatus =
   | "draft"
@@ -112,6 +113,16 @@ export default async function ProposalsPage() {
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   const { data: proposalData, error: proposalError } = await supabase
     .from("proposals")
@@ -232,7 +243,7 @@ export default async function ProposalsPage() {
       value:
         numberValue(proposal.price) ||
         numberValue(lead?.estimated_project_value),
-      currency: proposal.currency || lead?.currency || "EUR",
+      currency: proposal.currency || lead?.currency || accountCurrency,
       createdAt: proposal.created_at,
       updatedAt: proposal.updated_at,
       sentAt: proposal.sent_at,
@@ -254,7 +265,7 @@ export default async function ProposalsPage() {
         (language === "de" ? "Unbekannter Kunde" : "Unknown client"),
       contact: single(lead.primary_contact)?.full_name?.trim() || null,
       estimatedValue: numberValue(lead.estimated_project_value),
-      currency: lead.currency || "EUR",
+      currency: lead.currency || accountCurrency,
     }));
 
   return (
@@ -264,6 +275,7 @@ export default async function ProposalsPage() {
         initialItems={items}
         candidates={candidates}
         language={language}
+        accountCurrency={accountCurrency}
       />
     </div>
   );

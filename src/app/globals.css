@@ -701,3 +701,110 @@ select {
     opacity: 1 !important;
   }
 }
+
+
+/* =========================================================
+   GLOBAL APP DARK-MODE HARDENING
+   Phase 12.5.3
+   All authenticated workspace routes render inside
+   .leadbase-global-dark-scope. This catches legacy light-only
+   utility classes while preserving intentionally dark/blue surfaces.
+========================================================= */
+.dark .leadbase-global-dark-scope {
+  color: var(--foreground);
+  background: var(--lb-page);
+}
+
+.dark .leadbase-global-dark-scope [class~="bg-white"] {
+  background-color: #121316 !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="bg-[#F6F7F9]"],
+.dark .leadbase-global-dark-scope [class~="bg-[#F7F8FA]"],
+.dark .leadbase-global-dark-scope [class~="bg-[#FDFDFE]"],
+.dark .leadbase-global-dark-scope [class~="bg-[#FBFBFC]"] {
+  background-color: #15161a !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="bg-black/[0.045]"],
+.dark .leadbase-global-dark-scope [class~="bg-black/[0.04]"],
+.dark .leadbase-global-dark-scope [class~="bg-black/[0.03]"],
+.dark .leadbase-global-dark-scope [class~="bg-black/[0.05]"],
+.dark .leadbase-global-dark-scope [class~="bg-black/[0.055]"] {
+  background-color: rgba(255, 255, 255, 0.055) !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="bg-[#EAEEFB]"],
+.dark .leadbase-global-dark-scope [class~="bg-[#EAF0FF]"],
+.dark .leadbase-global-dark-scope [class~="bg-[#F1F4FF]"] {
+  background-color: rgba(0, 43, 186, 0.22) !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="bg-[#E9F0EA]"] {
+  background-color: rgba(47, 107, 58, 0.20) !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="bg-[#FDF0E3]"] {
+  background-color: rgba(154, 81, 6, 0.20) !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="text-[#0B0C0E]"] {
+  color: #f4f5f7 !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="text-[#40454E]"] {
+  color: #d7d9de !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="text-[#6B7078]"] {
+  color: #aeb2ba !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="text-[#7D828A]"],
+.dark .leadbase-global-dark-scope [class~="text-[#7E838B]"],
+.dark .leadbase-global-dark-scope [class~="text-[#8A9099]"],
+.dark .leadbase-global-dark-scope [class~="text-[#9AA0A8]"],
+.dark .leadbase-global-dark-scope [class~="text-[#B1B5BB]"] {
+  color: #8f949d !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="border-black/[0.05]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.055]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.06]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.07]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.08]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.09]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.10]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.12]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.14]"],
+.dark .leadbase-global-dark-scope [class~="border-black/[0.16]"] {
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+.dark .leadbase-global-dark-scope input:not([type="checkbox"]):not([type="radio"]),
+.dark .leadbase-global-dark-scope textarea,
+.dark .leadbase-global-dark-scope select {
+  background-color: #15161a;
+  border-color: rgba(255, 255, 255, 0.10);
+  color: #f4f5f7;
+  color-scheme: dark;
+}
+
+.dark .leadbase-global-dark-scope input::placeholder,
+.dark .leadbase-global-dark-scope textarea::placeholder {
+  color: #858a93;
+}
+
+.dark .leadbase-global-dark-scope select option {
+  background: #15161a;
+  color: #f4f5f7;
+}
+
+.dark .leadbase-global-dark-scope [class~="hover:bg-[#F7F8FA]"]:hover,
+.dark .leadbase-global-dark-scope [class~="hover:bg-[#FDFDFE]"]:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.dark .leadbase-global-dark-scope [class~="hover:text-[#0B0C0E]"]:hover {
+  color: #ffffff !important;
+}

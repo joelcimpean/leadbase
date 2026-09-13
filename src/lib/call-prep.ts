@@ -394,7 +394,7 @@ export async function generateCallPrep(
             "system",
 
           content: `
-You prepare Joel Cimpean for a real sales/discovery call with a potential web-design client.
+You prepare the signed-in Leadbase user for a real sales/discovery call with a potential client.
 
 ${languageInstruction}
 

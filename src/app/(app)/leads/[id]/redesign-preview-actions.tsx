@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Eye,
   Film,
+  ImagePlus,
   Link2,
   Link2Off,
   Loader2,
@@ -17,6 +18,8 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Trash2,
+  UploadCloud,
   X,
 } from "lucide-react";
 
@@ -41,11 +44,22 @@ import {
 } from "@/components/language-provider";
 
 import {
+  CreditEstimatePill,
+  designCreditEstimate,
+} from "@/components/credit-estimate-pill";
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
+
+import {
   DESIGN_MODEL_OPTIONS,
   isDesignModelOption,
   type DesignMotionPreset,
   type DesignReasoningEffort,
 } from "@/lib/design-generation-options";
+
+import type {
+  LeadbaseDesignDefaults,
+} from "@/lib/design-defaults";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
 
 /* =========================================================
    TYPES
@@ -61,6 +75,9 @@ type RedesignPreviewActionsProps = {
 
   initialGenerationIndex:
     number;
+
+  initialDesignDefaults:
+    LeadbaseDesignDefaults;
 };
 
 type DesignVariant = {
@@ -1121,6 +1138,7 @@ function getMotionLabel(
 export function RedesignPreviewActions({
   leadId,
   initialGenerationIndex,
+  initialDesignDefaults,
 }: RedesignPreviewActionsProps) {
   const {
     language,
@@ -1131,6 +1149,30 @@ export function RedesignPreviewActions({
     copy[
       language
     ];
+
+  const {
+    planId,
+    entitlements,
+    loading: planLoading,
+  } = useLeadbasePlan();
+
+  const canGenerateDesign =
+    planAllowsFeature(planId, "design_generation");
+  const canUseMotion =
+    planAllowsFeature(planId, "design_motion");
+  const allowedDesignModels = useMemo(
+    () => new Set(entitlements.userSelectableDesignModels),
+    [entitlements.userSelectableDesignModels]
+  );
+  const reasoningOrder = ["low", "medium", "high"] as const;
+  const maxReasoningIndex = Math.max(
+    0,
+    reasoningOrder.indexOf(
+      entitlements.maxDesignReasoning as (typeof reasoningOrder)[number]
+    )
+  );
+  const isReasoningAllowed = (value: DesignReasoningEffort) =>
+    reasoningOrder.indexOf(value) <= maxReasoningIndex;
 
   const dropdownRef =
     useRef<HTMLDivElement | null>(
@@ -1234,7 +1276,7 @@ export function RedesignPreviewActions({
     setDesignModel,
   ] =
     useState(
-      "gpt-5.6-sol"
+      initialDesignDefaults.designModel
     );
 
   const [
@@ -1244,7 +1286,7 @@ export function RedesignPreviewActions({
     useState<
       DesignReasoningEffort
     >(
-      "medium"
+      initialDesignDefaults.reasoningEffort
     );
 
   const [
@@ -1254,7 +1296,7 @@ export function RedesignPreviewActions({
     useState<
       DesignMotionPreset
     >(
-      "none"
+      initialDesignDefaults.motionPreset
     );
 
   const [
@@ -1273,13 +1315,54 @@ export function RedesignPreviewActions({
       ""
     );
 
+  type InspirationUpload = {
+    path: string;
+    url: string;
+    name: string;
+    size: number;
+  };
+
   const [
-    inspirationImagesValue,
-    setInspirationImagesValue,
-  ] =
-    useState(
-      ""
-    );
+    inspirationImages,
+    setInspirationImages,
+  ] = useState<InspirationUpload[]>([]);
+
+  const [
+    imageUploading,
+    setImageUploading,
+  ] = useState(false);
+
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const motionSelectRef = useRef<HTMLSelectElement | null>(null);
+
+  useEffect(() => {
+    if (planLoading || !canGenerateDesign) return;
+
+    if (!allowedDesignModels.has(designModel)) {
+      const fallback = entitlements.userSelectableDesignModels[0];
+      if (fallback && isDesignModelOption(fallback)) {
+        setDesignModel(fallback);
+      }
+    }
+
+    if (!isReasoningAllowed(reasoningEffort)) {
+      setReasoningEffort(reasoningOrder[maxReasoningIndex] ?? "low");
+    }
+
+    if (!canUseMotion && motionPreset !== "none") {
+      setMotionPreset("none");
+    }
+  }, [
+    planLoading,
+    canGenerateDesign,
+    canUseMotion,
+    designModel,
+    reasoningEffort,
+    motionPreset,
+    allowedDesignModels,
+    entitlements.userSelectableDesignModels,
+    maxReasoningIndex,
+  ]);
 
   /* =======================================================
      SHARE
@@ -1453,104 +1536,37 @@ export function RedesignPreviewActions({
     []
   );
 
-  useEffect(
-    () => {
-      try {
-        const raw =
-          window.localStorage.getItem(
-            "leadbase-design-generation-settings-v2"
-          );
-
-        if (!raw) {
-          return;
-        }
-
-        const parsed = JSON.parse(raw) as {
-          designModel?: string;
-          reasoningEffort?: DesignReasoningEffort;
-          motionPreset?: DesignMotionPreset;
-          inspirationMemo?: string;
-          inspirationLinksValue?: string;
-          inspirationImagesValue?: string;
-        };
-
-        if (
-          isDesignModelOption(
-            parsed.designModel
-          )
-        ) {
-          setDesignModel(
-            parsed.designModel
-          );
-        }
-
-        if (
-          parsed.reasoningEffort === "low" ||
-          parsed.reasoningEffort === "medium" ||
-          parsed.reasoningEffort === "high"
-        ) {
-          setReasoningEffort(parsed.reasoningEffort);
-        }
-
-        if (
-          parsed.motionPreset === "none" ||
-          parsed.motionPreset === "subtle" ||
-          parsed.motionPreset === "premium"
-        ) {
-          setMotionPreset(parsed.motionPreset);
-        }
-
-        if (typeof parsed.inspirationMemo === "string") {
-          setInspirationMemo(parsed.inspirationMemo);
-        }
-
-        if (typeof parsed.inspirationLinksValue === "string") {
-          setInspirationLinksValue(parsed.inspirationLinksValue);
-        }
-
-        if (typeof parsed.inspirationImagesValue === "string") {
-          setInspirationImagesValue(parsed.inspirationImagesValue);
-        }
-      } catch (storageError) {
-        console.warn(
-          "Could not restore design generation settings:",
-          storageError
-        );
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(
+        "leadbase-design-inspiration-v1"
+      );
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        inspirationMemo?: string;
+        inspirationLinksValue?: string;
+      };
+      if (typeof parsed.inspirationMemo === "string") {
+        setInspirationMemo(parsed.inspirationMemo);
       }
-    },
-    []
-  );
-
-  useEffect(
-    () => {
-      try {
-        window.localStorage.setItem(
-          "leadbase-design-generation-settings-v2",
-          JSON.stringify({
-            designModel,
-            reasoningEffort,
-            motionPreset,
-            inspirationMemo,
-            inspirationLinksValue,
-            inspirationImagesValue,
-          })
-        );
-      } catch (storageError) {
-        console.warn(
-          "Could not persist design generation settings:",
-          storageError
-        );
+      if (typeof parsed.inspirationLinksValue === "string") {
+        setInspirationLinksValue(parsed.inspirationLinksValue);
       }
-    },
-    [
-      designModel,
-      reasoningEffort,
-      motionPreset,
-      inspirationMemo,
-      inspirationLinksValue,
-      inspirationImagesValue,
-    ]
-  );
+    } catch (storageError) {
+      console.warn("Could not restore design inspiration:", storageError);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "leadbase-design-inspiration-v1",
+        JSON.stringify({ inspirationMemo, inspirationLinksValue })
+      );
+    } catch (storageError) {
+      console.warn("Could not persist design inspiration:", storageError);
+    }
+  }, [inspirationMemo, inspirationLinksValue]);
 
   /* =======================================================
      CLOSE DROPDOWN
@@ -1750,6 +1766,50 @@ export function RedesignPreviewActions({
     ]
   );
 
+  async function uploadInspirationFiles(files: File[]) {
+    if (!files.length || imageUploading) return;
+    const available = Math.max(0, 5 - inspirationImages.length);
+    const picked = files.slice(0, available);
+    if (!picked.length) {
+      setError(language === "de" ? "Maximal 5 Referenzbilder sind erlaubt." : "A maximum of 5 reference images is allowed.");
+      return;
+    }
+    setImageUploading(true);
+    setError(null);
+    try {
+      const uploaded: InspirationUpload[] = [];
+      for (const file of picked) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 3 * 1024 * 1024) {
+          throw new Error(language === "de" ? `${file.name}: nur PNG/JPG/WebP bis 3 MB.` : `${file.name}: PNG/JPG/WebP only, max 3 MB.`);
+        }
+        const data = new FormData();
+        data.append("file", file);
+        const response = await fetch("/api/design-inspiration", { method: "POST", body: data });
+        const result = (await response.json()) as { ok?: boolean; error?: string; path?: string; url?: string; name?: string; size?: number };
+        if (!response.ok || !result.ok || !result.path || !result.url) throw new Error(result.error ?? "Upload failed.");
+        uploaded.push({ path: result.path, url: result.url, name: result.name ?? file.name, size: result.size ?? file.size });
+      }
+      setInspirationImages((current) => [...current, ...uploaded].slice(0, 5));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Upload failed.");
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
+  async function removeInspirationImage(image: InspirationUpload) {
+    setInspirationImages((current) => current.filter((item) => item.path !== image.path));
+    try {
+      await fetch("/api/design-inspiration", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: image.path }),
+      });
+    } catch {
+      // The private object expires from the UI even if cleanup has to be retried later.
+    }
+  }
+
   /* =======================================================
      GENERATE
   ======================================================= */
@@ -1761,6 +1821,15 @@ export function RedesignPreviewActions({
     if (
       generating
     ) {
+      return;
+    }
+
+    if (!canGenerateDesign) {
+      setError(
+        language === "de"
+          ? "AI-Designs sind ab dem Starter-Plan verfügbar."
+          : "AI designs are available from the Starter plan."
+      );
       return;
     }
 
@@ -1820,9 +1889,7 @@ export function RedesignPreviewActions({
                   ),
 
                 inspirationImages:
-                  parseLines(
-                    inspirationImagesValue
-                  ),
+                  inspirationImages.map((image) => image.path),
               }),
           }
         );
@@ -1864,6 +1931,33 @@ export function RedesignPreviewActions({
           1
       );
 
+      if (
+        effectiveMotionPreset !== "none" &&
+        result.previewId
+      ) {
+        const motionResponse = await fetch(
+          `/api/design-preview/${encodeURIComponent(result.previewId)}/enhance-motion`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              designModel,
+              reasoningEffort,
+              motionPreset: effectiveMotionPreset,
+            }),
+          }
+        );
+        const motionResult = (await motionResponse.json()) as MotionEnhanceResponse;
+        if (!motionResponse.ok || !motionResult.ok) {
+          throw new Error(motionResult.error ?? text.motionFailed);
+        }
+        setMotionMessage(
+          language === "de"
+            ? "Gespeichertes Motion-Preset wurde automatisch angewendet. Zusätzliche Credits wurden verwendet."
+            : "Your saved motion preset was applied automatically. Additional credits were used."
+        );
+      }
+
       await loadDesigns();
     } catch (
       generateError
@@ -1896,6 +1990,30 @@ export function RedesignPreviewActions({
       motionEnhancing ||
       generating
     ) {
+      return;
+    }
+
+    if (!canUseMotion) {
+      setError(
+        language === "de"
+          ? "Enhance Motion ist ab dem Pro-Plan verfügbar."
+          : "Enhance Motion is available from the Pro plan."
+      );
+      return;
+    }
+
+    if (motionPreset === "none") {
+      setSettingsOpen(true);
+      setMotionMessage(null);
+      setError(
+        language === "de"
+          ? "Wähle zuerst unter Motion „Subtle“ oder „Premium“. Danach kannst du Enhance Motion starten."
+          : "Choose Subtle or Premium under Motion first. Then run Enhance Motion."
+      );
+      window.setTimeout(() => {
+        motionSelectRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        motionSelectRef.current?.focus();
+      }, 50);
       return;
     }
 
@@ -1933,11 +2051,7 @@ export function RedesignPreviewActions({
 
                 reasoningEffort,
 
-                motionPreset:
-                  motionPreset ===
-                  "none"
-                    ? "premium"
-                    : motionPreset,
+                motionPreset,
               }),
           }
         );
@@ -3069,7 +3183,7 @@ export function RedesignPreviewActions({
     Boolean(
       inspirationMemo.trim() ||
       inspirationLinksValue.trim() ||
-      inspirationImagesValue.trim()
+      inspirationImages.length > 0
     );
 
   const selectedVariantLabel =
@@ -3151,7 +3265,9 @@ export function RedesignPreviewActions({
             <button
               type="button"
               disabled={
-                generating
+                generating ||
+                planLoading ||
+                !canGenerateDesign
               }
               onClick={() =>
                 void generate()
@@ -3167,6 +3283,14 @@ export function RedesignPreviewActions({
               {generating
                 ? text.generating
                 : text.generate}
+
+              {!generating ? (
+                <CreditEstimatePill
+                  estimate={designCreditEstimate(designModel, reasoningEffort)}
+                  language={language}
+                  hideOnSmall
+                />
+              ) : null}
             </button>
           ) : (
             <>
@@ -3361,7 +3485,9 @@ export function RedesignPreviewActions({
               <button
                 type="button"
                 disabled={
-                  generating
+                  generating ||
+                  planLoading ||
+                  !canGenerateDesign
                 }
                 onClick={() =>
                   void generate()
@@ -3377,6 +3503,14 @@ export function RedesignPreviewActions({
                 {
                   text.regenerate
                 }
+
+                {!generating ? (
+                  <CreditEstimatePill
+                    estimate={designCreditEstimate(designModel, reasoningEffort)}
+                    language={language}
+                    hideOnSmall
+                  />
+                ) : null}
               </button>
 
               <div className="ml-auto flex items-center gap-2">
@@ -3387,7 +3521,8 @@ export function RedesignPreviewActions({
                     type="button"
                     disabled={
                       generating ||
-                      motionEnhancing
+                      motionEnhancing ||
+                      !canUseMotion
                     }
                     onClick={() =>
                       void enhanceMotion()
@@ -3403,6 +3538,14 @@ export function RedesignPreviewActions({
                     {
                       text.enhanceMotion
                     }
+
+                    {!motionEnhancing ? (
+                      <CreditEstimatePill
+                        feature="design_motion"
+                        language={language}
+                        hideOnSmall
+                      />
+                    ) : null}
                   </button>
                 ) : null}
 
@@ -3713,14 +3856,16 @@ export function RedesignPreviewActions({
                 </span>
 
                 <select
+                  disabled={planLoading || !canGenerateDesign}
                   value={
                     designModel
                   }
-                  onChange={(event) =>
-                    setDesignModel(
-                      event.target.value
-                    )
-                  }
+                  onChange={(event) => {
+                    const nextModel = event.target.value;
+                    if (isDesignModelOption(nextModel)) {
+                      setDesignModel(nextModel);
+                    }
+                  }}
                   className="h-9 w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
                 >
                   {DESIGN_MODEL_OPTIONS.map(
@@ -3734,12 +3879,11 @@ export function RedesignPreviewActions({
                         value={
                           model
                         }
-                      >
-                        {
-                          getModelLabel(
-                            model
-                          )
+                        disabled={
+                          !allowedDesignModels.has(model)
                         }
+                      >
+                        {getModelLabel(model)}{model === "gpt-6-astra" ? " · Scale" : ""}
                       </option>
                     )
                   )}
@@ -3754,6 +3898,7 @@ export function RedesignPreviewActions({
                 </span>
 
                 <select
+                  disabled={planLoading || !canGenerateDesign}
                   value={
                     reasoningEffort
                   }
@@ -3770,16 +3915,16 @@ export function RedesignPreviewActions({
                     }
                   </option>
 
-                  <option value="medium">
+                  <option value="medium" disabled={!isReasoningAllowed("medium")}>
                     {
                       text.reasoningMedium
                     }
                   </option>
 
-                  <option value="high">
+                  <option value="high" disabled={!isReasoningAllowed("high")}>
                     {
                       text.reasoningHigh
-                    }
+                    } · Pro+
                   </option>
                 </select>
               </label>
@@ -3792,6 +3937,8 @@ export function RedesignPreviewActions({
                 </span>
 
                 <select
+                  ref={motionSelectRef}
+                  disabled={planLoading || !canGenerateDesign}
                   value={
                     motionPreset
                   }
@@ -3808,18 +3955,25 @@ export function RedesignPreviewActions({
                     }
                   </option>
 
-                  <option value="subtle">
+                  <option value="subtle" disabled={!canUseMotion}>
                     {
                       text.motionSubtle
-                    }
+                    } · Pro+
                   </option>
 
-                  <option value="premium">
+                  <option value="premium" disabled={!canUseMotion}>
                     {
                       text.motionPremium
-                    }
+                    } · Pro+
                   </option>
                 </select>
+                {motionPreset !== "none" ? (
+                  <span className="block text-[10.5px] leading-4 text-[#9A5106]">
+                    {language === "de"
+                      ? "Dieses Preset wird bei neuen Designs automatisch angewendet und startet einen zusätzlichen AI-Schritt. Das verbraucht zusätzliche Credits."
+                      : "This preset is automatically applied to new designs and runs an additional AI step, using extra credits."}
+                  </span>
+                ) : null}
               </label>
 
               <label className="space-y-1.5 xl:col-span-3">
@@ -3870,29 +4024,65 @@ export function RedesignPreviewActions({
                 />
               </label>
 
-              <label className="space-y-1.5 xl:col-span-3">
-                <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
-                  {
-                    text.inspirationImagesLabel
-                  }
-                </span>
-
-                <textarea
-                  value={
-                    inspirationImagesValue
-                  }
-                  onChange={(event) =>
-                    setInspirationImagesValue(
-                      event.target.value
-                    )
-                  }
-                  rows={2}
-                  placeholder={
-                    text.inspirationImagesPlaceholder
-                  }
-                  className="w-full rounded-[9px] border border-black/[0.09] bg-white px-2.5 py-2 text-[12px] outline-none focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 dark:border-white/[0.10] dark:bg-[#15161A]"
+              <div className="space-y-1.5 xl:col-span-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
+                    {language === "de" ? "Referenzbilder" : "Reference images"}
+                  </span>
+                  <span className="text-[10px] text-[#6B7078]">{inspirationImages.length}/5</span>
+                </div>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    void uploadInspirationFiles(Array.from(event.target.files ?? []));
+                    event.currentTarget.value = "";
+                  }}
                 />
-              </label>
+                <button
+                  type="button"
+                  disabled={imageUploading || inspirationImages.length >= 5}
+                  onClick={() => imageInputRef.current?.click()}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    void uploadInspirationFiles(Array.from(event.dataTransfer.files ?? []));
+                  }}
+                  className="flex min-h-[86px] w-full items-center justify-center gap-2 rounded-[9px] border border-dashed border-black/[0.14] bg-[#F7F8FA] px-4 py-3 text-[11.5px] text-[#40454E] outline-none transition hover:border-[#002BBA]/45 focus:border-[#002BBA] focus:ring-[3px] focus:ring-[#002BBA]/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.14] dark:bg-white/[0.03]"
+                >
+                  {imageUploading ? <Loader2 className="size-4 animate-spin" /> : <UploadCloud className="size-4 text-[#002BBA]" />}
+                  <span>
+                    {language === "de"
+                      ? "Bilder hier ablegen oder auswählen · PNG/JPG/WebP · max. 3 MB"
+                      : "Drop images here or choose files · PNG/JPG/WebP · max 3 MB"}
+                  </span>
+                </button>
+                {inspirationImages.length ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    {inspirationImages.map((image) => (
+                      <div key={image.path} className="group relative overflow-hidden rounded-[9px] border border-black/[0.08] bg-white dark:border-white/[0.08] dark:bg-[#15161A]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={image.url} alt="" className="h-20 w-full object-cover" />
+                        <div className="flex items-center gap-1.5 px-2 py-1.5">
+                          <ImagePlus className="size-3 shrink-0 text-[#6B7078]" />
+                          <span className="min-w-0 flex-1 truncate text-[9.5px] text-[#40454E] dark:text-white/75">{image.name}</span>
+                          <button type="button" aria-label="Remove image" onClick={() => void removeInspirationImage(image)} className="rounded p-0.5 text-[#6B7078] hover:bg-black/[0.05] hover:text-red-600 dark:hover:bg-white/[0.08]">
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="text-[10.5px] leading-4 text-[#9A5106]">
+                  {language === "de"
+                    ? "Die Bilder werden der Design-AI als visuelle Inspiration mitgegeben. Bildinputs erhöhen den AI-Input und können zusätzliche Credits verbrauchen. Sie werden nicht als Kunden-Assets in das Design übernommen."
+                    : "Images are passed to the design AI as visual inspiration. Image inputs increase AI usage and can use additional credits. They are not reused as client assets."}
+                </p>
+              </div>
             </div>
 
             {/* ACTIVE CLIENT PREVIEW + VISITS */}

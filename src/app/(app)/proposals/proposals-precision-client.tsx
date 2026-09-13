@@ -288,10 +288,12 @@ export function ProposalsPrecisionClient({
   initialItems,
   candidates,
   language,
+  accountCurrency,
 }: {
   initialItems: ProposalPageItem[];
   candidates: ProposalLeadCandidate[];
   language: AppLanguage;
+  accountCurrency: string;
 }) {
   const router = useRouter();
   const text = COPY[language];
@@ -479,11 +481,11 @@ export function ProposalsPrecisionClient({
         <div className={styles.summary}>
           <strong>{items.length} {text.proposals}</strong><i />
           <span>{counts.draft} {text.drafts}</span><i />
-          <span>{counts.sent} {text.outstanding} · <b className={styles.blue}>{formatMoney(sentValue, "EUR", language)}</b></span><i />
-          <span>{counts.accepted} {text.accepted} · <b className={styles.green}>{formatMoney(acceptedValue, "EUR", language)}</b></span><i />
+          <span>{counts.sent} {text.outstanding} · <b className={styles.blue}>{formatMoney(sentValue, accountCurrency, language)}</b></span><i />
+          <span>{counts.accepted} {text.accepted} · <b className={styles.green}>{formatMoney(acceptedValue, accountCurrency, language)}</b></span><i />
           <span>{counts.declined} {text.declined}</span><i />
           <span className={styles.warm}>{counts.expired} {text.expired}</span>
-          <span className={styles.summaryMeta}>{text.acceptance} {acceptanceRate} % · {text.average} {formatMoney(averageValue, "EUR", language)}</span>
+          <span className={styles.summaryMeta}>{text.acceptance} {acceptanceRate} % · {text.average} {formatMoney(averageValue, accountCurrency, language)}</span>
         </div>
       ) : null}
 

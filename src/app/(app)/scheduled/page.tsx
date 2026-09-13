@@ -222,7 +222,7 @@ import {
       [];
   
     return (
-      <div className="leadbase-workspace-page leadbase-route-scheduled mx-auto min-h-full w-full max-w-[1100px] px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5">
+      <div className="leadbase-workspace-page leadbase-route-scheduled mx-auto min-h-full w-full max-w-[1100px] overflow-visible px-6 py-4 sm:px-7 sm:py-5 lg:px-8 lg:py-5">
         <WorkspacePageMotion />
         <div data-workspace-reveal className="leadbase-workspace-header flex flex-col gap-3 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
           <div>

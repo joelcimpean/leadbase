@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { analyzeWebsite } from "@/lib/website-analysis";
+import { getOrRunEvidenceAudit, type PersistedEvidenceAudit } from "@/lib/evidence-audit";
 import { captureWebsiteScreenshots } from "@/lib/website-screenshot";
 import { analyzeWebsiteVisuals } from "@/lib/visual-website-analysis";
 import {
@@ -12,6 +13,7 @@ import {
 
 import { createClient } from "@/lib/supabase/server";
 import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
+import { assertPlanFeatureAvailable } from "@/lib/plan-access";
 
 /* =========================================================
    HELPERS
@@ -51,6 +53,9 @@ export async function analyzeLeadWebsite(
   const leadId =
     formData.get("leadId");
 
+  const forceEvidenceAudit =
+    formData.get("forceEvidenceAudit") === "1";
+
   if (
     typeof leadId !== "string" ||
     !leadId
@@ -72,6 +77,10 @@ export async function analyzeLeadWebsite(
     !user
   ) {
     redirect("/login");
+  }
+
+  if (formData.get("bulk") === "1") {
+    await assertPlanFeatureAvailable(user.id, "bulk_analyze");
   }
 
   /* =========================================================
@@ -295,12 +304,45 @@ export async function analyzeLeadWebsite(
   ========================================================= */
 
   let structuralResult;
+  let evidenceAudit: PersistedEvidenceAudit | null = null;
 
   try {
     structuralResult =
       await analyzeWebsite(
         company.website_url
       );
+
+    // Evidence is a deterministic, versioned layer. It is deliberately
+    // best-effort here so a temporary PageSpeed/API issue never destroys the
+    // existing Leadbase structural analysis. Once the SQL migration is
+    // installed, the result is cached for seven days per lead.
+    try {
+      evidenceAudit = await getOrRunEvidenceAudit({
+        supabase,
+        userId: user.id,
+        leadId,
+        websiteUrl: company.website_url,
+        force: forceEvidenceAudit,
+      });
+      structuralResult.findings = [
+        ...structuralResult.findings,
+        ...evidenceAudit.findings.map((finding) => ({
+          key: `evidence_${finding.key}`,
+          label: finding.label,
+          passed: finding.severity === "info",
+          detail: finding.evidence,
+        })),
+      ];
+
+      // Evidence v2 inspects dedicated contact pages and JS/form-builder
+      // wrappers as well. Feed a verified form URL back into the existing
+      // company enrichment path when the older structural crawler missed it.
+      if (!structuralResult.contactFormUrl && evidenceAudit.contactFormUrl) {
+        structuralResult.contactFormUrl = evidenceAudit.contactFormUrl;
+      }
+    } catch (evidenceError) {
+      console.error("Evidence audit failed; continuing with existing analysis:", evidenceError);
+    }
   } catch (error) {
     const message =
       error instanceof Error
@@ -814,7 +856,11 @@ export async function analyzeLeadWebsite(
   ========================================================= */
 
   try {
-    await assertAiUsageAvailable(user.id);
+    const usageGuard = await assertAiUsageAvailable(user.id, {
+      feature: "lead_analysis",
+      model: "gpt-5.6-luna",
+      metadata: { leadId },
+    });
 
     const screenshots =
       await captureWebsiteScreenshots(
@@ -969,6 +1015,7 @@ export async function analyzeLeadWebsite(
       model: visualResult.model,
       usage: visualResult.usage,
       requestKey: `lead-analysis:${leadId}:${visualResult.model}:${visualResult.usage.totalTokens}:${new Date().toISOString().slice(0, 16)}`,
+      reservationKey: usageGuard.reservationKey,
       metadata: { leadId },
     });
 

@@ -30,6 +30,12 @@ import {
 } from "@/components/ui/button";
 
 import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
+
+import {
   Card,
   CardContent,
 } from "@/components/ui/card";
@@ -216,6 +222,12 @@ export function CompetitorSnapshotClient({
   companyName,
   language,
 }: Props) {
+  const {
+    planId,
+    loading: planLoading,
+  } = useLeadbasePlan();
+  const canUseCompetitorResearch = planAllowsFeature(planId, "competitor_research");
+
   const [
     snapshot,
     setSnapshot,
@@ -328,6 +340,15 @@ export function CompetitorSnapshotClient({
   const generate =
     useCallback(
       async () => {
+        if (!canUseCompetitorResearch) {
+          setError(
+            language === "de"
+              ? "Competitor Research ist ab dem Pro-Plan verfügbar."
+              : "Competitor Research is available from the Pro plan."
+          );
+          return;
+        }
+
         setGenerating(
           true
         );
@@ -391,6 +412,7 @@ export function CompetitorSnapshotClient({
       [
         language,
         leadId,
+        canUseCompetitorResearch,
       ]
     );
 
@@ -466,8 +488,11 @@ export function CompetitorSnapshotClient({
             type="button"
             variant="outline"
             disabled={
-              generating
+              generating ||
+              planLoading ||
+              !canUseCompetitorResearch
             }
+            title={!canUseCompetitorResearch ? (language === "de" ? "Ab Pro" : "Pro+") : undefined}
             onClick={() =>
               void generate()
             }
@@ -481,6 +506,14 @@ export function CompetitorSnapshotClient({
             {language === "de"
               ? "Neu analysieren"
               : "Refresh snapshot"}
+
+            {!generating ? (
+              <CreditEstimatePill
+                feature="competitor_research"
+                language={language}
+                hideOnSmall
+              />
+            ) : null}
           </Button>
         ) : null}
       </div>
@@ -524,8 +557,11 @@ export function CompetitorSnapshotClient({
             <Button
               type="button"
               disabled={
-                generating
+                generating ||
+                planLoading ||
+                !canUseCompetitorResearch
               }
+              title={!canUseCompetitorResearch ? (language === "de" ? "Ab Pro" : "Pro+") : undefined}
               onClick={() =>
                 void generate()
               }
@@ -543,6 +579,14 @@ export function CompetitorSnapshotClient({
                 : language === "de"
                   ? "Marktvergleich erstellen"
                   : "Create market snapshot"}
+
+              {!generating ? (
+                <CreditEstimatePill
+                  feature="competitor_research"
+                  language={language}
+                  hideOnSmall
+                />
+              ) : null}
             </Button>
           </CardContent>
         </Card>

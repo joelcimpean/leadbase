@@ -30,6 +30,7 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+import { resolveAccountCurrency } from "@/lib/account-currency";
 
 type ProjectDetailPageProps = {
   params: Promise<{
@@ -211,6 +212,17 @@ export default async function ProjectDetailPage({
       getAppLanguage(),
       createClient(),
     ]);
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   const {
     data:
@@ -423,7 +435,7 @@ export default async function ProjectDetailPage({
           value={
             money(
               totalValue,
-              project.currency,
+              project.currency || accountCurrency,
               language
             )
           }
@@ -438,7 +450,7 @@ export default async function ProjectDetailPage({
           value={
             money(
               amountPaid,
-              project.currency,
+              project.currency || accountCurrency,
               language
             )
           }
@@ -454,7 +466,7 @@ export default async function ProjectDetailPage({
           value={
             money(
               outstanding,
-              project.currency,
+              project.currency || accountCurrency,
               language
             )
           }
@@ -594,7 +606,7 @@ export default async function ProjectDetailPage({
                 value={
                   money(
                     outstanding,
-                    project.currency,
+                    project.currency || accountCurrency,
                     language
                   )
                 }
@@ -634,7 +646,7 @@ export default async function ProjectDetailPage({
               {
                 money(
                   outstanding,
-                  project.currency,
+                  project.currency || accountCurrency,
                   language
                 )
               }

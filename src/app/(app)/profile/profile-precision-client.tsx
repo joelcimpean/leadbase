@@ -30,8 +30,10 @@ import { logout } from "@/app/(app)/actions";
 import {
   changeAccountEmail,
   changePassword,
+  type AccountPlanSelection,
   type LeadbaseProfileData,
   type ProposalBrandingDefaults,
+  type ProposalTemplateId,
   saveAvatar,
   saveProfile,
   saveProposalBranding,
@@ -39,6 +41,9 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import { COUNTRY_DIAL_CODES, countryFlag } from "@/lib/country-dial-codes";
 import { cn } from "@/lib/utils";
+import { DesignDefaultsDialog } from "@/components/design-defaults-dialog";
+import { BuyCreditsDialog, ManagePlanDialog, ProfileEditDialog } from "@/components/profile-account-center-dialogs";
+import type { LeadbaseDesignDefaults } from "@/lib/design-defaults";
 import styles from "./profile-precision.module.css";
 
 type ProfileState = LeadbaseProfileData;
@@ -52,32 +57,35 @@ type CitySuggestion = {
 
 type UsageResponse = {
   configured?: boolean;
-  requiresAdminKey?: boolean;
   error?: string;
   scope?: string;
   period?: { start: string; end: string };
   plan?: {
     id?: string;
-    monthlyTokenLimit?: number | null;
-    purchasedTokenBalance?: number;
-    effectiveLimit?: number | null;
-    remainingTokens?: number | null;
+    storedPlanId?: string;
+    tierIndex?: number;
+    billingInterval?: "monthly" | "yearly";
+    subscriptionStatus?: string;
+    monthlyCredits?: number;
+    planCreditsRemaining?: number;
+    purchasedCreditsRemaining?: number;
+    remainingCredits?: number;
+    creditDebt?: number;
+    resetsAt?: string | null;
+    cancelAtPeriodEnd?: boolean;
+    currentPeriodEnd?: string | null;
   };
   totals?: {
+    creditsUsed: number;
+    modelRequests: number;
+    providerCostUsd: number;
     inputTokens: number;
     outputTokens: number;
     cachedInputTokens: number;
-    embeddingTokens: number;
     totalTokens: number;
-    modelRequests: number;
-    imageRequests: number;
-    imagesProcessed: number;
-    webSearchCalls: number;
-    fileSearchCalls: number;
-    costUsd: number;
   };
-  byModel?: Array<{ model: string; inputTokens: number; outputTokens: number; requests: number }>;
-  trend?: Array<{ date: string; tokens: number; requests: number; costUsd: number }>;
+  byModel?: Array<{ model: string; inputTokens: number; outputTokens: number; credits: number; requests: number; costUsd: number }>;
+  trend?: Array<{ date: string; credits: number; requests: number; costUsd: number }>;
 };
 
 const copy = {
@@ -126,9 +134,9 @@ const copy = {
     proposalInfo:
       "Logo und Akzentfarbe werden als dein Standard gespeichert und bei neuen Lead-Proposals automatisch vorausgewählt.",
     openBuilder: "Branding bearbeiten",
-    aiUsage: "OpenAI-Nutzung",
+    aiUsage: "Credits & Nutzung",
     thisMonth: "Dieser Monat",
-    tokens: "Tokens",
+    tokens: "Credits",
     requests: "Requests",
     cost: "Kosten",
     input: "Input",
@@ -140,10 +148,10 @@ const copy = {
     images: "Bilder",
     models: "Modelle",
     noUsage: "Noch keine Nutzung in diesem Zeitraum.",
-    usageScope: "Leadbase-interne KI-Nutzung dieses Accounts. Neue KI-Aufrufe werden direkt nach Abschluss verbucht.",
-    usageSetupTitle: "KI-Nutzung wird eingerichtet",
+    usageScope: "Credits werden nur für KI-Aktionen verbraucht. Normale CRM-Aktionen kosten keine Credits; teurere KI-Modelle verbrauchen mehr. Gekaufte Credits verfallen nicht.",
+    usageSetupTitle: "Credits werden eingerichtet",
     usageSetup:
-      "Für die offiziellen Organisations-Usage-Daten braucht Leadbase einen OpenAI Admin API Key. Hinterlege OPENAI_ADMIN_KEY in .env.local; danach erscheinen hier echte Werte statt Testdaten.",
+      "Führe die Phase-13-SQL-Migration aus. Danach werden Credits, Käufe und KI-Kosten serverseitig verbucht.",
     reload: "Neu laden",
     workspace: "Workspace",
     owner: "Inhaber",
@@ -168,6 +176,8 @@ const copy = {
     imageLoadError: "Das Bild konnte nicht geladen werden. Bitte JPG, PNG oder WebP verwenden.",
     brandingTitle: "Standard-Branding für Proposals",
     brandingHint: "Diese Werte werden pro Benutzer gespeichert und automatisch in neuen Proposal-Buildern vorausgewählt.",
+    proposalTemplate: "Standard-Vorlage",
+    proposalTemplateHint: "Wird für neue Angebote vorausgewählt und kann im Builder pro Angebot überschrieben werden.",
     accent: "Akzentfarbe",
     logo: "Logo",
     removeLogo: "Logo entfernen",
@@ -226,9 +236,9 @@ const copy = {
     proposalInfo:
       "Logo and accent color are stored as your default and automatically selected for new lead proposals.",
     openBuilder: "Edit branding",
-    aiUsage: "OpenAI usage",
+    aiUsage: "Credits & usage",
     thisMonth: "This month",
-    tokens: "Tokens",
+    tokens: "Credits",
     requests: "Requests",
     cost: "Cost",
     input: "Input",
@@ -240,10 +250,10 @@ const copy = {
     images: "Images",
     models: "Models",
     noUsage: "No usage in this period yet.",
-    usageScope: "Leadbase-internal AI usage for this account. New AI requests are booked immediately after completion.",
-    usageSetupTitle: "AI usage is being set up",
+    usageScope: "Credits are only used for AI-powered actions. Regular CRM actions cost no Credits; more expensive AI models use more. Purchased Credits do not expire.",
+    usageSetupTitle: "Credits are being set up",
     usageSetup:
-      "Run the Phase 11B.4 SQL migration. Usage for this Leadbase account will then be tracked automatically.",
+      "Run the Phase 13 SQL migration. Credits, purchases and AI costs will then be metered server-side.",
     reload: "Reload",
     workspace: "Workspace",
     owner: "Owner",
@@ -268,6 +278,8 @@ const copy = {
     imageLoadError: "The image could not be loaded. Please use JPG, PNG or WebP.",
     brandingTitle: "Default proposal branding",
     brandingHint: "These values are stored per user and automatically selected in new Proposal Builders.",
+    proposalTemplate: "Default template",
+    proposalTemplateHint: "Preselected for new proposals and still overridable per proposal in the builder.",
     accent: "Accent color",
     logo: "Logo",
     removeLogo: "Remove logo",
@@ -530,6 +542,16 @@ function AvatarCropDialog({ file, labels, onClose, onSaved }: {
   );
 }
 
+const PROPOSAL_TEMPLATE_OPTIONS: Array<{ id: ProposalTemplateId; name: string; blurb: string; tone: string }> = [
+  { id: "signature", name: "Signature", blurb: "Editorial · dunkles Cover · Serifen-Display", tone: "linear-gradient(145deg,#0E1013 0 42%,#FFFDFB 42%)" },
+  { id: "minimal", name: "Minimal", blurb: "Eine Spalte · viel Weißraum · nur Linien", tone: "linear-gradient(145deg,#FFFFFF,#F7F7F7)" },
+  { id: "kontur", name: "Kontur", blurb: "Schweizer Raster · Hairlines · Tabellen", tone: "repeating-linear-gradient(90deg,#fff 0 18px,#E6E7EA 19px,#fff 20px 36px)" },
+  { id: "kanzlei", name: "Kanzlei", blurb: "Formeller Brief · klassische Typografie", tone: "linear-gradient(180deg,#FBFAF7,#FFFFFF)" },
+  { id: "prisma", name: "Prisma", blurb: "Dunkel · kontraststark · großes Display", tone: "linear-gradient(145deg,#0B0C0E,#222631)" },
+  { id: "atelier", name: "Atelier", blurb: "Warmes Papier · asymmetrisch · editorial", tone: "linear-gradient(145deg,#F3EFE7,#EAE0D2)" },
+  { id: "kompakt", name: "Kompakt", blurb: "Dichte Leadbase-Flächen · kompakt", tone: "linear-gradient(145deg,#F6F7F9,#FFFFFF)" },
+];
+
 function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
   labels: typeof copy.de | typeof copy.en;
   initial: ProposalBrandingDefaults;
@@ -537,6 +559,7 @@ function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
   onSaved: (value: ProposalBrandingDefaults) => void;
 }) {
   const [accentColor, setAccentColor] = useState(initial.accentColor || "#002BBA");
+  const [templateId, setTemplateId] = useState<ProposalTemplateId>(initial.templateId || "signature");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(initial.logoUrl);
   const [removeLogo, setRemoveLogo] = useState(false);
@@ -555,6 +578,7 @@ function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
     setSaving(true); setError("");
     const formData = new FormData();
     formData.set("accentColor", accentColor);
+    formData.set("templateId", templateId);
     if (logoFile) formData.set("logo", logoFile);
     if (removeLogo) formData.set("removeLogo", "1");
     const result = await saveProposalBranding(formData);
@@ -577,6 +601,24 @@ function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseLogo(event.target.files?.[0] ?? null)} />
           </label>
           {preview ? <label className={styles.removeLogo}><input type="checkbox" checked={removeLogo} onChange={(event) => setRemoveLogo(event.target.checked)} />{labels.removeLogo}</label> : null}
+        </div>
+        <div className="border-t border-black/[.07] pt-4 dark:border-white/10">
+          <div className="flex items-baseline justify-between gap-4">
+            <div><span className={styles.fieldLabel}>{labels.proposalTemplate}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.proposalTemplateHint}</p></div>
+            <span className="font-mono text-[9px] uppercase tracking-[.09em] text-[#8A9099]">7 templates</span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {PROPOSAL_TEMPLATE_OPTIONS.map((option) => {
+              const selected = option.id === templateId;
+              return (
+                <button key={option.id} type="button" onClick={() => setTemplateId(option.id)} className={cn("rounded-[10px] border p-2.5 text-left transition", selected ? "border-[#002BBA] bg-[#FAFBFF] ring-[3px] ring-[#002BBA]/10 dark:bg-[#171922] dark:ring-[#002BBA]/25" : "border-black/10 bg-white hover:border-[#002BBA]/40 dark:border-white/10 dark:bg-[#121316]")}>
+                  <span className="block h-10 rounded-[7px] border border-black/[.07]" style={{ background: option.tone }} />
+                  <span className="mt-2 flex items-center gap-2 text-[12px] font-medium text-[#0B0C0E] dark:text-white">{option.name}{selected ? <Check className="ml-auto size-3.5 text-[#002BBA]" /> : null}</span>
+                  <span className="mt-0.5 block text-[9.5px] leading-4 text-[#6B7078] dark:text-[#A8ABB2]">{option.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className={styles.brandingPreview} style={{ "--proposal-accent": accentColor } as CSSProperties}>
           <div><span>{labels.proposalPreview}</span><i /></div>
@@ -608,7 +650,7 @@ function UsageTrend({ values }: { values: Array<{ date: string; tokens: number }
   );
 }
 
-function OpenAIUsageCard({ labels }: { labels: typeof copy.de | typeof copy.en }) {
+function OpenAIUsageCard({ labels, onManagePlan, onBuyCredits }: { labels: typeof copy.de | typeof copy.en; onManagePlan: () => void; onBuyCredits: () => void }) {
   const [data, setData] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -619,7 +661,7 @@ function OpenAIUsageCard({ labels }: { labels: typeof copy.de | typeof copy.en }
       const payload = await response.json() as UsageResponse;
       setData(payload);
     } catch {
-      setData({ error: "Leadbase AI usage could not be loaded." });
+      setData({ error: "Credit usage could not be loaded." });
     } finally {
       if (!silent) setLoading(false);
     }
@@ -639,10 +681,12 @@ function OpenAIUsageCard({ labels }: { labels: typeof copy.de | typeof copy.en }
   }, []);
 
   const totals = data?.totals;
-  const modelTotal = (data?.byModel ?? []).reduce((sum, model) => sum + model.inputTokens + model.outputTokens, 0);
-  const limit = typeof data?.plan?.effectiveLimit === "number" ? data.plan.effectiveLimit : null;
-  const remaining = typeof data?.plan?.remainingTokens === "number" ? data.plan.remainingTokens : null;
-  const usagePercent = totals && limit && limit > 0 ? Math.min(100, Math.round((totals.totalTokens / limit) * 100)) : null;
+  const modelTotal = (data?.byModel ?? []).reduce((sum, model) => sum + model.credits, 0);
+  const remaining = typeof data?.plan?.remainingCredits === "number" ? data.plan.remainingCredits : null;
+  const currentPool = totals && remaining !== null ? totals.creditsUsed + remaining : null;
+  const usagePercent = totals && currentPool && currentPool > 0
+    ? Math.min(100, Math.round((totals.creditsUsed / currentPool) * 100))
+    : null;
 
   return (
     <section id="ai-usage" className={styles.sideCard}>
@@ -656,13 +700,13 @@ function OpenAIUsageCard({ labels }: { labels: typeof copy.de | typeof copy.en }
         <>
           <div className={styles.realUsageHero}>
             <div>
-              <span>{labels.tokens}</span>
-              <strong>{limit !== null ? `${formatCompact(totals.totalTokens)} / ${formatCompact(limit)}` : formatCompact(totals.totalTokens)}</strong>
+              <span>{labels === copy.de ? "Verbraucht" : "Used"}</span>
+              <strong>{formatCompact(totals.creditsUsed)}</strong>
             </div>
             <div><span>{labels.requests}</span><strong>{formatCompact(totals.modelRequests)}</strong></div>
             <div>
-              <span>{limit !== null ? (labels === copy.de ? "Verbleibend" : "Remaining") : labels.cost}</span>
-              <strong>{limit !== null ? formatCompact(remaining ?? 0) : "—"}</strong>
+              <span>{labels === copy.de ? "Verbleibend" : "Remaining"}</span>
+              <strong>{formatCompact(remaining ?? 0)}</strong>
             </div>
           </div>
           {usagePercent !== null ? (
@@ -671,30 +715,34 @@ function OpenAIUsageCard({ labels }: { labels: typeof copy.de | typeof copy.en }
                 <div style={{ width: `${usagePercent}%`, height: "100%", borderRadius: 999, background: "#002BBA", transition: "width .25s ease" }} />
               </div>
               <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", fontFamily: '"Geist Mono", monospace', fontSize: 9, color: "#6B7078" }}>
-                <span>{usagePercent}%</span><span>{data.plan?.id ?? "development"}</span>
+                <span>{usagePercent}%</span><span>{data.plan?.id ?? "free"}</span>
               </div>
             </div>
           ) : null}
           <div className={styles.tokenSplit}>
-            <div><span>{labels.input}</span><b>{formatCompact(totals.inputTokens)}</b></div>
-            <div><span>{labels.output}</span><b>{formatCompact(totals.outputTokens)}</b></div>
-            <div><span>{labels.cached}</span><b>{formatCompact(totals.cachedInputTokens)}</b></div>
+            <div><span>{labels === copy.de ? "Plan" : "Plan"}</span><b>{formatCompact(data.plan?.planCreditsRemaining ?? 0)}</b></div>
+            <div><span>{labels === copy.de ? "Gekauft" : "Purchased"}</span><b>{formatCompact(data.plan?.purchasedCreditsRemaining ?? 0)}</b></div>
+            <div><span>{labels === copy.de ? "Reset" : "Reset"}</span><b>{data.plan?.resetsAt ? new Date(data.plan.resetsAt).toLocaleDateString(labels === copy.de ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit" }) : "—"}</b></div>
           </div>
           <div className={styles.modelList}>
             <div className={styles.usageSectionTitle}>{labels.models}</div>
             {(data.byModel ?? []).slice(0, 4).map((model) => {
-              const total = model.inputTokens + model.outputTokens;
-              const percent = modelTotal ? Math.max(2, Math.round((total / modelTotal) * 100)) : 0;
-              return <div key={model.model} className={styles.modelRow}><span>{model.model}</span><div><i style={{ width: `${percent}%` }} /></div><b>{formatCompact(total)}</b></div>;
+              const percent = modelTotal ? Math.max(2, Math.round((model.credits / modelTotal) * 100)) : 0;
+              return <div key={model.model} className={styles.modelRow}><span>{model.model}</span><div><i style={{ width: `${percent}%` }} /></div><b>{formatCompact(model.credits)}</b></div>;
             })}
             {(data.byModel ?? []).length === 0 ? <div className={styles.usageDisclaimer}>{labels.noUsage}</div> : null}
           </div>
           <div className={styles.trendBlock}>
-            <div><span>{labels.thisMonth}</span><span>{formatCompact(totals.totalTokens)} tokens</span></div>
-            <UsageTrend values={(data.trend ?? []).map((item) => ({ date: item.date, tokens: item.tokens }))} />
+            <div><span>{labels.thisMonth}</span><span>{formatCompact(totals.creditsUsed)} Credits</span></div>
+            <UsageTrend values={(data.trend ?? []).map((item) => ({ date: item.date, tokens: item.credits }))} />
             <div className={styles.trendAxis}><span>{data.trend?.[0]?.date.slice(5) ?? ""}</span><span>{data.trend?.at(-1)?.date.slice(5) ?? ""}</span></div>
           </div>
           <div className={styles.usageDisclaimer}>{labels.usageScope}</div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button type="button" className={styles.secondaryButton} onClick={onManagePlan}>{labels === copy.de ? "Plan verwalten" : "Manage plan"}</button>
+            <button type="button" className={styles.primaryButton} onClick={onBuyCredits}>{labels === copy.de ? "Credits hinzufügen" : "Add credits"}</button>
+          </div>
         </>
       ) : (
         <div className={styles.usageSetup}>
@@ -739,11 +787,14 @@ function AccountDialog({ kind, currentEmail, labels, onClose, onMessage }: {
   );
 }
 
-export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAvatarUrl, initialBranding }: {
+export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAvatarUrl, initialBranding, initialDesignDefaults, gmailEmail, initialPlanSelection }: {
   initialProfile: ProfileState;
   accountEmail: string;
   initialAvatarUrl: string | null;
   initialBranding: ProposalBrandingDefaults;
+  initialDesignDefaults: LeadbaseDesignDefaults;
+  gmailEmail: string | null;
+  initialPlanSelection: AccountPlanSelection;
 }) {
   const { language } = useLanguage();
   const t = copy[language];
@@ -758,11 +809,17 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [branding, setBranding] = useState(initialBranding);
   const [brandingOpen, setBrandingOpen] = useState(false);
+  const [designDefaults, setDesignDefaults] = useState(initialDesignDefaults);
+  const [designDefaultsOpen, setDesignDefaultsOpen] = useState(false);
   const [accountDialog, setAccountDialog] = useState<"email" | "password" | null>(null);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [planSelection, setPlanSelection] = useState(initialPlanSelection);
+  const [managePlanOpen, setManagePlanOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
 
   function update<K extends keyof ProfileState>(key: K, value: ProfileState[K]) { setDraft((current) => ({ ...current, [key]: value })); }
-  function startEdit() { setDraft(profile); setEditing(true); setSaved(false); }
+  function startEdit() { setDraft(profile); setEditing(false); setProfileEditOpen(true); setSaved(false); }
   function cancelEdit() { setDraft(profile); setEditing(false); }
   async function persistProfile() {
     setSaving(true); setNotice(null);
@@ -786,11 +843,9 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
   const phoneDisplay = profile.phone ? `${profile.phoneCountryCode} ${profile.phone}` : "";
   const profileConfigured = [
     profile.fullName,
+    profile.location,
     profile.senderName,
-    profile.outreachRole,
     profile.replyEmail,
-    profile.website,
-    profile.company,
   ].every((value) => value.trim().length > 0);
   const counter = !profileConfigured
     ? t.profileSetupRequired
@@ -831,7 +886,7 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
               <div className={styles.twoColGrid}>
                 <ProfileField label={t.senderName} value={editing ? draft.senderName : profile.senderName} editing={editing} onChange={(value) => update("senderName", value)} />
                 <ProfileField label={t.role} value={editing ? draft.outreachRole : profile.outreachRole} editing={editing} onChange={(value) => update("outreachRole", value)} />
-                <ProfileField label={t.replyAddress} value={editing ? draft.replyEmail : profile.replyEmail} editing={editing} onChange={(value) => update("replyEmail", value)}>{!editing ? <div className={styles.inlineValue}><span>{profile.replyEmail}</span><button type="button" onClick={copyReplyMail}><Copy /></button>{copied ? <em>{t.copied}</em> : null}</div> : null}</ProfileField>
+                <ProfileField label={t.replyAddress} value={profile.replyEmail} editing={false}><div className={styles.inlineValue}><span>{gmailEmail || profile.replyEmail}</span><button type="button" onClick={copyReplyMail}><Copy /></button>{copied ? <em>{t.copied}</em> : null}</div><p className="mt-1 text-[10.5px] font-normal text-[#6B7078]">{gmailEmail ? (language === "de" ? "Aus verbundenem Gmail-Konto" : "From connected Gmail account") : (language === "de" ? "Automatisch aus deiner Konto-E-Mail" : "Automatically derived from your account email")}</p></ProfileField>
                 <ProfileField label={t.website} value={editing ? draft.website : profile.website} editing={editing} onChange={(value) => update("website", value)}>{!editing ? (profile.website ? <div className={styles.inlineValue}><a href={`https://${profile.website.replace(/^https?:\/\//, "")}`} target="_blank" rel="noreferrer">{profile.website}</a><ExternalLink /></div> : <div className={styles.fieldValue}>—</div>) : null}</ProfileField>
               </div>
               <div className={styles.insetBox}><div className={styles.insetHeader}><span>{t.signature}</span><em>{t.signatureNote}</em></div>{editing ? <textarea value={draft.signature} onChange={(event) => update("signature", event.target.value)} rows={3} className={styles.signatureTextarea} /> : <div className={styles.signature}>{profile.signature.split("\n").map((line, index) => <span key={`${index}-${line}`}>{line}<br /></span>)}</div>}</div>
@@ -863,7 +918,16 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
         </section>
 
         <aside className={styles.sideColumn}>
-          <OpenAIUsageCard labels={t} />
+          <OpenAIUsageCard labels={t} onManagePlan={() => setManagePlanOpen(true)} onBuyCredits={() => setCreditsOpen(true)} />
+          <section className={styles.sideCard}>
+            <div className={styles.cardHeader}><span>{language === "de" ? "Design-Defaults" : "Design defaults"}</span><b>{language === "de" ? "pro Account" : "per account"}</b></div>
+            <div className="mt-3 flex items-start gap-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#EAEEFB] text-[#002BBA] dark:bg-[#002BBA]/20"><Sparkles className="size-4" /></div>
+              <div className="min-w-0 flex-1"><strong className="block text-[12.5px] font-medium">{designDefaults.designModel === "gpt-6-astra" ? "GPT-6 Astra" : designDefaults.designModel === "gpt-5.6-sol" ? "GPT-5.6 Sol" : designDefaults.designModel === "gpt-5.6-terra" ? "GPT-5.6 Terra" : "GPT-5.6 Luna"}</strong><span className="mt-0.5 block text-[10.5px] text-[#6B7078]">{designDefaults.reasoningEffort} · Motion {designDefaults.motionPreset}</span></div>
+            </div>
+            {designDefaults.motionPreset !== "none" ? <p className="mt-3 rounded-[9px] bg-[#FDF0E3] px-2.5 py-2 text-[10.5px] leading-[1.45] text-[#9A5106]">{language === "de" ? "Motion läuft automatisch bei neuen Designs und verbraucht zusätzliche Credits." : "Motion runs automatically on new designs and uses additional credits."}</p> : null}
+            <button type="button" className={styles.linkButton} onClick={() => setDesignDefaultsOpen(true)}>{language === "de" ? "Standardwerte ändern" : "Change defaults"}</button>
+          </section>
           <section className={styles.sideCard}><div className={styles.cardHeader}><span>{t.workspace}</span><b>{t.owner}</b></div><div className={styles.workspaceIdentity}><div><Building2 /></div><div><strong>{t.privateWorkspace}</strong><span>{profile.fullName || "—"}</span></div></div><p className={styles.sideNote}>{t.workspaceNote}</p></section>
           <section className={cn(styles.sideCard, styles.securityCard)}>
             <div className={styles.cardHeader}><span>{t.security}</span></div>
@@ -877,8 +941,12 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
         </aside>
       </div>
 
+      {profileEditOpen ? <ProfileEditDialog initialProfile={profile} avatarUrl={avatarUrl} gmailEmail={gmailEmail} language={language} onClose={() => setProfileEditOpen(false)} onSaved={(nextProfile, nextAvatarUrl) => { setProfile(nextProfile); setDraft(nextProfile); setAvatarUrl(nextAvatarUrl); setProfileEditOpen(false); setSaved(true); window.dispatchEvent(new CustomEvent("leadbase:profile-updated", { detail: { name: nextProfile.fullName, avatarUrl: nextAvatarUrl } })); window.setTimeout(() => setSaved(false), 2200); }} /> : null}
+      {managePlanOpen ? <ManagePlanDialog initial={planSelection} language={language} onClose={() => setManagePlanOpen(false)} onSaved={(value) => { setPlanSelection(value); setManagePlanOpen(false); setNotice({ message: language === "de" ? "Plan-Auswahl gespeichert · Checkout noch ausstehend." : "Plan selection saved · checkout still pending." }); }} /> : null}
+      {creditsOpen ? <BuyCreditsDialog language={language} onClose={() => setCreditsOpen(false)} onSaved={(message) => { setCreditsOpen(false); setNotice({ message }); }} /> : null}
       {cropFile ? <AvatarCropDialog file={cropFile} labels={t} onClose={() => setCropFile(null)} onSaved={onAvatarSaved} /> : null}
       {brandingOpen ? <ProposalBrandingDialog labels={t} initial={branding} onClose={() => setBrandingOpen(false)} onSaved={(value) => { setBranding(value); setBrandingOpen(false); setNotice({ message: t.saved }); }} /> : null}
+      {designDefaultsOpen ? <DesignDefaultsDialog initial={designDefaults} language={language} planId={planSelection.planId} onClose={() => setDesignDefaultsOpen(false)} onSaved={(value) => { setDesignDefaults(value); setDesignDefaultsOpen(false); setNotice({ message: t.saved }); }} /> : null}
       {accountDialog ? <AccountDialog kind={accountDialog} currentEmail={accountEmail} labels={t} onClose={() => setAccountDialog(null)} onMessage={(message, error) => setNotice({ message, error })} /> : null}
     </div>
   );

@@ -6,7 +6,6 @@ import {
 import {
   createGmailOAuthClient,
   encryptGmailToken,
-  getConfiguredGmailAddress,
   getGmailClientId,
   GMAIL_OAUTH_SCOPES,
   verifyGmailOAuthState,
@@ -177,8 +176,6 @@ export async function GET(
      VERIFY GOOGLE ACCOUNT
   ======================================================= */
 
-  const configuredEmail =
-    getConfiguredGmailAddress();
 
   if (
     !tokens.id_token
@@ -242,19 +239,6 @@ export async function GET(
    * Do not accidentally connect another personal Google
    * account if multiple Google accounts are logged in.
    */
-  if (
-    authenticatedEmail !==
-    configuredEmail
-  ) {
-    console.error(
-      `Wrong Gmail account connected. Expected ${configuredEmail}, received ${authenticatedEmail}.`
-    );
-
-    return redirectToSettings(
-      request,
-      "wrong-account"
-    );
-  }
 
   /* =======================================================
      EXISTING CONNECTION

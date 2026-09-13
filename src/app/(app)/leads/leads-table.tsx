@@ -82,6 +82,9 @@ import {
   useAppBackgroundTasks,
 } from "@/components/app-background-tasks";
 
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
+
 import {
   LeadCreateDialog,
   type QuickCreateCampaignOption,
@@ -463,6 +466,17 @@ export function LeadsTable({
 
   const backgroundTasks =
     useAppBackgroundTasks();
+
+  const {
+    planId,
+    entitlements,
+    loading: planLoading,
+  } = useLeadbasePlan();
+
+  const canBulkAnalyze = planAllowsFeature(planId, "bulk_analyze");
+  const canBulkOutreach = planAllowsFeature(planId, "bulk_outreach");
+  const canBulkDesign = planAllowsFeature(planId, "bulk_design");
+  const canBulkGif = planAllowsFeature(planId, "preview_gif");
 
   const {
     analysisTask,
@@ -2010,6 +2024,24 @@ export function LeadsTable({
       return;
     }
 
+    if (!canBulkAnalyze) {
+      setBulkMessage(
+        language === "de"
+          ? "Bulk Analyze ist ab dem Starter-Plan verfügbar."
+          : "Bulk Analyze is available from the Starter plan."
+      );
+      return;
+    }
+
+    if (selectedIds.size > entitlements.limits.bulkAnalyzeMaxLeads) {
+      setBulkMessage(
+        language === "de"
+          ? `Dein Plan erlaubt maximal ${entitlements.limits.bulkAnalyzeMaxLeads} Leads pro Bulk-Analyse.`
+          : `Your plan allows up to ${entitlements.limits.bulkAnalyzeMaxLeads} leads per bulk analysis.`
+      );
+      return;
+    }
+
     const selectedLeads =
       leads.filter(
         (
@@ -2138,6 +2170,24 @@ export function LeadsTable({
       return;
     }
 
+    if (!canBulkDesign) {
+      setBulkMessage(
+        language === "de"
+          ? "Bulk Design ist ab dem Pro-Plan verfügbar."
+          : "Bulk Design is available from the Pro plan."
+      );
+      return;
+    }
+
+    if (selectedIds.size > entitlements.limits.bulkDesignMaxLeads) {
+      setBulkMessage(
+        language === "de"
+          ? `Dein Plan erlaubt maximal ${entitlements.limits.bulkDesignMaxLeads} Leads pro Bulk-Design.`
+          : `Your plan allows up to ${entitlements.limits.bulkDesignMaxLeads} leads per bulk design.`
+      );
+      return;
+    }
+
     const selectedLeads =
       leads.filter(
         (
@@ -2243,6 +2293,7 @@ export function LeadsTable({
                   JSON.stringify({
                     regenerate:
                       false,
+                    bulk: true,
                   }),
               }
             );
@@ -2385,6 +2436,24 @@ export function LeadsTable({
       return;
     }
 
+    if (!canBulkGif) {
+      setBulkMessage(
+        language === "de"
+          ? "Bulk GIF ist ab dem Pro-Plan verfügbar."
+          : "Bulk GIF is available from the Pro plan."
+      );
+      return;
+    }
+
+    if (selectedIds.size > entitlements.limits.bulkGifMaxLeads) {
+      setBulkMessage(
+        language === "de"
+          ? `Dein Plan erlaubt maximal ${entitlements.limits.bulkGifMaxLeads} Leads pro Bulk-GIF.`
+          : `Your plan allows up to ${entitlements.limits.bulkGifMaxLeads} leads per bulk GIF.`
+      );
+      return;
+    }
+
     const selectedLeads =
       leads.filter(
         (lead) =>
@@ -2479,6 +2548,24 @@ export function LeadsTable({
       selectedIds.size ===
         0
     ) {
+      return;
+    }
+
+    if (!canBulkOutreach) {
+      setBulkMessage(
+        language === "de"
+          ? "Bulk Outreach ist ab dem Starter-Plan verfügbar."
+          : "Bulk Outreach is available from the Starter plan."
+      );
+      return;
+    }
+
+    if (selectedIds.size > entitlements.limits.bulkOutreachMaxLeads) {
+      setBulkMessage(
+        language === "de"
+          ? `Dein Plan erlaubt maximal ${entitlements.limits.bulkOutreachMaxLeads} Leads pro Bulk-Outreach.`
+          : `Your plan allows up to ${entitlements.limits.bulkOutreachMaxLeads} leads per bulk outreach run.`
+      );
       return;
     }
 
@@ -3140,22 +3227,22 @@ export function LeadsTable({
           <span className="text-[12.5px] font-medium">{selectedIds.size === 1 ? text.table.selectedOne : text.table.selectedMany.replace("{count}", String(selectedIds.size))}</span>
           <span className="mx-1 h-4 w-px bg-white/20" />
 
-          <button type="button" disabled={busy} onClick={handleBulkAnalyze} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+          <button type="button" disabled={busy || planLoading || !canBulkAnalyze} title={!canBulkAnalyze ? (language === "de" ? "Ab Starter" : "Starter+") : undefined} onClick={handleBulkAnalyze} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
             {analyzing ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
             {analyzing && analyzeProgress ? `${analyzeProgress.current}/${analyzeProgress.total}` : text.table.analyzeSelected}
           </button>
 
-          <button type="button" disabled={busy} onClick={handleBulkDesign} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+          <button type="button" disabled={busy || planLoading || !canBulkDesign} title={!canBulkDesign ? (language === "de" ? "Ab Pro" : "Pro+") : undefined} onClick={handleBulkDesign} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
             {designing ? <Loader2 className="size-3 animate-spin" /> : <WandSparkles className="size-3" />}
             {designing && designProgress ? `${designProgress.current}/${designProgress.total}` : ui.generateDesigns}
           </button>
 
-          <button type="button" disabled={busy} onClick={handleBulkGif} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+          <button type="button" disabled={busy || planLoading || !canBulkGif} title={!canBulkGif ? (language === "de" ? "Ab Pro" : "Pro+") : undefined} onClick={handleBulkGif} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
             {generatingGifs ? <Loader2 className="size-3 animate-spin" /> : <Film className="size-3" />}
             {generatingGifs && gifProgress ? `${gifProgress.current}/${gifProgress.total}` : (language === "de" ? "GIFs erstellen" : "Generate GIFs")}
           </button>
 
-          <button type="button" disabled={busy} onClick={handleBulkDrafts} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
+          <button type="button" disabled={busy || planLoading || !canBulkOutreach} title={!canBulkOutreach ? (language === "de" ? "Ab Starter" : "Starter+") : undefined} onClick={handleBulkDrafts} className="flex h-7 items-center gap-1.5 rounded-[8px] border border-white/25 bg-white/[0.12] px-2.5 text-[11.5px] hover:bg-white/[0.20] disabled:opacity-50">
             {drafting ? <Loader2 className="size-3 animate-spin" /> : <MailPlus className="size-3" />}
             {drafting && draftProgress ? `${draftProgress.current}/${draftProgress.total}` : (language === "de" ? "Entwürfe erstellen" : "Create drafts")}
           </button>

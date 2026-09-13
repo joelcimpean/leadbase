@@ -260,6 +260,15 @@
   border-radius: 10px !important;
 }
 
+/* Phase 12.5.4 — the docked reply editor is part of the thread surface, not a card. */
+.leadbase-route-inbox .leadbase-inbox-reply-dock textarea,
+.dark .leadbase-route-inbox .leadbase-inbox-reply-dock textarea {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 /* ---------------------------------------------------------
    PROJECTS
 --------------------------------------------------------- */

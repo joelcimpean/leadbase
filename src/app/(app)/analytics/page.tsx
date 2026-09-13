@@ -17,6 +17,7 @@ import {
 
 import { getAppLanguage } from "@/lib/i18n-server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveAccountCurrency } from "@/lib/account-currency";
 
 import styles from "./analytics-precision.module.css";
 
@@ -155,10 +156,10 @@ function formatPercent(value: number, digits = value > 0 && value < 10 ? 1 : 0) 
   return `${value.toFixed(digits).replace(".", ",")} %`;
 }
 
-function formatCurrency(value: number, language: AppLanguage) {
+function formatCurrency(value: number, language: AppLanguage, currency: string) {
   return new Intl.NumberFormat(language === "de" ? "de-DE" : "en-GB", {
     style: "currency",
-    currency: "EUR",
+    currency,
     maximumFractionDigits: 0,
   }).format(value);
 }
@@ -380,6 +381,16 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
   } = await supabase.auth.getUser();
 
   if (userError || !user) redirect("/login");
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   const activityCutoff = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -877,14 +888,14 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
               <p>{de ? "Was die Akquise real eingebracht hat" : "What acquisition actually brought in"}</p>
             </div>
           </div>
-          <div className={styles.revenueHero}><strong>{formatCurrency(booked, language)}</strong><span>{de ? "gebucht" : "booked"}</span></div>
+          <div className={styles.revenueHero}><strong>{formatCurrency(booked, language, accountCurrency)}</strong><span>{de ? "gebucht" : "booked"}</span></div>
           <div className={styles.moneyTrack}><span style={{ width: `${booked > 0 ? Math.min(100, percent(paid, booked, 1)) : 0}%` }} /><i /></div>
-          <div className={styles.moneyMeta}><span>{formatCurrency(paid, language)} {de ? "bezahlt" : "paid"}</span><span>{formatCurrency(outstanding, language)} {de ? "offen" : "open"}</span></div>
+          <div className={styles.moneyMeta}><span>{formatCurrency(paid, language, accountCurrency)} {de ? "bezahlt" : "paid"}</span><span>{formatCurrency(outstanding, language, accountCurrency)} {de ? "offen" : "open"}</span></div>
           <div className={styles.revenueRows}>
-            <div><span>{de ? "Aus Outreach gewonnen" : "Won from outreach"}</span><strong className={outreachWon === 0 ? styles.warmNumber : undefined}>{formatCurrency(outreachWon, language)}</strong></div>
-            <div><span>{de ? "Aus Netzwerk / Bestand" : "From network / existing"}</span><strong>{formatCurrency(networkRevenue, language)}</strong></div>
-            <div><span>{de ? "Ø Projektwert" : "Avg project value"}</span><strong>{formatCurrency(averageProject, language)}</strong></div>
-            <div><span>{de ? "Pipeline-Schätzwert" : "Pipeline estimate"}</span><strong className={pipelineEstimate === 0 ? styles.mutedNumber : undefined}>{pipelineEstimate > 0 ? formatCurrency(pipelineEstimate, language) : "—"}</strong></div>
+            <div><span>{de ? "Aus Outreach gewonnen" : "Won from outreach"}</span><strong className={outreachWon === 0 ? styles.warmNumber : undefined}>{formatCurrency(outreachWon, language, accountCurrency)}</strong></div>
+            <div><span>{de ? "Aus Netzwerk / Bestand" : "From network / existing"}</span><strong>{formatCurrency(networkRevenue, language, accountCurrency)}</strong></div>
+            <div><span>{de ? "Ø Projektwert" : "Avg project value"}</span><strong>{formatCurrency(averageProject, language, accountCurrency)}</strong></div>
+            <div><span>{de ? "Pipeline-Schätzwert" : "Pipeline estimate"}</span><strong className={pipelineEstimate === 0 ? styles.mutedNumber : undefined}>{pipelineEstimate > 0 ? formatCurrency(pipelineEstimate, language, accountCurrency) : "—"}</strong></div>
           </div>
           <p className={styles.revenueFoot}>{outreachWon > 0 ? (de ? "Mindestens ein Lead hat die Strecke bis gewonnen geschlossen." : "At least one lead has closed the path through won.") : (de ? "Kein Umsatz stammt bisher eindeutig aus Leadbase-Outreach. Ein gewonnener Lead würde die Strecke erstmals vollständig schließen." : "No revenue is clearly attributable to Leadbase outreach yet. A won lead would close the path for the first time.")}</p>
         </div>
@@ -909,7 +920,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
                   <span className={row.metrics.replyRate > 0 ? styles.blueCell : styles.mutedCell}>{row.metrics.contacted > 0 ? formatPercent(row.metrics.replyRate, 1) : "—"}</span>
                   <span className={row.metrics.hot > 0 ? styles.warmCell : styles.mutedCell}>{row.metrics.hot}</span>
                   <span className={styles.mutedCell}>{row.metrics.won}</span>
-                  <span className={styles.mutedCell}>{formatCurrency(row.metrics.wonEstimatedValue, language)}</span>
+                  <span className={styles.mutedCell}>{formatCurrency(row.metrics.wonEstimatedValue, language, accountCurrency)}</span>
                 </Link>
               ))}
             </div>

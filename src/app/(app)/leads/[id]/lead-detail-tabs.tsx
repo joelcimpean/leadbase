@@ -8,6 +8,7 @@ import {
 export type LeadDetailTabKey =
   | "visual"
   | "structure"
+  | "evidence"
   | "outreach"
   | "history"
   | "notes";
@@ -22,6 +23,7 @@ export function LeadDetailTabs({
   structureTotal,
   visual,
   structure,
+  evidence,
   outreach,
   history,
   notes,
@@ -35,6 +37,7 @@ export function LeadDetailTabs({
   structureTotal: number;
   visual: ReactNode;
   structure: ReactNode;
+  evidence: ReactNode;
   outreach: ReactNode;
   history: ReactNode;
   notes: ReactNode;
@@ -47,6 +50,7 @@ export function LeadDetailTabs({
         analyzed: "Analysiert",
         visual: "Visuell",
         structure: "Struktur",
+        evidence: "Nachweise",
         outreach: "Outreach",
         history: "Verlauf",
         notes: "Notizen",
@@ -56,6 +60,7 @@ export function LeadDetailTabs({
         analyzed: "Analyzed",
         visual: "Visual",
         structure: "Structure",
+        evidence: "Evidence",
         outreach: "Outreach",
         history: "History",
         notes: "Notes",
@@ -64,6 +69,7 @@ export function LeadDetailTabs({
   const items: { key: LeadDetailTabKey; label: string; meta?: string }[] = [
     { key: "visual", label: labels.visual },
     { key: "structure", label: labels.structure, meta: structureTotal > 0 ? `${structurePassed}/${structureTotal}` : undefined },
+    { key: "evidence", label: labels.evidence },
     { key: "outreach", label: labels.outreach },
     { key: "history", label: labels.history },
     { key: "notes", label: labels.notes },
@@ -72,6 +78,7 @@ export function LeadDetailTabs({
   const current = {
     visual,
     structure,
+    evidence,
     outreach,
     history,
     notes,
@@ -79,18 +86,20 @@ export function LeadDetailTabs({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(11,12,14,0.03)]">
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-black/[0.07] px-[18px] pb-[14px] pt-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <h2 className="whitespace-nowrap text-[14.5px] font-semibold tracking-[-0.015em]">{labels.title}</h2>
-          {analyzed ? (
-            <span className="rounded-[6px] bg-[#E9F0EA] px-[7px] py-[2px] font-mono text-[9px] uppercase tracking-[0.06em] text-[#2F6B3A]">{labels.analyzed}</span>
-          ) : null}
-          <span className="hidden truncate font-mono text-[9.5px] uppercase tracking-[0.06em] text-[#6B7078] min-[980px]:inline">
+      <header className="flex shrink-0 flex-col gap-3 border-b border-black/[0.07] px-[18px] pb-[14px] pt-4 min-[1320px]:flex-row min-[1320px]:items-center min-[1320px]:justify-between">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <h2 className="whitespace-nowrap text-[14.5px] font-semibold tracking-[-0.015em]">{labels.title}</h2>
+            {analyzed ? (
+              <span className="rounded-[6px] bg-[#E9F0EA] px-[7px] py-[2px] font-mono text-[9px] uppercase tracking-[0.06em] text-[#2F6B3A]">{labels.analyzed}</span>
+            ) : null}
+          </div>
+          <span className="mt-1.5 block whitespace-normal font-mono text-[9.5px] uppercase tracking-[0.06em] text-[#6B7078]">
             {[analyzedAt, model, totalTokens ? `${totalTokens.toLocaleString(language === "de" ? "de-DE" : "en-GB")} tokens` : null].filter(Boolean).join(" · ")}
           </span>
         </div>
 
-        <div className="flex shrink-0 rounded-[10px] bg-black/[0.045] p-[3px]">
+        <div className="flex max-w-full shrink-0 overflow-x-auto rounded-[10px] bg-black/[0.045] p-[3px]">
           {items.map((item) => (
             <button
               key={item.key}

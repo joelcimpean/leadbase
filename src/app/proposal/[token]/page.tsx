@@ -77,9 +77,9 @@ type CustomSection = {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const CREATOR_NAME = "Joel Cimpean";
-const CREATOR_EMAIL = "hello@joelcimpean.com";
-const CREATOR_WEBSITE = "joelcimpean.com";
+const CREATOR_NAME = "Leadbase";
+const CREATOR_EMAIL = "";
+const CREATOR_WEBSITE = "";
 
 function formatMoney(
   value: number,
@@ -488,8 +488,8 @@ export async function generateMetadata({
           : "Proposal",
     description:
       proposalLanguage === "de"
-        ? "Persönliches Projektangebot von Joel Cimpean."
-        : "Personal project proposal from Joel Cimpean.",
+        ? "Persönliches Projektangebot über Leadbase."
+        : "Personal project proposal powered by Leadbase.",
     robots: {
       index: false,
       follow: false,

@@ -501,10 +501,10 @@ export const languageCopy = {
         "Status",
 
       totalProjectValue:
-        "Total project value (€)",
+        "Total project value",
 
       alreadyPaid:
-        "Already paid (€)",
+        "Already paid",
 
       startedLabel:
         "Started",
@@ -1027,10 +1027,10 @@ export const languageCopy = {
         "Status",
 
       totalProjectValue:
-        "Gesamter Projektwert (€)",
+        "Gesamter Projektwert",
 
       alreadyPaid:
-        "Bereits bezahlt (€)",
+        "Bereits bezahlt",
 
       startedLabel:
         "Gestartet",

@@ -291,6 +291,10 @@ export function AppBackgroundTasksProvider({
                 "leadId",
                 item.id
               );
+              formData.set(
+                "bulk",
+                "1"
+              );
 
               await analyzeLeadWebsite(
                 formData
@@ -429,6 +433,8 @@ export function AppBackgroundTasksProvider({
                         JSON.stringify({
                           regenerate:
                             false,
+                          bulk:
+                            true,
                           designModel:
                             settings.designModel,
                           reasoningEffort:

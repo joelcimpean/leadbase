@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { resolveAccountCurrency } from "@/lib/account-currency";
+import { cancelPendingFollowUps } from "@/lib/outreach-pipeline";
 
 const validStatuses = [
   "NEW",
@@ -53,6 +55,16 @@ export async function createLead(formData: FormData) {
   if (userError || !user) {
     redirect("/login");
   }
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   /* ---------------------------------------------------------
      Validate campaign
@@ -219,6 +231,7 @@ export async function createLead(formData: FormData) {
       campaign_id: cleanCampaignId,
       status: "NEW",
       source: "manual",
+      currency: accountCurrency,
     })
     .select("id")
     .single();
@@ -326,6 +339,16 @@ export async function updateLeadStatus(formData: FormData) {
   if (error) {
     console.error("Status update failed:", error);
     return;
+  }
+
+  if (["WON", "LOST", "NOT_A_FIT", "DO_NOT_CONTACT"].includes(status)) {
+    await cancelPendingFollowUps({
+      supabase,
+      userId: user.id,
+      leadId,
+      reason: status === "WON" ? "lead_won" : status === "LOST" || status === "NOT_A_FIT" ? "lead_lost" : "manual_stop",
+      detail: `Follow-up stopped because lead status changed to ${status}.`,
+    });
   }
 
   const { error: activityError } = await supabase

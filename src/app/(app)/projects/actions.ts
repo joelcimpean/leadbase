@@ -20,6 +20,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  resolveAccountCurrency,
+} from "@/lib/account-currency";
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -200,6 +204,13 @@ export async function createProject(
     );
   }
 
+  const storedProfile = ((user.user_metadata ?? {}) as Record<string, unknown>).leadbase_profile as Record<string, unknown> | undefined;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
+
   const clientName =
     getText(
       formData,
@@ -355,7 +366,7 @@ export async function createProject(
           amountPaid,
 
         currency:
-          "EUR",
+          accountCurrency,
 
         started_at:
           startedAt,

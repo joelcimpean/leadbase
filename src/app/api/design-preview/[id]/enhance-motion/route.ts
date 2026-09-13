@@ -9,7 +9,12 @@ import {
   normalizeMotionPreset,
 } from "@/lib/design-generation-options";
 import { createClient } from "@/lib/supabase/server";
-import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
+import { assertAiUsageAvailable, recordAiUsage, releaseAiUsageReservation } from "@/lib/ai-usage";
+import {
+  assertPlanAiSelectionAvailable,
+  isPlanAccessError,
+  planAccessMessage,
+} from "@/lib/plan-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -827,6 +832,27 @@ export async function POST(
     );
   }
 
+  try {
+    await assertPlanAiSelectionAvailable(user.id, {
+      feature: "design_motion",
+      model,
+      reasoningEffort,
+    });
+  } catch (error) {
+    if (isPlanAccessError(error)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            planAccessMessage(error, "en") ??
+            "Enhance Motion is not included in your plan.",
+        },
+        { status: 403 }
+      );
+    }
+    throw error;
+  }
+
   const {
     data: variant,
     error: variantError,
@@ -872,7 +898,12 @@ export async function POST(
     );
   }
 
-  await assertAiUsageAvailable(user.id);
+  const usageGuard = await assertAiUsageAvailable(user.id, {
+    feature: "design_motion",
+    model,
+    reasoningEffort,
+    metadata: { previewId, leadId: variant.lead_id },
+  });
 
   const {
     plan,
@@ -898,8 +929,11 @@ export async function POST(
       model: motionModel,
       usage: motionUsage,
       requestKey: `design-motion:${previewId}:${Date.now()}`,
+      reservationKey: usageGuard.reservationKey,
       metadata: { previewId, leadId: variant.lead_id },
     });
+  } else {
+    await releaseAiUsageReservation(user.id, usageGuard.reservationKey);
   }
 
   const finalPlan =

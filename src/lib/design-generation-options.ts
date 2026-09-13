@@ -123,12 +123,9 @@ export function buildDesignInspirationMemo({
 
   if (inspirationImages.length > 0) {
     blocks.push(
-      [
-        "Reference image URLs available to the system:",
-        ...inspirationImages.map(
-          (link, index) => `${index + 1}. ${link}`
-        ),
-      ].join("\n")
+      `${inspirationImages.length} user-provided reference image${
+        inspirationImages.length === 1 ? " is" : "s are"
+      } attached as visual inspiration. Use them only for design direction, composition, typography, spacing, mood, and motion cues. Never reuse their branding, copy, people, logos, or image content as client assets.`
     );
   }
 

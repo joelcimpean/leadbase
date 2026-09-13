@@ -22,7 +22,7 @@ function AppShell({
       >
         {sidebar}
 
-        <main className="min-w-0 flex-1 overflow-y-auto bg-[var(--lb-page)] pt-14 md:pt-0">
+        <main className="leadbase-global-dark-scope min-w-0 flex-1 overflow-y-auto bg-[var(--lb-page)] pt-14 md:pt-0">
           {children}
         </main>
       </div>

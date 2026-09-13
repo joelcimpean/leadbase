@@ -1663,9 +1663,9 @@ export function ConversationList({
                       : "gap-2 px-2.5 py-2 2xl:gap-2.5 2xl:px-3 2xl:py-2.5"
                 } ${
                   selected
-                    ? "bg-[#F1F4FF]"
+                    ? "bg-[#F1F4FF] dark:bg-[#151A2A]"
                     : selectedLeadId === conversation.leadId
-                      ? "md:bg-[#F1F4FF]"
+                      ? "md:bg-[#F1F4FF] md:dark:bg-[#151A2A]"
                       : ""
                 }`}
               >

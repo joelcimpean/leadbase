@@ -38,6 +38,8 @@ import {
   ActivityHeartbeat,
 } from "@/components/activity-heartbeat";
 
+import { ProductTour } from "@/components/product-tour";
+
 import {
   BackgroundTaskDock,
 } from "@/components/background-task-dock";
@@ -81,6 +83,24 @@ export default async function AppLayout({
     },
   } =
     await supabase.auth.getUser();
+
+  const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const onboardingComplete =
+    userMetadata.leadbase_onboarding_completed === true ||
+    userMetadata.leadbase_profile_completed === true;
+
+  // The public root and the first-run onboarding deliberately render without
+  // AppShell. That guarantees we never fetch or reveal protected workspace data
+  // behind the login overlay. The onboarding component supplies a static shell.
+  if (!user || !onboardingComplete) {
+    return (
+      <LanguageProvider initialLanguage={language}>
+        {children}
+      </LanguageProvider>
+    );
+  }
+
+  const showProductTour = userMetadata.leadbase_product_tour_completed === false;
 
   let unreadInboxCount =
     0;
@@ -426,6 +446,8 @@ export default async function AppLayout({
             <ActivityHeartbeat />
 
             <BackgroundTaskDock />
+
+            {showProductTour ? <ProductTour /> : null}
 
             {children}
           </AppShell>

@@ -29,6 +29,10 @@ import {
   Button,
 } from "@/components/ui/button";
 
+import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -324,6 +328,12 @@ export function AnalyzeWebsiteButton({
         }
       />
 
+      <input
+        type="hidden"
+        name="forceEvidenceAudit"
+        value="1"
+      />
+
       <AnalyzeButtonContent
         hasWebsite={
           hasWebsite
@@ -483,6 +493,12 @@ function AnalyzeButtonContent({
           {hasWebsite
             ? text.website
             : text.opportunity}
+
+          <CreditEstimatePill
+            feature="lead_analysis"
+            language={language}
+            hideOnSmall
+          />
         </>
       )}
     </Button>

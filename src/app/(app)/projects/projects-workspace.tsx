@@ -719,11 +719,13 @@ function closingLabel(
 export function ProjectsWorkspace({
   language,
   projects,
+  accountCurrency,
 }: {
   language:
     Language;
   projects:
     ProjectWorkspaceItem[];
+  accountCurrency: string;
 }) {
   const router =
     useRouter();
@@ -1222,6 +1224,9 @@ export function ProjectsWorkspace({
           language={
             language
           }
+          accountCurrency={
+            accountCurrency
+          }
           running={
             0
           }
@@ -1269,6 +1274,9 @@ export function ProjectsWorkspace({
           language={
             language
           }
+          accountCurrency={
+            accountCurrency
+          }
           running={
             totals.active.length
           }
@@ -1292,7 +1300,7 @@ export function ProjectsWorkspace({
             value={
               formatMoney(
                 totals.totalValue,
-                "EUR",
+                accountCurrency,
                 language
               )
             }
@@ -1309,7 +1317,7 @@ export function ProjectsWorkspace({
             value={
               formatMoney(
                 totals.amountPaid,
-                "EUR",
+                accountCurrency,
                 language
               )
             }
@@ -1346,7 +1354,7 @@ export function ProjectsWorkspace({
             value={
               formatMoney(
                 totals.outstanding,
-                "EUR",
+                accountCurrency,
                 language
               )
             }
@@ -1408,7 +1416,7 @@ export function ProjectsWorkspace({
             value={
               formatMoney(
                 totals.average,
-                "EUR",
+                accountCurrency,
                 language
               )
             }
@@ -1419,11 +1427,11 @@ export function ProjectsWorkspace({
                 0
                 ? `${formatMoney(
                     totals.minValue,
-                    "EUR",
+                    accountCurrency,
                     language
                   )} – ${formatMoney(
                     totals.maxValue,
-                    "EUR",
+                    accountCurrency,
                     language
                   )}`
                 : "—"
@@ -1470,6 +1478,9 @@ export function ProjectsWorkspace({
             <OutstandingPaymentCard
               project={
                 outstandingProject
+              }
+              accountCurrency={
+                accountCurrency
               }
               totalOutstanding={
                 totals.outstanding
@@ -1669,7 +1680,7 @@ export function ProjectsWorkspace({
                                   {
                                     formatMoney(
                                       groupValue,
-                                      "EUR",
+                                      accountCurrency,
                                       language
                                     )
                                   }
@@ -1738,7 +1749,7 @@ export function ProjectsWorkspace({
                         project.totalValue,
                       0
                     ),
-                    "EUR",
+                    accountCurrency,
                     language
                   )
                 }
@@ -1888,12 +1899,14 @@ export function ProjectsWorkspace({
 
 function ProjectsHeader({
   language,
+  accountCurrency,
   running,
   completed,
   outstanding,
 }: {
   language:
     Language;
+  accountCurrency: string;
   running: number;
   completed: number;
   outstanding: number;
@@ -1938,7 +1951,7 @@ function ProjectsHeader({
             {
               formatMoney(
                 outstanding,
-                "EUR",
+                accountCurrency,
                 language
               )
             }{" "}
@@ -2333,6 +2346,7 @@ function FeaturedProjectCard({
 
 function OutstandingPaymentCard({
   project,
+  accountCurrency,
   totalOutstanding,
   totalPaid,
   language,
@@ -2340,6 +2354,7 @@ function OutstandingPaymentCard({
   project:
     | ProjectWorkspaceItem
     | null;
+  accountCurrency: string;
   totalOutstanding: number;
   totalPaid: number;
   language:
@@ -2381,7 +2396,7 @@ function OutstandingPaymentCard({
                 : totalPaid,
               project
                 ?.currency ??
-                "EUR",
+                accountCurrency,
               language
             )
           }

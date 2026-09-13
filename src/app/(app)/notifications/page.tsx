@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { NotificationsPrecisionClient } from "./notifications-precision-client";
 import { WorkspacePageMotion } from "@/components/workspace-page-motion";
 import { createClient } from "@/lib/supabase/server";
+import { resolveAccountCurrency } from "@/lib/account-currency";
 
 export type NotificationPageItem = {
   id: string;
@@ -59,7 +60,7 @@ function fallbackEntity(title: string) {
   return parts.length > 1 ? parts.slice(1).join(" · ") : null;
 }
 
-function formatMoney(value: number | string | null, currency: string | null) {
+function formatMoney(value: number | string | null, currency: string | null, fallbackCurrency: string) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) {
     return null;
@@ -68,12 +69,12 @@ function formatMoney(value: number | string | null, currency: string | null) {
   try {
     return new Intl.NumberFormat("de-DE", {
       style: "currency",
-      currency: currency || "EUR",
+      currency: currency || fallbackCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
   } catch {
-    return `${Math.round(amount).toLocaleString("de-DE")} €`;
+    return `${Math.round(amount).toLocaleString("de-DE")} ${currency || fallbackCurrency}`;
   }
 }
 
@@ -86,6 +87,16 @@ export default async function NotificationsPage() {
   if (!user) {
     redirect("/login");
   }
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
 
   const { data, error } = await supabase
     .from("app_notifications")
@@ -146,7 +157,7 @@ export default async function NotificationsPage() {
   const notifications: NotificationPageItem[] = rows.map((notification) => {
     const proposalId = proposalIdFor(notification);
     const proposal = proposalId ? proposalById.get(proposalId) ?? null : null;
-    const money = proposal ? formatMoney(proposal.price, proposal.currency) : null;
+    const money = proposal ? formatMoney(proposal.price, proposal.currency, accountCurrency) : null;
     const contact = proposal?.contact_name?.trim() || null;
     const entityMeta = [money, contact].filter(Boolean).join(" · ") || null;
 

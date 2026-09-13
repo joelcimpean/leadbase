@@ -1,10 +1,6 @@
 import Link from "next/link";
 
 import {
-  redirect,
-} from "next/navigation";
-
-import {
   AlertTriangle,
   ArrowRight,
   ArrowUpRight,
@@ -68,6 +64,10 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+
+import { PublicOnboardingGate } from "@/components/public-onboarding-gate";
+import { resolveAccountCurrency } from "@/lib/account-currency";
+import { convertCurrencyAmounts } from "@/lib/fx-rates";
 
 /* =========================================================
    TYPES
@@ -224,7 +224,9 @@ function formatCurrency(
   value:
     number,
   language:
-    AppLanguage
+    AppLanguage,
+  currency:
+    string
 ) {
   return new Intl.NumberFormat(
     getLocale(
@@ -234,8 +236,7 @@ function formatCurrency(
       style:
         "currency",
 
-      currency:
-        "EUR",
+      currency,
 
       maximumFractionDigits:
         0,
@@ -971,8 +972,44 @@ export default async function DashboardPage({
     userError ||
     !user
   ) {
-    redirect(
-      "/login"
+    return <PublicOnboardingGate initialStep="entry" />;
+  }
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
+    ? userMetadata.leadbase_profile as Record<string, unknown>
+    : null;
+  const accountCurrency = resolveAccountCurrency({
+    storedCurrency: storedProfile?.currency,
+    currencyMode: storedProfile?.currencyMode,
+    location: typeof storedProfile?.location === "string" ? storedProfile.location : null,
+  }).currency;
+  const onboardingComplete =
+    userMetadata.leadbase_onboarding_completed === true ||
+    userMetadata.leadbase_profile_completed === true;
+
+  if (!onboardingComplete) {
+    const { data: gmailConnection } = await supabase
+      .from("gmail_connections")
+      .select("email_address")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const initialName =
+      typeof userMetadata.full_name === "string"
+        ? userMetadata.full_name
+        : typeof userMetadata.name === "string"
+          ? userMetadata.name
+          : null;
+    const storedStep = userMetadata.leadbase_onboarding_step;
+
+    return (
+      <PublicOnboardingGate
+        initialStep={storedStep === "profile" ? "profile" : "plan"}
+        accountEmail={user.email ?? null}
+        initialName={initialName}
+        gmailEmail={gmailConnection?.email_address ?? null}
+      />
     );
   }
 
@@ -1015,6 +1052,7 @@ export default async function DashboardPage({
           priority,
           opportunity_score,
           estimated_project_value,
+          currency,
           last_contacted_at,
           next_follow_up_at,
           hot_lead_score,
@@ -2349,68 +2387,49 @@ export default async function DashboardPage({
         "CANCELLED"
     );
 
-  const bookedValue =
-    revenueProjects.reduce(
-      (
-        total,
-        project
-      ) =>
-        total +
-        Number(
-          project.total_value ??
-            0
-        ),
-      0
-    );
-
-  const paidRevenue =
-    revenueProjects.reduce(
-      (
-        total,
-        project
-      ) =>
-        total +
-        Number(
-          project.amount_paid ??
-            0
-        ),
-      0
-    );
-
-  const outstanding =
-    revenueProjects.reduce(
-      (
-        total,
-        project
-      ) =>
-        total +
-        Math.max(
+  // Account-level overview values are display-converted into the user's
+  // current profile currency. Stored project/proposal amounts are never changed;
+  // project rows and project detail pages continue to use their original currency.
+  const [bookedFx, paidFx, outstandingFx, pipelineFx] = await Promise.all([
+    convertCurrencyAmounts(
+      revenueProjects.map((project) => ({
+        amount: Number(project.total_value ?? 0),
+        currency: project.currency,
+      })),
+      accountCurrency,
+    ),
+    convertCurrencyAmounts(
+      revenueProjects.map((project) => ({
+        amount: Number(project.amount_paid ?? 0),
+        currency: project.currency,
+      })),
+      accountCurrency,
+    ),
+    convertCurrencyAmounts(
+      revenueProjects.map((project) => ({
+        amount: Math.max(
           0,
-          Number(
-            project.total_value ??
-              0
-          ) -
-            Number(
-              project.amount_paid ??
-                0
-            )
+          Number(project.total_value ?? 0) - Number(project.amount_paid ?? 0),
         ),
-      0
-    );
+        currency: project.currency,
+      })),
+      accountCurrency,
+    ),
+    convertCurrencyAmounts(
+      openLeads.map((lead) => ({
+        amount: Number(lead.estimated_project_value ?? 0),
+        currency: lead.currency,
+      })),
+      accountCurrency,
+    ),
+  ]);
 
-  const pipelineValue =
-    openLeads.reduce(
-      (
-        total,
-        lead
-      ) =>
-        total +
-        Number(
-          lead.estimated_project_value ??
-            0
-        ),
-      0
-    );
+  const bookedValue = bookedFx.total;
+  const paidRevenue = paidFx.total;
+  const outstanding = outstandingFx.total;
+  const pipelineValue = pipelineFx.total;
+  const accountFxComplete =
+    bookedFx.complete && paidFx.complete && outstandingFx.complete && pipelineFx.complete;
 
   const recentProjects =
     [
@@ -3512,12 +3531,18 @@ export default async function DashboardPage({
                   <p className="text-[28px] font-semibold leading-none tracking-[-0.04em] tabular-nums">
                     {formatCurrency(
                       bookedValue,
-                      language
+                      language,
+                      accountCurrency
                     )}
                   </p>
 
                   <span className="pb-0.5 text-[11px] text-[#6B7078]">
                     {copy.booked.toLowerCase()}
+                    {accountFxComplete ? (
+                      <span className="ml-1 font-mono text-[8.5px] uppercase tracking-[0.04em] text-[#7D828A]">
+                        · {accountCurrency} FX
+                      </span>
+                    ) : null}
                   </span>
                 </div>
 
@@ -3539,7 +3564,8 @@ export default async function DashboardPage({
                     value={
                       formatCurrency(
                         paidRevenue,
-                        language
+                        language,
+                        accountCurrency
                       )
                     }
                   />
@@ -3551,7 +3577,8 @@ export default async function DashboardPage({
                     value={
                       formatCurrency(
                         outstanding,
-                        language
+                        language,
+                        accountCurrency
                       )
                     }
                     accent
@@ -3578,7 +3605,8 @@ export default async function DashboardPage({
                   <span className="font-mono font-medium text-foreground">
                     {formatCurrency(
                       pipelineValue,
-                      language
+                      language,
+                      accountCurrency
                     )}
                   </span>
                 </div>
@@ -3674,14 +3702,16 @@ export default async function DashboardPage({
                               <p className="font-mono text-[10.5px] tabular-nums">
                                 {formatCurrency(
                                   total,
-                                  language
+                                  language,
+                                  project.currency || accountCurrency
                                 )}
                               </p>
 
                               <p className="mt-0.5 font-mono text-[8.5px] text-[#7E838B]">
                                 {formatCurrency(
                                   paid,
-                                  language
+                                  language,
+                                  project.currency || accountCurrency
                                 )}{" "}
                                 {de
                                   ? "bezahlt"

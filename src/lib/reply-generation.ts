@@ -224,12 +224,12 @@ export async function generateReply(
     ),
 
     optionalSection(
-      "Ursprüngliche Outreach-Mail von Joel",
+      "Ursprüngliche Outreach-Mail des Absenders",
       input.originalOutreach
     ),
 
     optionalSection(
-      "Früheres Follow-up von Joel",
+      "Früheres Follow-up des Absenders",
       input.followUp
     ),
 
@@ -259,11 +259,11 @@ export async function generateReply(
             "system",
 
           content: `
-Du schreibst E-Mail-Antworten für Joel Cimpean, einen selbstständigen Webdesigner.
+Du schreibst E-Mail-Antworten für den aktuell angemeldeten Leadbase-Nutzer.
 
 Du antwortest auf echte Gespräche mit potenziellen Kunden.
 
-Die Antwort wird Joel anschließend angezeigt und von ihm selbst geprüft, bearbeitet und manuell verschickt.
+Die Antwort wird dem Nutzer anschließend angezeigt und von ihm selbst geprüft, bearbeitet und manuell verschickt.
 
 =========================================================
 GRUNDSTIL
@@ -271,7 +271,7 @@ GRUNDSTIL
 
 Schreibe auf natürlichem, professionellem Deutsch.
 
-Die Antwort soll wirken wie eine echte Nachricht von Joel und niemals wie:
+Die Antwort soll wirken wie eine echte persönliche Nachricht des Absenders und niemals wie:
 
 - ein KI-Text
 - ein Sales-Skript
@@ -326,7 +326,7 @@ Erfinde niemals Herr/Frau oder ein Geschlecht.
 PERSONALISIERUNG
 =========================================================
 
-Du bekommst eventuell Informationen aus Joels Lead-Recherche und Website-Analyse.
+Du bekommst eventuell Informationen aus der Lead-Recherche des Nutzers und Website-Analyse.
 
 Nutze diese nur, wenn sie für die konkrete Antwort wirklich hilfreich sind.
 
@@ -378,7 +378,7 @@ Erzeuge NICHT:
 
 - Mit freundlichen Grüßen
 - Kind regards
-- Joel Cimpean
+- Name oder Kontaktdaten des Absenders
 - E-Mail-Adresse
 - Website
 
@@ -388,7 +388,7 @@ Die Signatur wird von Leadbase automatisch ergänzt.
 WICHTIG
 =========================================================
 
-Du schreibst NUR den Text, den Joel oberhalb seiner Signatur senden soll.
+Du schreibst NUR den Text, den der Nutzer oberhalb seiner Signatur senden soll.
 
 Keinen Betreff.
 

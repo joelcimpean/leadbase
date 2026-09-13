@@ -2888,7 +2888,7 @@ export default async function InboxPage({
               (selected.replyToMessageId ||
                 (selected.replyToGmailMessageId && selected.replyGmailThreadId)) &&
               gmailSendReady ? (
-                <div className={styles.composerDock}>
+                <div className={`${styles.composerDock} leadbase-inbox-reply-dock`}>
                   <ReplyComposer
                     variant="dock"
                     leadId={selected.leadId}

@@ -32,6 +32,10 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
+import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -419,6 +423,13 @@ export function CallPrepClient({
                 ? "Lead, Websiteanalyse, E-Mail-Verlauf und Preview-Verhalten werden zusammengeführt."
                 : "Combining the lead, website analysis, email history and preview behavior."}
             </p>
+
+            <div className="mt-2 flex justify-center">
+              <CreditEstimatePill
+                feature="call_prep"
+                language={language}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -531,6 +542,12 @@ export function CallPrepClient({
           "de"
             ? "Neu erstellen"
             : "Regenerate"}
+
+          <CreditEstimatePill
+            feature="call_prep"
+            language={language}
+            hideOnSmall
+          />
         </Button>
       </div>
 

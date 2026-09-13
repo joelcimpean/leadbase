@@ -48,6 +48,17 @@ import {
 } from "@/lib/campaign-ideas";
 
 import {
+  campaignIdeaDisplayName,
+  campaignIdeaIndustry,
+  detectCampaignMarket,
+  locationPrimaryLabel,
+} from "@/lib/campaign-location";
+
+import {
+  getAppLanguage,
+} from "@/lib/i18n-server";
+
+import {
   WorkspacePageMotion,
 } from "@/components/workspace-page-motion";
 
@@ -59,6 +70,7 @@ type NewCampaignPageProps = {
   searchParams: Promise<{
     error?: string;
     idea?: string;
+    geo?: string;
   }>;
 };
 
@@ -72,12 +84,21 @@ export default async function NewCampaignPage({
   const {
     error,
     idea: ideaId,
+    geo,
   } = await searchParams;
+
+  const language = await getAppLanguage();
 
   const idea =
     getCampaignIdea(
       ideaId
     );
+
+  const market = detectCampaignMarket(geo);
+  const ideaName = idea ? campaignIdeaDisplayName(idea, language, market) : "";
+  const ideaIndustry = idea ? campaignIdeaIndustry(idea, language) : "";
+  const geoLabel = locationPrimaryLabel(geo);
+  const defaultCampaignName = ideaName && geoLabel ? `${ideaName} – ${geoLabel}` : ideaName;
 
   return (
     <div className="leadbase-workspace-page leadbase-route-form mx-auto min-h-full w-full max-w-[980px] px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5">
@@ -131,7 +152,7 @@ export default async function NewCampaignPage({
               <p className="text-sm font-medium">
                 Campaign template:
                 {" "}
-                {idea.name}
+                {ideaName}
               </p>
 
               <Badge
@@ -199,10 +220,9 @@ export default async function NewCampaignPage({
 
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 Example:
-                &quot;Photovoltaik
-                – Karlsruhe&quot; or
-                &quot;Gartenbau –
-                Zollernalbkreis&quot;.
+                &quot;Solar – Austin&quot; or
+                &quot;Landscaping –
+                Manchester&quot;.
                 Keep campaigns
                 specific instead of
                 creating one broad
@@ -221,9 +241,9 @@ export default async function NewCampaignPage({
               <Field
                 label="Campaign name *"
                 name="name"
-                placeholder="e.g. Photovoltaik – Karlsruhe"
+                placeholder="e.g. Solar – Austin"
                 defaultValue={
-                  idea?.name ?? ""
+                  defaultCampaignName
                 }
                 required
               />
@@ -239,10 +259,9 @@ export default async function NewCampaignPage({
                   id="targetIndustry"
                   name="targetIndustry"
                   defaultValue={
-                    idea?.industry ??
-                    ""
+                    ideaIndustry
                   }
-                  placeholder="Search e.g. Solar, Gartenbau, Friseur..."
+                  placeholder="Search e.g. Solar, HVAC, Landscaping..."
                 />
 
                 <p className="text-xs leading-5 text-muted-foreground">
@@ -257,7 +276,8 @@ export default async function NewCampaignPage({
               <Field
                 label="Target geography"
                 name="targetGeography"
-                placeholder="e.g. Karlsruhe"
+                placeholder="e.g. Austin, TX or Berlin, Germany"
+                defaultValue={geo ?? ""}
               />
 
               {/* SIZE */}

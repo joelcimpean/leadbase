@@ -22,6 +22,12 @@ import {
   createAdminClient,
 } from "@/lib/supabase/admin";
 
+import {
+  assertOutboundAllowed,
+  logFollowUpEvent,
+  logSuccessfulOutreach,
+} from "@/lib/outreach-pipeline";
+
 /* =========================================================
    CONFIG
 ========================================================= */
@@ -1308,7 +1314,9 @@ export async function sendDueFollowUpsForUser({
 
             company:companies (
               name,
-              website_url
+              website_url,
+              industry,
+              location
             ),
 
             primary_contact:contacts (
@@ -1555,6 +1563,7 @@ export async function sendDueFollowUpsForUser({
           )
           .select(`
             id,
+            campaign_id,
             status,
             subject,
             follow_up_body,
@@ -1562,6 +1571,13 @@ export async function sendDueFollowUpsForUser({
             follow_up_sending_started_at,
             gmail_message_id,
             gmail_thread_id,
+            audit_id,
+            hook_category,
+            hook_strength,
+            hook_value,
+            template_version,
+            subject_variant,
+            opener_variant,
             created_at
           `)
           .eq(
@@ -1826,6 +1842,47 @@ export async function sendDueFollowUpsForUser({
         continue;
       }
 
+      // Final safety gate after the atomic claim. A reply, suppression,
+      // manual stop or terminal lead state that appeared during generation
+      // must win over this worker before Gmail is called.
+      try {
+        await assertOutboundAllowed({
+          supabase,
+          userId,
+          leadId: lead.id,
+          recipientEmail,
+        });
+      } catch (safetyError) {
+        await supabase
+          .from("outreach_drafts")
+          .update({
+            follow_up_sending_started_at: null,
+            follow_up_send_error: safetyError instanceof Error ? safetyError.message : "Follow-up blocked by safety check.",
+          })
+          .eq("id", draft.id)
+          .eq("user_id", userId);
+        await logFollowUpEvent({
+          supabase,
+          userId,
+          leadId: lead.id,
+          draftId: draft.id,
+          status: "cancelled",
+          cancelReason: "suppressed",
+          cancelledAt: new Date().toISOString(),
+          scheduledFor: nextFollowUpAt,
+          metadata: { reason: safetyError instanceof Error ? safetyError.message : "blocked" },
+        });
+        result.skipped += 1;
+        result.results.push({
+          leadId: lead.id,
+          companyName,
+          draftId: draft.id,
+          result: "SKIPPED",
+          reason: safetyError instanceof Error ? safetyError.message : "Follow-up blocked by safety check.",
+        });
+        continue;
+      }
+
       let gmailResult: {
         messageId:
           string;
@@ -2015,6 +2072,49 @@ export async function sendDueFollowUpsForUser({
         });
 
         continue;
+      }
+
+      try {
+        const companySnapshot = getSingleRelation<{
+          name: string;
+          website_url: string | null;
+          industry?: string | null;
+          location?: string | null;
+        }>(freshLead.company);
+        await logSuccessfulOutreach({
+          supabase,
+          userId,
+          leadId: lead.id,
+          campaignId: draft.campaign_id ?? null,
+          draftId: draft.id,
+          channel: "email",
+          sentAt,
+          gmailMessageId: gmailResult.messageId,
+          gmailThreadId: gmailResult.threadId,
+          sendId: `followup:${draft.id}:1`,
+          sequenceStep: 1,
+          industry: companySnapshot?.industry ?? null,
+          region: companySnapshot?.location ?? null,
+          auditId: draft.audit_id ?? null,
+          hookCategory: draft.hook_category ?? null,
+          hookStrength: draft.hook_strength ?? null,
+          hookValue: draft.hook_value ?? null,
+          templateVersion: draft.template_version ?? null,
+          subjectVariant: draft.subject_variant ?? null,
+          openerVariant: draft.opener_variant ?? null,
+          snapshot: { subject: draft.subject, recipientEmail, sequenceStep: 1 },
+        });
+        await logFollowUpEvent({
+          supabase,
+          userId,
+          leadId: lead.id,
+          draftId: draft.id,
+          status: "sent",
+          sentAt,
+          scheduledFor: nextFollowUpAt,
+        });
+      } catch (loggingError) {
+        console.error("Follow-up sent but pipeline logging failed:", loggingError);
       }
 
       const {

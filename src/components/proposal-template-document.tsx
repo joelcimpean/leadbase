@@ -366,10 +366,10 @@ export function ProposalTemplateDocument(props: ProposalTemplateDocumentProps) {
 
   const data = useMemo<RenderContext>(() => {
     const isGerman = props.isGerman;
-    const ownerName = props.ownerName || "Joel Cimpean";
+    const ownerName = props.ownerName || "Leadbase";
     const ownerRole = props.ownerRole || (isGerman ? "Webdesign & Entwicklung" : "Web design & development");
-    const ownerEmail = props.ownerEmail || "hello@joelcimpean.com";
-    const ownerSite = props.ownerSite || "joelcimpean.com";
+    const ownerEmail = props.ownerEmail || "";
+    const ownerSite = props.ownerSite || "";
     const introLines = cleanLines(props.introText);
     const status = localStatus;
     const accepted = status === "accepted";

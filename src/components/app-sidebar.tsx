@@ -148,12 +148,12 @@ function SidebarContent({
     ].sidebar;
 
   const [profileIdentity, setProfileIdentity] = useState<{ name: string; avatarUrl: string | null }>({
-    name: "Joel Cimpean",
+    name: "Leadbase user",
     avatarUrl: null,
   });
-  const [openAITokenUsage, setOpenAITokenUsage] = useState<number | null>(null);
+  const [creditUsage, setCreditUsage] = useState<number | null>(null);
   const [openAIUsageConfigured, setOpenAIUsageConfigured] = useState<boolean | null>(null);
-  const [openAITokenLimit, setOpenAITokenLimit] = useState<number | null>(null);
+  const [creditRemaining, setCreditRemaining] = useState<number | null>(null);
 
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
@@ -195,8 +195,8 @@ function SidebarContent({
     let attachSequence = 0;
 
     function clearUsage() {
-      setOpenAITokenUsage(null);
-      setOpenAITokenLimit(null);
+      setCreditUsage(null);
+      setCreditRemaining(null);
       setOpenAIUsageConfigured(null);
     }
 
@@ -208,17 +208,17 @@ function SidebarContent({
         );
         const data = await response.json() as {
           configured?: boolean;
-          totals?: { totalTokens?: number };
-          plan?: { effectiveLimit?: number | null };
+          totals?: { creditsUsed?: number };
+          plan?: { remainingCredits?: number };
         };
         if (cancelled || currentUserId !== userId) return;
-        const tokens = typeof data.totals?.totalTokens === "number" ? data.totals.totalTokens : null;
-        const limit = typeof data.plan?.effectiveLimit === "number" ? data.plan.effectiveLimit : null;
-        const configured = data.configured === true && tokens !== null;
-        setOpenAITokenUsage(tokens);
-        setOpenAITokenLimit(limit);
+        const creditsUsed = typeof data.totals?.creditsUsed === "number" ? data.totals.creditsUsed : null;
+        const remainingCredits = typeof data.plan?.remainingCredits === "number" ? data.plan.remainingCredits : null;
+        const configured = data.configured === true && creditsUsed !== null && remainingCredits !== null;
+        setCreditUsage(creditsUsed);
+        setCreditRemaining(remainingCredits);
         setOpenAIUsageConfigured(configured);
-        window.dispatchEvent(new CustomEvent("leadbase:ai-usage-updated", { detail: { tokens, limit, userId } }));
+        window.dispatchEvent(new CustomEvent("leadbase:ai-usage-updated", { detail: { creditsUsed, remainingCredits, userId } }));
       } catch {
         if (!cancelled && currentUserId === userId) setOpenAIUsageConfigured(false);
       }
@@ -328,26 +328,31 @@ function SidebarContent({
     .map((part) => part[0]?.toUpperCase())
     .join("") || "JC";
 
-  const compactTokens = openAITokenUsage === null
+  const compactCreditsUsed = creditUsage === null
     ? null
-    : openAITokenUsage >= 1_000_000
-      ? `${(openAITokenUsage / 1_000_000).toFixed(1)}M`
-      : openAITokenUsage >= 1_000
-        ? `${Math.round(openAITokenUsage / 1_000)}K`
-        : String(openAITokenUsage);
+    : creditUsage >= 1_000_000
+      ? `${(creditUsage / 1_000_000).toFixed(1)}M`
+      : creditUsage >= 1_000
+        ? `${Math.round(creditUsage / 1_000)}K`
+        : String(creditUsage);
 
-  const compactTokenLimit = openAITokenLimit === null
+  const compactCreditsRemaining = creditRemaining === null
     ? null
-    : openAITokenLimit >= 1_000_000
-      ? `${(openAITokenLimit / 1_000_000).toFixed(1)}M`
-      : openAITokenLimit >= 1_000
-        ? `${Math.round(openAITokenLimit / 1_000)}K`
-        : String(openAITokenLimit);
+    : creditRemaining >= 1_000_000
+      ? `${(creditRemaining / 1_000_000).toFixed(1)}M`
+      : creditRemaining >= 1_000
+        ? `${Math.round(creditRemaining / 1_000)}K`
+        : String(creditRemaining);
+
+  const creditPool =
+    creditUsage !== null && creditRemaining !== null
+      ? creditUsage + creditRemaining
+      : null;
 
   const usagePercent =
-    openAITokenUsage !== null && openAITokenLimit !== null && openAITokenLimit > 0
-      ? Math.min(100, Math.max(0, (openAITokenUsage / openAITokenLimit) * 100))
-      : openAITokenUsage && openAITokenUsage > 0
+    creditUsage !== null && creditPool !== null && creditPool > 0
+      ? Math.min(100, Math.max(0, (creditUsage / creditPool) * 100))
+      : creditUsage && creditUsage > 0
         ? 100
         : 0;
 
@@ -503,6 +508,7 @@ function SidebarContent({
                       ? item.name
                       : undefined
                   }
+                  data-leadbase-tour={item.key}
                   className={cn(
                     "relative flex h-9 items-center gap-[10px] overflow-hidden rounded-[10px] px-[10px] text-[13.5px] font-medium leading-[1.4] transition-colors duration-150",
                     isActive
@@ -598,7 +604,7 @@ function SidebarContent({
         <Link
           href="/profile#ai-usage"
           onClick={onNavigate}
-          title={collapsed ? (language === "de" ? "KI-Nutzung" : "AI usage") : undefined}
+          title={collapsed ? "Credits" : undefined}
           className={cn(
             "mt-2 block overflow-hidden rounded-[12px] border bg-white shadow-[0_1px_2px_rgba(11,12,14,0.02)] transition-[max-height,padding,opacity,border-color] duration-200 ease-out dark:bg-[#111216]",
             collapsed
@@ -615,18 +621,18 @@ function SidebarContent({
               <div className="flex items-center gap-[7px]">
                 <Sparkles className="size-3 shrink-0 text-primary" />
                 <span className="text-[11.5px] font-medium leading-[1.3] text-[var(--lb-text-secondary)] dark:text-[#AEB2BA]">
-                  {language === "de" ? "KI-Nutzung" : "AI usage"}
+                  {language === "de" ? "Credits" : "Credits"}
                 </span>
                 <span className="ml-auto font-mono text-[10px] tabular-nums text-[var(--lb-text-muted)] dark:text-[#8C9199]">
-                  {compactTokens ? (compactTokenLimit ? `${compactTokens} / ${compactTokenLimit}` : compactTokens) : (openAIUsageConfigured === false ? "Setup" : "0")}
+                  {compactCreditsRemaining !== null ? `${compactCreditsRemaining} ${language === "de" ? "übrig" : "left"}` : (openAIUsageConfigured === false ? "Setup" : "0")}
                 </span>
               </div>
               <div className="mt-[7px] h-1 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
                 <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${usagePercent}%` }} />
               </div>
               <div className="mt-[6px] flex items-center justify-between gap-2 font-mono text-[8.5px] uppercase tracking-[0.06em] text-[var(--lb-text-muted)] dark:text-[#8C9199]">
-                <span>{compactTokenLimit ? `${compactTokens ?? "0"} / ${compactTokenLimit}` : (language === "de" ? `${compactTokens ?? "0"} Tokens diesen Monat` : `${compactTokens ?? "0"} tokens this month`)}</span>
-                <span>{language === "de" ? "Details" : "Details"}</span>
+                <span>{language === "de" ? `${compactCreditsUsed ?? "0"} verbraucht` : `${compactCreditsUsed ?? "0"} used`}</span>
+                <span>{language === "de" ? "So funktioniert’s" : "How it works"}</span>
               </div>
             </>
           )}
@@ -721,6 +727,7 @@ function SidebarContent({
 
           <button
             type="button"
+            data-leadbase-tour="account"
             onClick={() => setAccountMenuOpen((open) => !open)}
             aria-haspopup="menu"
             aria-expanded={accountMenuOpen}

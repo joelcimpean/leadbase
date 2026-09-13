@@ -89,6 +89,7 @@ export async function proxy(
   ======================================================= */
 
   const isPublicRoute =
+    pathname === "/" ||
     pathname.startsWith(
       "/login"
     ) ||
@@ -106,6 +107,9 @@ export async function proxy(
     ) ||
     pathname.startsWith(
       "/api/cron"
+    ) ||
+    pathname.startsWith(
+      "/api/billing/webhook"
     );
 
   if (
@@ -135,12 +139,14 @@ export async function proxy(
     const url =
       request.nextUrl.clone();
 
-    url.pathname =
-      "/login";
+    const originalPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+    url.pathname = "/";
+    url.search = "";
+    if (originalPath !== "/") {
+      url.searchParams.set("next", originalPath);
+    }
 
-    return NextResponse.redirect(
-      url
-    );
+    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

@@ -33,6 +33,10 @@ import {
 } from "@/components/language-provider";
 
 import {
+  CreditEstimatePill,
+} from "@/components/credit-estimate-pill";
+
+import {
   type AppLanguage,
 } from "@/lib/i18n";
 
@@ -3055,7 +3059,7 @@ export function ReplyComposer({
             }
             rows={dock ? 4 : 8}
             className={dock
-              ? "min-h-[92px] 2xl:min-h-[108px] w-full resize-y bg-transparent p-0 text-[12.5px] 2xl:text-[13.5px] leading-6 2xl:leading-7 outline-none disabled:opacity-60"
+              ? "min-h-[92px] 2xl:min-h-[108px] w-full resize-y !rounded-none !border-0 !bg-transparent !p-0 !shadow-none text-[12.5px] 2xl:text-[13.5px] leading-6 2xl:leading-7 outline-none disabled:opacity-60"
               : "min-h-[180px] w-full resize-y bg-transparent p-0 text-sm leading-7 outline-none disabled:opacity-60"
             }
           />
@@ -3390,6 +3394,12 @@ export function ReplyComposer({
                   {
                     text.generateReply
                   }
+
+                  <CreditEstimatePill
+                    feature="reply_generation"
+                    language={language}
+                    hideOnSmall
+                  />
                 </>
               )}
             </button>

@@ -20,6 +20,18 @@ import {
 } from "@/lib/campaign-ideas";
 
 import {
+  campaignIdeaDisplayName,
+  campaignIdeaLocationDescription,
+  detectCampaignMarket,
+  rankCampaignIdeasForLocation,
+  suggestedCampaignGeography,
+} from "@/lib/campaign-location";
+
+import {
+  readLeadbaseUserIdentity,
+} from "@/lib/user-identity";
+
+import {
   getAppLanguage,
 } from "@/lib/i18n-server";
 
@@ -114,6 +126,16 @@ export default async function CampaignsPage() {
 
   const supabase =
     await createClient();
+
+  const { data: { user } } =
+    await supabase.auth.getUser();
+
+  const identity = readLeadbaseUserIdentity(
+    (user?.user_metadata ?? {}) as Record<string, unknown>,
+    user?.email ?? null,
+  );
+  const suggestionLocation = identity.location;
+  const suggestionMarket = detectCampaignMarket(suggestionLocation);
 
   const [
     campaignsResult,
@@ -474,18 +496,25 @@ export default async function CampaignsPage() {
 
   const ideas:
     CampaignWorkspaceIdea[] =
-    CAMPAIGN_IDEAS.filter(
-      (idea) =>
-        !existingIndustries.has(
-          idea.industry
-            .toLowerCase()
-            .trim()
-        )
+    rankCampaignIdeasForLocation(
+      CAMPAIGN_IDEAS.filter(
+        (idea) =>
+          !existingIndustries.has(
+            idea.industry
+              .toLowerCase()
+              .trim()
+          )
+      ),
+      suggestionLocation,
     )
       .slice(0, 6)
       .map((idea) => ({
         id: idea.id,
-        name: idea.name,
+        name: campaignIdeaDisplayName(
+          idea,
+          language,
+          suggestionMarket,
+        ),
         category:
           getCampaignIdeaCategoryLabel(
             idea.category,
@@ -496,12 +525,19 @@ export default async function CampaignsPage() {
             idea.fit,
             language
           ),
-        description:
-          getCampaignIdeaDescription(
-            idea.name,
-            idea.description,
-            language
-          ),
+        description: suggestionLocation
+          ? campaignIdeaLocationDescription(
+              idea,
+              suggestionLocation,
+              language,
+              suggestionMarket,
+            )
+          : getCampaignIdeaDescription(
+              idea.name,
+              idea.description,
+              language
+            ),
+        geography: suggestedCampaignGeography(suggestionLocation),
       }));
 
   const unassignedCount =

@@ -15,6 +15,7 @@ import {
 
 type SendGmailMessageInput = {
   fromEmail: string;
+  fromName?: string | null;
   toEmail: string;
   subject: string;
   body: string;
@@ -43,6 +44,7 @@ export type GmailAttachment = {
 
 type SendGmailMessageWithAttachmentsInput = {
   fromEmail: string;
+  fromName?: string | null;
   toEmail: string;
   subject: string;
   body: string;
@@ -52,6 +54,7 @@ type SendGmailMessageWithAttachmentsInput = {
 
 type SendGmailReplyInput = {
   fromEmail: string;
+  fromName?: string | null;
   body: string;
   encryptedRefreshToken: string;
 
@@ -66,6 +69,7 @@ type SendGmailReplyInput = {
 
 type SendGmailThreadFollowUpInput = {
   fromEmail: string;
+  fromName?: string | null;
   toEmail: string;
   body: string;
   encryptedRefreshToken: string;
@@ -94,6 +98,15 @@ function sanitizeHeader(
       " "
     )
     .trim();
+}
+
+function formatFromHeader(
+  fromEmail: string,
+  fromName?: string | null
+) {
+  const safeEmail = sanitizeHeader(fromEmail);
+  const safeName = fromName ? sanitizeHeader(fromName).replace(/[<>]/g, "") : "";
+  return safeName ? `${safeName} <${safeEmail}>` : safeEmail;
 }
 
 function encodeSubject(
@@ -260,6 +273,7 @@ function encodeFilename(
 
 function createRawMessage({
   fromEmail,
+  fromName,
   toEmail,
   subject,
   body,
@@ -267,6 +281,7 @@ function createRawMessage({
   inlineImages = [],
 }: {
   fromEmail: string;
+  fromName?: string | null;
   toEmail: string;
   subject: string;
   body: string;
@@ -292,7 +307,7 @@ function createRawMessage({
     );
 
   const headers = [
-    `From: Joel Cimpean <${safeFrom}>`,
+    `From: ${formatFromHeader(safeFrom, fromName)}`,
     `To: ${safeTo}`,
     `Subject: ${encodeSubject(
       safeSubject
@@ -502,6 +517,7 @@ function createRawMessage({
 
 function createRawReply({
   fromEmail,
+  fromName,
   toEmail,
   ccEmails,
   bccEmails,
@@ -512,6 +528,7 @@ function createRawReply({
   attachments,
 }: {
   fromEmail: string;
+  fromName?: string | null;
   toEmail: string;
   ccEmails: string[];
   bccEmails: string[];
@@ -557,7 +574,7 @@ function createRawReply({
     );
 
   const headers: string[] = [
-    `From: Joel Cimpean <${safeFrom}>`,
+    `From: ${formatFromHeader(safeFrom, fromName)}`,
     `To: ${safeTo}`,
   ];
 
@@ -706,12 +723,14 @@ function createRawReply({
 
 function createRawMessageWithAttachments({
   fromEmail,
+  fromName,
   toEmail,
   subject,
   body,
   attachments,
 }: {
   fromEmail: string;
+  fromName?: string | null;
   toEmail: string;
   subject: string;
   body: string;
@@ -733,7 +752,7 @@ function createRawMessageWithAttachments({
     );
 
   const headers = [
-    `From: Joel Cimpean <${safeFrom}>`,
+    `From: ${formatFromHeader(safeFrom, fromName)}`,
     `To: ${safeTo}`,
     `Subject: ${encodeSubject(
       safeSubject
@@ -867,6 +886,7 @@ function createAuthenticatedGmailClient(
 
 export async function sendGmailMessage({
   fromEmail,
+  fromName,
   toEmail,
   subject,
   body,
@@ -882,6 +902,7 @@ export async function sendGmailMessage({
   const raw =
     createRawMessage({
       fromEmail,
+      fromName,
       toEmail,
       subject,
       body,
@@ -923,6 +944,7 @@ export async function sendGmailMessage({
 
 export async function sendGmailMessageWithAttachments({
   fromEmail,
+  fromName,
   toEmail,
   subject,
   body,
@@ -937,6 +959,7 @@ export async function sendGmailMessageWithAttachments({
   const raw =
     createRawMessageWithAttachments({
       fromEmail,
+      fromName,
       toEmail,
       subject,
       body,
@@ -978,6 +1001,7 @@ export async function sendGmailMessageWithAttachments({
 
 export async function sendGmailThreadFollowUp({
   fromEmail,
+  fromName,
   toEmail,
   body,
   encryptedRefreshToken,
@@ -1054,6 +1078,7 @@ export async function sendGmailThreadFollowUp({
   const raw =
     createRawReply({
       fromEmail,
+      fromName,
       toEmail,
       ccEmails,
       bccEmails,
@@ -1101,6 +1126,7 @@ export async function sendGmailThreadFollowUp({
 
 export async function sendGmailReply({
   fromEmail,
+  fromName,
   body,
   encryptedRefreshToken,
   replyToGmailMessageId,
@@ -1225,6 +1251,7 @@ export async function sendGmailReply({
   const raw =
     createRawReply({
       fromEmail,
+      fromName,
 
       toEmail,
 

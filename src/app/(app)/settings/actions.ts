@@ -11,6 +11,9 @@ import {
 import {
   sendDueFollowUpsForUser,
 } from "@/lib/follow-up-worker";
+import {
+  cancelPendingFollowUps,
+} from "@/lib/outreach-pipeline";
 
 import {
   getAppLanguage,
@@ -710,6 +713,16 @@ export async function stopScheduledFollowUps(
   revalidatePath(
     "/"
   );
+
+  await Promise.all((stopped ?? []).map((row) =>
+    cancelPendingFollowUps({
+      supabase,
+      userId: user.id,
+      leadId: row.id,
+      reason: "manual_stop",
+      detail: "Manually stopped in Settings.",
+    })
+  ));
 
   const stoppedCount =
     stopped?.length ??

@@ -11,6 +11,8 @@ import {
   ThemeProvider,
 } from "@/components/theme-provider";
 
+import { getAppLanguage } from "@/lib/i18n-server";
+
 import "./globals.css";
 import "./leadbase-design-system.css";
 import "./leadbase-app-migration.css";
@@ -50,7 +52,7 @@ export const metadata:
       "Leadbase",
 
     description:
-      "Private lead generation and CRM workspace",
+      "Lead generation, outreach and client acquisition workspace",
   };
 
 
@@ -74,15 +76,17 @@ const themeBootScript = `
    ROOT LAYOUT
 ========================================================= */
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children:
     React.ReactNode;
 }>) {
+  const language = await getAppLanguage();
+
   return (
     <html
-      lang="de"
+      lang={language}
       suppressHydrationWarning
     >
       <head>

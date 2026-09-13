@@ -21,6 +21,8 @@ import {
 import {
   useLanguage,
 } from "@/components/language-provider";
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
 
 /* =========================================================
    TYPES
@@ -84,6 +86,12 @@ export function PreviewGifActions({
     notify,
   } =
     useAppNotifications();
+
+  const {
+    planId,
+    loading: planLoading,
+  } = useLeadbasePlan();
+  const canUsePreviewGif = planAllowsFeature(planId, "preview_gif");
 
   const [
     status,
@@ -292,6 +300,18 @@ export function PreviewGifActions({
       return;
     }
 
+    if (!canUsePreviewGif) {
+      notify({
+        variant: "warning",
+        title: language === "de" ? "Pro-Feature" : "Pro feature",
+        description:
+          language === "de"
+            ? "Preview-GIFs sind ab dem Pro-Plan verfügbar."
+            : "Preview GIFs are available from the Pro plan.",
+      });
+      return;
+    }
+
     setGenerating(
       true
     );
@@ -491,8 +511,11 @@ export function PreviewGifActions({
           <button
             type="button"
             disabled={
-              generating
+              generating ||
+              planLoading ||
+              !canUsePreviewGif
             }
+            title={!canUsePreviewGif ? (language === "de" ? "Ab Pro" : "Pro+") : undefined}
             onClick={() =>
               void generate()
             }

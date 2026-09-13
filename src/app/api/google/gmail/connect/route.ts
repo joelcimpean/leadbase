@@ -6,7 +6,6 @@ import {
 import {
   createGmailOAuthClient,
   createGmailOAuthState,
-  getConfiguredGmailAddress,
   GMAIL_OAUTH_SCOPES,
 } from "@/lib/gmail-oauth";
 
@@ -43,7 +42,7 @@ export async function GET(
   ) {
     return NextResponse.redirect(
       new URL(
-        "/login",
+        "/",
         request.url
       )
     );
@@ -88,9 +87,6 @@ export async function GET(
         "consent",
 
       state,
-
-      login_hint:
-        getConfiguredGmailAddress(),
     });
 
   return NextResponse.redirect(
