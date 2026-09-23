@@ -13,6 +13,15 @@ import {
   import {
     buildPublicDesignSnapshot,
   } from "@/lib/public-preview-current-snapshot";
+
+  import {
+    readLeadbaseBrandKit,
+    readableTextColor,
+  } from "@/lib/brand-kit";
+
+  import {
+    readLeadbaseUserIdentity,
+  } from "@/lib/user-identity";
   
   /* =========================================================
      TYPES
@@ -904,7 +913,7 @@ import {
        * This also runs when an existing public link is reactivated, so
        * users do not need a brand-new slug for the fix to take effect.
        */
-      const publicSourceSnapshot =
+      const capturedSourceSnapshot =
         await buildPublicDesignSnapshot({
           sourceSnapshot:
             selected.source_snapshot,
@@ -920,6 +929,53 @@ import {
           variantId:
             selected.id,
         });
+
+      const userMetadata =
+        (user.user_metadata ?? {}) as Record<string, unknown>;
+
+      const brandKit =
+        readLeadbaseBrandKit(
+          userMetadata
+        );
+
+      const ownerIdentity =
+        readLeadbaseUserIdentity(
+          userMetadata,
+          user.email
+        );
+
+      const publicSourceSnapshotBase =
+        isRecord(capturedSourceSnapshot)
+          ? capturedSourceSnapshot
+          : isRecord(selected.source_snapshot)
+            ? selected.source_snapshot
+            : {};
+
+      const publicSourceSnapshot = {
+        ...publicSourceSnapshotBase,
+        leadbaseBrandKit: {
+          ...brandKit,
+          textColor:
+            readableTextColor(
+              brandKit.brandColor
+            ),
+        },
+        leadbaseOwner: {
+          name:
+            ownerIdentity.senderName ||
+            ownerIdentity.fullName,
+          website:
+            ownerIdentity.website,
+          email:
+            ownerIdentity.replyEmail ||
+            user.email ||
+            "",
+          avatarUrl:
+            typeof userMetadata.avatar_url === "string"
+              ? userMetadata.avatar_url
+              : null,
+        },
+      };
   
       /*
        * There should only be one current customer-preview

@@ -24,6 +24,9 @@ import {
   resolveAccountCurrency,
 } from "@/lib/account-currency";
 
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -202,6 +205,11 @@ export async function createProject(
     redirect(
       "/login"
     );
+  }
+
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  if (!planAllowsFeature(planAccess.planId, "project_creation")) {
+    redirect("/profile?dialog=plan&access=project_creation");
   }
 
   const storedProfile = ((user.user_metadata ?? {}) as Record<string, unknown>).leadbase_profile as Record<string, unknown> | undefined;
@@ -595,6 +603,11 @@ export async function updateProject(
     );
   }
 
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  if (!planAllowsFeature(planAccess.planId, "project_creation")) {
+    redirect("/profile?dialog=plan&access=project_management");
+  }
+
   const projectId =
     getText(
       formData,
@@ -799,6 +812,11 @@ export async function deleteProject(
     redirect(
       "/login"
     );
+  }
+
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  if (!planAllowsFeature(planAccess.planId, "project_creation")) {
+    redirect("/profile?dialog=plan&access=project_management");
   }
 
   const {

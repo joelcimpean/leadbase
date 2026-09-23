@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import {
@@ -38,6 +39,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
+import { resolveFeatureAccess } from "@/lib/product-access";
 
 export type QuickCreateCampaignOption = {
   id: string;
@@ -259,17 +262,38 @@ export function LeadCreateDialog({
   campaigns,
   language,
   label,
+  freeLeadLimitReached = false,
 }: {
   campaigns: QuickCreateCampaignOption[];
   language: Language;
   label: string;
+  freeLeadLimitReached?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [gateMode, setGateMode] = useState(freeLeadLimitReached);
+  const previousLimitRef = useRef(freeLeadLimitReached);
   const de = language === "de";
+
+  useEffect(() => {
+    const becameLocked = !previousLimitRef.current && freeLeadLimitReached;
+    previousLimitRef.current = freeLeadLimitReached;
+
+    // A successful quick-create can revalidate the same /leads route while this
+    // client component stays mounted. Close the form instead of replacing it
+    // with the lock screen immediately after the first lead was created.
+    if (becameLocked && open && !gateMode) {
+      setOpen(false);
+    }
+  }, [freeLeadLimitReached, gateMode, open]);
+
+  function openCreateDialog() {
+    setGateMode(freeLeadLimitReached);
+    setOpen(true);
+  }
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={triggerBase}>
+      <button type="button" onClick={openCreateDialog} className={triggerBase}>
         <Plus className="size-3.5" />
         {label}
       </button>
@@ -278,9 +302,20 @@ export function LeadCreateDialog({
         open={open}
         onOpenChange={setOpen}
         eyebrow="CRM"
-        title={de ? "Lead hinzufügen" : "Add lead"}
-        description={de ? "Unternehmen direkt zum CRM hinzufügen, ohne den aktuellen Leads-Workspace zu verlassen." : "Add a company directly to the CRM without leaving the current leads workspace."}
+        title={gateMode ? (de ? "Free-Lead bereits verwendet" : "Free lead already used") : (de ? "Lead hinzufügen" : "Add lead")}
+        description={gateMode ? (de ? "Free enthält genau einen Demo-Lead. Das Löschen dieses Leads setzt den kostenlosen Slot nicht zurück." : "Free includes exactly one demo lead. Deleting that lead does not reset the free slot.") : (de ? "Unternehmen direkt zum CRM hinzufügen, ohne den aktuellen Leads-Workspace zu verlassen." : "Add a company directly to the CRM without leaving the current leads workspace.")}
       >
+        {gateMode ? (
+          <div className="px-[18px] py-5">
+            <div className="rounded-[11px] border border-black/[0.08] bg-[#F7F8FA] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <p className="text-[12.5px] font-medium">{de ? "Dein Demo-Workspace bleibt auf einen echten Lead begrenzt." : "Your demo workspace stays limited to one real lead."}</p>
+              <p className="mt-1.5 text-[11.5px] leading-5 text-[#6B7078] dark:text-[#A6ABB4]">{de ? "Du kannst den bestehenden Lead vollständig im Free-Flow testen. Zusätzliche Leads sind ab Starter verfügbar." : "You can complete the full Free flow with your existing lead. Additional leads are available from Starter."}</p>
+              <Link href="/profile?dialog=plan" className="mt-4 inline-flex h-[34px] items-center rounded-[10px] bg-[#002BBA] px-3.5 text-[12.5px] font-medium text-white hover:bg-[#00229A]">
+                {de ? "Auf Starter upgraden" : "Upgrade to Starter"}
+              </Link>
+            </div>
+          </div>
+        ) : (
         <form action={createLead} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-[18px] py-4">
             <SectionTitle
@@ -326,6 +361,7 @@ export function LeadCreateDialog({
             <ModalSubmitButton pending={de ? "Wird hinzugefügt …" : "Adding …"}>{de ? "Lead hinzufügen" : "Add lead"}</ModalSubmitButton>
           </div>
         </form>
+        )}
       </ModalShell>
     </>
   );
@@ -1721,6 +1757,13 @@ export function ProjectCreateDialog({
       false
     );
 
+  const { planId, loading: planLoading } = useLeadbasePlan();
+  const projectAccess = resolveFeatureAccess({
+    planId,
+    feature: "project_creation",
+  });
+  const projectCreationLocked = !planLoading && projectAccess.status !== "available";
+
   const de =
     language ===
     "de";
@@ -1800,13 +1843,26 @@ export function ProjectCreateDialog({
         open={open}
         onOpenChange={setOpen}
         eyebrow={de ? "Projekte" : "Projects"}
-        title={de ? "Projekt hinzufügen" : "Add project"}
+        title={projectCreationLocked ? (de ? "Projekte ab Starter" : "Projects from Starter") : (de ? "Projekt hinzufügen" : "Add project")}
         description={
-          de
-            ? "Ein Kundenprojekt direkt erfassen, ohne den Projekte-Workspace zu verlassen."
-            : "Create a client project directly without leaving the projects workspace."
+          projectCreationLocked
+            ? (de ? "Gewonnene Free-Leads bekommen automatisch ein Projekt, aber die Projektverwaltung ist ab Starter verfügbar." : "Won Free leads still get an automatic project, but project management is available from Starter.")
+            : de
+              ? "Ein Kundenprojekt direkt erfassen, ohne den Projekte-Workspace zu verlassen."
+              : "Create a client project directly without leaving the projects workspace."
         }
       >
+        {projectCreationLocked ? (
+          <div className="px-[18px] py-5">
+            <div className="rounded-[11px] border border-black/[0.08] bg-[#F7F8FA] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <p className="text-[12.5px] font-medium">{de ? "Upgrade auf Starter, um Projekte zu verwalten." : "Upgrade to Starter to create and manage projects."}</p>
+              <p className="mt-1.5 text-[11.5px] leading-5 text-[#6B7078] dark:text-[#A6ABB4]">{de ? "Wenn dein Free-Lead ein Angebot annimmt, legt Leadbase das Projekt trotzdem automatisch an. Zum Öffnen und Verwalten brauchst du Starter." : "When your Free lead accepts a proposal, Leadbase still creates the project automatically. Starter is required to open and manage it."}</p>
+              <Link href="/profile?dialog=plan" className="mt-4 inline-flex h-[34px] items-center rounded-[10px] bg-[#002BBA] px-3.5 text-[12.5px] font-medium text-white hover:bg-[#00229A]">
+                {de ? "Auf Starter upgraden" : "Upgrade to Starter"}
+              </Link>
+            </div>
+          </div>
+        ) : (
         <form
           action={createProject}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1858,6 +1914,7 @@ export function ProjectCreateDialog({
             </ModalSubmitButton>
           </div>
         </form>
+        )}
       </ModalShell>
     </>
   );

@@ -351,7 +351,7 @@ export async function acceptProposal(
     title:
       `Angebot angenommen · ${proposal.client_name}${(proposal.revision ?? 1) > 1 ? ` · V${proposal.revision}` : ""}`,
     description:
-      `${effectiveAcceptedByName} hat das Angebot „${proposal.title}“${(proposal.revision ?? 1) > 1 ? ` in Version ${proposal.revision}` : ""} verbindlich angenommen.${projectResult.projectId ? " Leadbase hat automatisch ein geplantes Projekt angelegt und den Lead auf Gewonnen gesetzt." : ""}`,
+      `${effectiveAcceptedByName} hat das Angebot „${proposal.title}“${(proposal.revision ?? 1) > 1 ? ` in Version ${proposal.revision}` : ""} verbindlich angenommen.${projectResult.projectId ? " Leadbase hat automatisch ein geplantes Projekt angelegt und den Lead auf Gewonnen gesetzt." : projectResult.upgradeRequired ? " Der Lead wurde auf Gewonnen gesetzt. Ein Projekt wird im Free-Plan nicht automatisch angelegt; dafür ist Starter oder höher erforderlich." : ""}`,
     href:
       `/leads/${proposal.lead_id}/proposal`,
     entityType:

@@ -1,0 +1,1179 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import { analyzeWebsite } from "@/lib/website-analysis";
+import { getOrRunEvidenceAudit, type PersistedEvidenceAudit } from "@/lib/evidence-audit";
+import { captureWebsiteScreenshots } from "@/lib/website-screenshot";
+import { analyzeWebsiteVisuals } from "@/lib/visual-website-analysis";
+import {
+  assessEmailQuality,
+} from "@/lib/email-quality";
+
+import { createClient } from "@/lib/supabase/server";
+import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
+import { assertPlanFeatureAvailable } from "@/lib/plan-access";
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function getSingleRelation<T>(
+  value: T | T[] | null
+): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value;
+}
+
+function getPriority(
+  opportunityScore: number
+): "LOW" | "MEDIUM" | "HIGH" {
+  if (opportunityScore >= 65) {
+    return "HIGH";
+  }
+
+  if (opportunityScore >= 40) {
+    return "MEDIUM";
+  }
+
+  return "LOW";
+}
+
+/* =========================================================
+   ANALYZE LEAD WEBSITE
+========================================================= */
+
+export async function analyzeLeadWebsite(
+  formData: FormData
+) {
+  const leadId =
+    formData.get("leadId");
+
+  const forceEvidenceAudit =
+    formData.get("forceEvidenceAudit") === "1";
+
+  if (
+    typeof leadId !== "string" ||
+    !leadId
+  ) {
+    return;
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } =
+    await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user
+  ) {
+    redirect("/login");
+  }
+
+  if (formData.get("bulk") === "1") {
+    await assertPlanFeatureAvailable(user.id, "bulk_analyze");
+  }
+
+  /* =========================================================
+     LOAD LEAD
+  ========================================================= */
+
+  const {
+    data: lead,
+    error: leadError,
+  } = await supabase
+    .from("leads")
+    .select(`
+      id,
+      company_id,
+      primary_contact_id,
+      campaign_id,
+
+      company:companies (
+        id,
+        website_url,
+        phone,
+        contact_form_url
+      ),
+
+      primary_contact:contacts (
+        id,
+        full_name,
+        job_title,
+        salutation,
+        is_decision_maker,
+        email,
+        phone,
+        source_url
+      )
+    `)
+    .eq(
+      "id",
+      leadId
+    )
+    .eq(
+      "user_id",
+      user.id
+    )
+    .maybeSingle();
+
+  if (
+    leadError ||
+    !lead
+  ) {
+    console.error(
+      "Could not load lead for analysis:",
+      leadError
+    );
+
+    return;
+  }
+
+  const company =
+    getSingleRelation(
+      lead.company
+    );
+
+  const currentContact =
+    getSingleRelation(
+      lead.primary_contact
+    );
+
+  /* =========================================================
+     NO WEBSITE
+  ========================================================= */
+
+  if (
+    !company?.website_url
+  ) {
+    const findings = [
+      {
+        key: "website",
+        label: "Website",
+        passed: false,
+
+        detail:
+          "No website was found for this company.",
+      },
+    ];
+
+    const {
+      error:
+        noWebsiteError,
+    } = await supabase
+      .from("leads")
+      .update({
+        structural_score:
+          0,
+
+        website_score:
+          0,
+
+        opportunity_score:
+          95,
+
+        priority:
+          "HIGH",
+
+        research_summary:
+          "No website was found for this company. This may represent a strong website opportunity, but the business should be manually verified before outreach.",
+
+        website_findings:
+          findings,
+
+        analysis_status:
+          "COMPLETED",
+
+        analyzed_at:
+          new Date().toISOString(),
+
+        analysis_error:
+          null,
+
+        visual_score:
+          null,
+
+        redesign_potential:
+          null,
+
+        visual_analysis:
+          {},
+
+        visual_analysis_status:
+          "NOT_ANALYZED",
+
+        visual_analysis_error:
+          null,
+
+        visual_analyzed_at:
+          null,
+
+        visual_model:
+          null,
+
+        visual_input_tokens:
+          null,
+
+        visual_output_tokens:
+          null,
+
+        visual_total_tokens:
+          null,
+      })
+      .eq(
+        "id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+    if (
+      noWebsiteError
+    ) {
+      console.error(
+        "Could not save no-website analysis:",
+        noWebsiteError
+      );
+
+      return;
+    }
+
+    revalidateEverything(
+      leadId,
+      lead.campaign_id
+    );
+
+    return;
+  }
+
+  /* =========================================================
+     MARK AS ANALYZING
+  ========================================================= */
+
+  const {
+    error:
+      analyzingError,
+  } = await supabase
+    .from("leads")
+    .update({
+      analysis_status:
+        "ANALYZING",
+
+      analysis_error:
+        null,
+
+      visual_analysis_status:
+        "ANALYZING",
+
+      visual_analysis_error:
+        null,
+    })
+    .eq(
+      "id",
+      leadId
+    )
+    .eq(
+      "user_id",
+      user.id
+    );
+
+  if (
+    analyzingError
+  ) {
+    console.error(
+      "Could not mark lead as analyzing:",
+      analyzingError
+    );
+
+    return;
+  }
+
+  /* =========================================================
+     STRUCTURAL / MULTI-PAGE ANALYSIS
+  ========================================================= */
+
+  let structuralResult;
+  let evidenceAudit: PersistedEvidenceAudit | null = null;
+
+  try {
+    structuralResult =
+      await analyzeWebsite(
+        company.website_url
+      );
+
+    // Evidence is a deterministic, versioned layer. It is deliberately
+    // best-effort here so a temporary PageSpeed/API issue never destroys the
+    // existing Leadbase structural analysis. Once the SQL migration is
+    // installed, the result is cached for seven days per lead.
+    try {
+      evidenceAudit = await getOrRunEvidenceAudit({
+        supabase,
+        userId: user.id,
+        leadId,
+        websiteUrl: company.website_url,
+        force: forceEvidenceAudit,
+      });
+      structuralResult.findings = [
+        ...structuralResult.findings,
+        ...evidenceAudit.findings.map((finding) => ({
+          key: `evidence_${finding.key}`,
+          label: finding.label,
+          passed: finding.severity === "info",
+          detail: finding.evidence,
+        })),
+      ];
+
+      // Evidence v2 inspects dedicated contact pages and JS/form-builder
+      // wrappers as well. Feed a verified form URL back into the existing
+      // company enrichment path when the older structural crawler missed it.
+      if (!structuralResult.contactFormUrl && evidenceAudit.contactFormUrl) {
+        structuralResult.contactFormUrl = evidenceAudit.contactFormUrl;
+      }
+    } catch (evidenceError) {
+      console.error("Evidence audit failed; continuing with existing analysis:", evidenceError);
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Structural website analysis failed.";
+
+    console.error(
+      "Structural website analysis failed:",
+      message
+    );
+
+    await supabase
+      .from("leads")
+      .update({
+        analysis_status:
+          "FAILED",
+
+        analysis_error:
+          message,
+
+        analyzed_at:
+          new Date().toISOString(),
+
+        visual_analysis_status:
+          "NOT_ANALYZED",
+      })
+      .eq(
+        "id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+    revalidateEverything(
+      leadId,
+      lead.campaign_id
+    );
+
+    return;
+  }
+
+  /* =========================================================
+     EMAIL QUALITY
+
+     Compare the stored recipient with:
+     - the real company website domain
+     - the email discovered during this crawl
+
+     Obvious placeholders / invalid addresses are replaced
+     automatically ONLY when the website gave us a safe public
+     replacement. Plausible personal emails are never silently
+     overwritten.
+  ========================================================= */
+
+  const initialEmailAssessment =
+    assessEmailQuality({
+      currentEmail:
+        currentContact?.email ??
+        null,
+
+      websiteUrl:
+        company.website_url,
+
+      discoveredEmail:
+        structuralResult.discoveredEmail,
+
+      discoveredEmailSourceUrl:
+        structuralResult.emailSourceUrl,
+    });
+
+  const emailAutoReplacement =
+    initialEmailAssessment
+      .shouldAutoReplace
+      ? initialEmailAssessment
+          .replacementEmail
+      : null;
+
+  const emailAssessment =
+    emailAutoReplacement
+      ? assessEmailQuality({
+          currentEmail:
+            emailAutoReplacement,
+
+          websiteUrl:
+            company.website_url,
+
+          discoveredEmail:
+            structuralResult.discoveredEmail,
+
+          discoveredEmailSourceUrl:
+            structuralResult.emailSourceUrl,
+        })
+      : initialEmailAssessment;
+
+  /*
+   * Store this in website_findings as well, so the normal
+   * structural-analysis UI immediately shows whether the
+   * recipient is safe / suspicious.
+   */
+  structuralResult.findings =
+    [
+      ...structuralResult.findings.filter(
+        (
+          finding
+        ) =>
+          finding.key !==
+          "email_quality"
+      ),
+
+      {
+        key:
+          "email_quality",
+
+        label:
+          "Email confidence",
+
+        passed:
+          emailAssessment.level ===
+          "good",
+
+        detail:
+          emailAutoReplacement
+            ? `Auto-corrected recipient to ${emailAutoReplacement}. ${emailAssessment.detail}`
+            : emailAssessment.detail,
+      },
+    ];
+
+  /* =========================================================
+     ENRICH COMPANY
+  ========================================================= */
+
+  const companyUpdates: {
+    phone?: string;
+    contact_form_url?: string;
+  } = {};
+
+  if (
+    structuralResult.discoveredPhone &&
+    !company.phone
+  ) {
+    companyUpdates.phone =
+      structuralResult.discoveredPhone;
+  }
+
+  if (
+    structuralResult.contactFormUrl &&
+    !company.contact_form_url
+  ) {
+    companyUpdates.contact_form_url =
+      structuralResult.contactFormUrl;
+  }
+
+  if (
+    Object.keys(
+      companyUpdates
+    ).length > 0
+  ) {
+    const {
+      error:
+        companyUpdateError,
+    } = await supabase
+      .from("companies")
+      .update(
+        companyUpdates
+      )
+      .eq(
+        "id",
+        lead.company_id
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+    if (
+      companyUpdateError
+    ) {
+      console.error(
+        "Could not enrich company:",
+        companyUpdateError
+      );
+    }
+  }
+
+  /* =========================================================
+     ENRICH PRIMARY CONTACT
+  ========================================================= */
+
+  const discoveredName =
+    structuralResult.decisionMakerName;
+
+  const discoveredRole =
+    structuralResult.decisionMakerRole;
+
+  const discoveredSalutation =
+    structuralResult.decisionMakerSalutation;
+
+  const discoveredContactSource =
+    structuralResult.decisionMakerSourceUrl ??
+    structuralResult.emailSourceUrl ??
+    structuralResult.phoneSourceUrl;
+
+  /*
+   * CASE 1:
+   * Contact already exists.
+   *
+   * Example Thomas:
+   * email + phone already exist,
+   * but name/job title were previously empty.
+   *
+   * We enrich the existing contact instead of
+   * creating a duplicate.
+   */
+
+  if (
+    currentContact?.id
+  ) {
+    const contactUpdates: {
+      full_name?: string;
+      job_title?: string;
+      salutation?: "HERR" | "FRAU";
+      is_decision_maker?: boolean;
+      email?: string;
+      phone?: string;
+      source_url?: string;
+
+      email_quality_status?: string;
+      email_quality_detail?: string;
+      email_source_url?: string | null;
+      email_candidate?: string | null;
+      email_candidate_source_url?: string | null;
+      email_checked_at?: string;
+    } = {};
+
+    /* -------------------------------------------------------
+       NAME
+    ------------------------------------------------------- */
+
+    if (
+      discoveredName &&
+      !currentContact.full_name
+    ) {
+      contactUpdates.full_name =
+        discoveredName;
+    }
+
+    /* -------------------------------------------------------
+       ROLE
+    ------------------------------------------------------- */
+
+    if (
+      discoveredRole &&
+      !currentContact.job_title
+    ) {
+      contactUpdates.job_title =
+        discoveredRole;
+    }
+
+    /* -------------------------------------------------------
+       SALUTATION
+
+       Only set when website explicitly gave us
+       Herr/Frau. We never guess this from first name.
+    ------------------------------------------------------- */
+
+    if (
+      discoveredSalutation &&
+      !currentContact.salutation
+    ) {
+      contactUpdates.salutation =
+        discoveredSalutation;
+    }
+
+    /* -------------------------------------------------------
+       DECISION MAKER FLAG
+    ------------------------------------------------------- */
+
+    if (
+      discoveredName &&
+      !currentContact.is_decision_maker
+    ) {
+      contactUpdates.is_decision_maker =
+        true;
+    }
+
+    /* -------------------------------------------------------
+       EMAIL + EMAIL QUALITY
+    ------------------------------------------------------- */
+
+    if (
+      emailAutoReplacement
+    ) {
+      contactUpdates.email =
+        emailAutoReplacement;
+    } else if (
+      structuralResult.discoveredEmail &&
+      !currentContact.email
+    ) {
+      contactUpdates.email =
+        structuralResult.discoveredEmail;
+    }
+
+    contactUpdates.email_quality_status =
+      emailAssessment.status;
+
+    contactUpdates.email_quality_detail =
+      emailAutoReplacement
+        ? `Automatisch auf ${emailAutoReplacement} korrigiert. ${emailAssessment.detail}`
+        : emailAssessment.detail;
+
+    contactUpdates.email_source_url =
+      (
+        emailAutoReplacement ||
+        emailAssessment.status ===
+          "VERIFIED_WEBSITE"
+      )
+        ? structuralResult.emailSourceUrl
+        : null;
+
+    contactUpdates.email_candidate =
+      emailAssessment.candidateEmail;
+
+    contactUpdates.email_candidate_source_url =
+      emailAssessment.candidateSourceUrl;
+
+    contactUpdates.email_checked_at =
+      new Date()
+        .toISOString();
+
+    /* -------------------------------------------------------
+       PHONE
+    ------------------------------------------------------- */
+
+    if (
+      structuralResult.discoveredPhone &&
+      !currentContact.phone
+    ) {
+      contactUpdates.phone =
+        structuralResult.discoveredPhone;
+    }
+
+    /* -------------------------------------------------------
+       SOURCE
+    ------------------------------------------------------- */
+
+    if (
+      discoveredContactSource &&
+      !currentContact.source_url
+    ) {
+      contactUpdates.source_url =
+        discoveredContactSource;
+    }
+
+    /* -------------------------------------------------------
+       UPDATE
+    ------------------------------------------------------- */
+
+    if (
+      Object.keys(
+        contactUpdates
+      ).length > 0
+    ) {
+      const {
+        error:
+          contactUpdateError,
+      } = await supabase
+        .from("contacts")
+        .update(
+          contactUpdates
+        )
+        .eq(
+          "id",
+          currentContact.id
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      if (
+        contactUpdateError
+      ) {
+        console.error(
+          "Could not enrich contact:",
+          contactUpdateError
+        );
+      }
+    }
+  }
+
+  /*
+   * CASE 2:
+   * No primary contact exists yet.
+   *
+   * Create one when we found at least:
+   * - a person,
+   * - an email,
+   * - or a phone number.
+   */
+
+  else if (
+    discoveredName ||
+    structuralResult.discoveredEmail ||
+    structuralResult.discoveredPhone
+  ) {
+    const {
+      data:
+        newContact,
+
+      error:
+        contactCreateError,
+    } = await supabase
+      .from("contacts")
+      .insert({
+        user_id:
+          user.id,
+
+        company_id:
+          lead.company_id,
+
+        full_name:
+          discoveredName,
+
+        job_title:
+          discoveredRole,
+
+        salutation:
+          discoveredSalutation,
+
+        is_decision_maker:
+          Boolean(
+            discoveredName
+          ),
+
+        email:
+          structuralResult.discoveredEmail,
+
+        phone:
+          structuralResult.discoveredPhone,
+
+        source_url:
+          discoveredContactSource,
+
+        email_quality_status:
+          emailAssessment.status,
+
+        email_quality_detail:
+          emailAssessment.detail,
+
+        email_source_url:
+          structuralResult.emailSourceUrl,
+
+        email_candidate:
+          null,
+
+        email_candidate_source_url:
+          null,
+
+        email_checked_at:
+          new Date()
+            .toISOString(),
+
+        is_primary:
+          true,
+      })
+      .select("id")
+      .single();
+
+    if (
+      contactCreateError ||
+      !newContact
+    ) {
+      console.error(
+        "Could not create discovered contact:",
+        contactCreateError
+      );
+    } else {
+      const {
+        error:
+          attachContactError,
+      } = await supabase
+        .from("leads")
+        .update({
+          primary_contact_id:
+            newContact.id,
+        })
+        .eq(
+          "id",
+          leadId
+        )
+        .eq(
+          "user_id",
+          user.id
+        );
+
+      if (
+        attachContactError
+      ) {
+        console.error(
+          "Could not attach contact to lead:",
+          attachContactError
+        );
+      }
+    }
+  }
+
+  /* =========================================================
+     VISUAL ANALYSIS
+  ========================================================= */
+
+  try {
+    const usageGuard = await assertAiUsageAvailable(user.id, {
+      feature: "lead_analysis",
+      model: "gpt-5.6-luna",
+      metadata: { leadId },
+    });
+
+    const screenshots =
+      await captureWebsiteScreenshots(
+        company.website_url
+      );
+
+    const visualResult =
+      await analyzeWebsiteVisuals({
+        websiteUrl:
+          screenshots.finalUrl,
+
+        desktop:
+          screenshots.desktop,
+
+        mobile:
+          screenshots.mobile,
+      });
+
+    /* =======================================================
+       FINAL SCORES
+
+       Structural = HTML, content, conversion, business signals
+       Visual     = design, hierarchy, branding, mobile quality
+    ======================================================= */
+
+    const finalWebsiteScore =
+      Math.round(
+        structuralResult.websiteScore *
+          0.45 +
+          visualResult.visualScore *
+            0.55
+      );
+
+    const finalOpportunityScore =
+      Math.round(
+        structuralResult.opportunityScore *
+          0.45 +
+          visualResult.redesignPotential *
+            0.55
+      );
+
+    const finalPriority =
+      getPriority(
+        finalOpportunityScore
+      );
+
+    /* =======================================================
+       COMBINED SUMMARY
+    ======================================================= */
+
+    const combinedSummary = [
+      structuralResult.summary,
+
+      `Visual analysis: ${visualResult.summary}`,
+
+      `Redesign potential: ${visualResult.redesignPotential}/100.`,
+
+      `Redesign reason: ${visualResult.redesignReason}`,
+
+      `Suggested outreach angle: ${visualResult.outreachAngle}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    /* =======================================================
+       SAVE COMPLETE V3 RESULT
+    ======================================================= */
+
+    const {
+      error:
+        finalUpdateError,
+    } = await supabase
+      .from("leads")
+      .update({
+        structural_score:
+          structuralResult.websiteScore,
+
+        visual_score:
+          visualResult.visualScore,
+
+        redesign_potential:
+          visualResult.redesignPotential,
+
+        website_score:
+          finalWebsiteScore,
+
+        opportunity_score:
+          finalOpportunityScore,
+
+        priority:
+          finalPriority,
+
+        research_summary:
+          combinedSummary,
+
+        website_findings:
+          structuralResult.findings,
+
+        analysis_status:
+          "COMPLETED",
+
+        analyzed_at:
+          new Date().toISOString(),
+
+        analysis_error:
+          null,
+
+        visual_analysis:
+          visualResult,
+
+        visual_analysis_status:
+          "COMPLETED",
+
+        visual_analysis_error:
+          null,
+
+        visual_analyzed_at:
+          new Date().toISOString(),
+
+        visual_model:
+          visualResult.model,
+
+        visual_input_tokens:
+          visualResult.usage.inputTokens,
+
+        visual_output_tokens:
+          visualResult.usage.outputTokens,
+
+        visual_total_tokens:
+          visualResult.usage.totalTokens,
+      })
+      .eq(
+        "id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+    if (
+      finalUpdateError
+    ) {
+      throw new Error(
+        finalUpdateError.message
+      );
+    }
+
+    await recordAiUsage({
+      userId: user.id,
+      feature: "lead_analysis",
+      model: visualResult.model,
+      usage: visualResult.usage,
+      requestKey: `lead-analysis:${leadId}:${visualResult.model}:${visualResult.usage.totalTokens}:${new Date().toISOString().slice(0, 16)}`,
+      reservationKey: usageGuard.reservationKey,
+      metadata: { leadId },
+    });
+
+    /* =======================================================
+       ACTIVITY
+    ======================================================= */
+
+    const {
+      error:
+        activityError,
+    } = await supabase
+      .from("activities")
+      .insert({
+        user_id:
+          user.id,
+
+        lead_id:
+          leadId,
+
+        activity_type:
+          "WEBSITE_ANALYZED",
+
+        title:
+          "Website analyzed",
+
+        description:
+          `Final website score ${finalWebsiteScore}/100 · ` +
+          `Opportunity score ${finalOpportunityScore}/100 · ` +
+          `Visual score ${visualResult.visualScore}/100 · ` +
+          `${structuralResult.analyzedPages.length} pages crawled.`,
+      });
+
+    if (
+      activityError
+    ) {
+      console.error(
+        "Could not create analysis activity:",
+        activityError
+      );
+    }
+  } catch (error) {
+    /* =======================================================
+       VISUAL FAILED
+       KEEP STRUCTURAL ANALYSIS
+    ======================================================= */
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Visual website analysis failed.";
+
+    console.error(
+      "Visual website analysis failed:",
+      message
+    );
+
+    const {
+      error:
+        fallbackError,
+    } = await supabase
+      .from("leads")
+      .update({
+        structural_score:
+          structuralResult.websiteScore,
+
+        website_score:
+          structuralResult.websiteScore,
+
+        opportunity_score:
+          structuralResult.opportunityScore,
+
+        priority:
+          structuralResult.priority,
+
+        research_summary:
+          structuralResult.summary,
+
+        website_findings:
+          structuralResult.findings,
+
+        analysis_status:
+          "COMPLETED",
+
+        analyzed_at:
+          new Date().toISOString(),
+
+        analysis_error:
+          null,
+
+        visual_analysis_status:
+          "FAILED",
+
+        visual_analysis_error:
+          message,
+
+        visual_analyzed_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        leadId
+      )
+      .eq(
+        "user_id",
+        user.id
+      );
+
+    if (
+      fallbackError
+    ) {
+      console.error(
+        "Could not save structural fallback:",
+        fallbackError
+      );
+    }
+  }
+
+  /* =========================================================
+     REFRESH UI
+  ========================================================= */
+
+  revalidateEverything(
+    leadId,
+    lead.campaign_id
+  );
+}
+
+/* =========================================================
+   REVALIDATE
+========================================================= */
+
+function revalidateEverything(
+  leadId: string,
+  campaignId:
+    | string
+    | null
+) {
+  revalidatePath(
+    "/leads"
+  );
+
+  revalidatePath(
+    `/leads/${leadId}`
+  );
+
+  revalidatePath(
+    `/leads/${leadId}/edit`
+  );
+
+  revalidatePath(
+    "/campaigns"
+  );
+
+  if (
+    campaignId
+  ) {
+    revalidatePath(
+      `/campaigns/${campaignId}`
+    );
+  }
+}

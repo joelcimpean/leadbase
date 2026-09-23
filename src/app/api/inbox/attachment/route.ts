@@ -14,6 +14,11 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    assertFreeWorkspaceLeadAllowed,
+    isFreeWorkspaceLeadScopeError,
+  } from "@/lib/free-experience";
   
   export const runtime =
     "nodejs";
@@ -207,6 +212,7 @@ import {
           )
           .select(`
             id,
+            lead_id,
             gmail_message_id
           `)
           .eq(
@@ -240,6 +246,15 @@ import {
           "Email not found.",
           404
         );
+      }
+
+      try {
+        await assertFreeWorkspaceLeadAllowed(user.id, storedMessage.lead_id);
+      } catch (scopeError) {
+        if (isFreeWorkspaceLeadScopeError(scopeError)) {
+          return jsonError("This conversation is not available on Free.", 403);
+        }
+        throw scopeError;
       }
   
       /* =====================================================

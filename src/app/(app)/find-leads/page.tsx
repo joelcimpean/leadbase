@@ -13,6 +13,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  getFreeDiscoverySessionStatus,
+} from "@/lib/free-experience";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -113,6 +117,28 @@ export default async function FindLeadsPage({
 
   const supabase =
     await createClient();
+
+  const {
+    data: {
+      user,
+    },
+  } =
+    await supabase.auth.getUser();
+
+  const freeDiscovery =
+    user
+      ? await getFreeDiscoverySessionStatus(
+          user.id
+        )
+      : {
+          isFree: false,
+          available: true,
+          used: false,
+          inProgress: false,
+          searchId: null,
+          campaignId: null,
+          usedAt: null,
+        };
 
   /* =======================================================
      CAMPAIGNS + SEARCH RUNS + GLOBAL REVIEW COUNT
@@ -700,6 +726,9 @@ export default async function FindLeadsPage({
       pageError={
         params.error ??
         null
+      }
+      freeDiscovery={
+        freeDiscovery
       }
     />
   );

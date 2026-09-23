@@ -26,20 +26,17 @@ function redirectToSettings(
   request: NextRequest,
   status: string
 ) {
-  const url =
-    new URL(
-      "/settings",
-      request.url
-    );
+  const returnTo =
+    request.cookies.get("leadbase_gmail_return_to")?.value === "/"
+      ? "/"
+      : "/settings";
 
-  url.searchParams.set(
-    "gmail",
-    status
-  );
+  const url = new URL(returnTo, request.url);
+  url.searchParams.set("gmail", status);
 
-  return NextResponse.redirect(
-    url
-  );
+  const response = NextResponse.redirect(url);
+  response.cookies.delete("leadbase_gmail_return_to");
+  return response;
 }
 
 /* =========================================================

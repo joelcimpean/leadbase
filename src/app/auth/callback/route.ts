@@ -24,5 +24,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(destination);
   }
 
-  return NextResponse.redirect(destination);
+  const response = NextResponse.redirect(destination);
+  if (destination.pathname === "/auth/reset") {
+    response.cookies.set("leadbase_password_recovery", "1", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/auth/reset",
+      maxAge: 15 * 60,
+    });
+  }
+
+  return response;
 }

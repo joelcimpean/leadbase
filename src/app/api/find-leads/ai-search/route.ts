@@ -27,7 +27,17 @@ import {
   import {
     assertAiUsageAvailable,
     recordAiUsage,
+    runWithAiUsageWorkflowContext,
   } from "@/lib/ai-usage";
+
+  import {
+    claimFreeDiscoverySession,
+    finalizeFreeDiscoverySession,
+    getFreeDiscoverySessionStatus,
+    isFreeDiscoverySessionError,
+    releaseFreeDiscoverySession,
+    type FreeDiscoverySessionClaim,
+  } from "@/lib/free-experience";
   
   /* =========================================================
      CONFIG
@@ -850,27 +860,6 @@ import {
       );
     }
   
-    if (
-      !campaignId
-    ) {
-      return NextResponse.json(
-        {
-          ok:
-            false,
-  
-          error:
-            language ===
-            "de"
-              ? "Bitte wähle eine Kampagne aus."
-              : "Please select a campaign.",
-        },
-        {
-          status:
-            400,
-        }
-      );
-    }
-  
     /* =======================================================
        ENV
     ======================================================= */
@@ -938,61 +927,44 @@ import {
 
     const planAccess = await getLeadbasePlanAccess(user.id);
     const planResultLimit = planAccess.entitlements.limits.aiLeadSearchMaxResultsPerRun;
-  
-    /* =======================================================
-       CAMPAIGN
-    ======================================================= */
-  
-    const {
-      data:
-        campaign,
-  
-      error:
-        campaignError,
-    } =
-      await supabase
-        .from(
-          "campaigns"
-        )
-        .select(`
-          id,
-          name,
-          status
-        `)
-        .eq(
-          "id",
-          campaignId
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .neq(
-          "status",
-          "ARCHIVED"
-        )
-        .maybeSingle();
-  
+
     if (
-      campaignError ||
-      !campaign
+      planAccess.planId ===
+      "free"
     ) {
-      return NextResponse.json(
-        {
-          ok:
-            false,
-  
-          error:
-            language ===
-            "de"
-              ? "Die ausgewählte Kampagne wurde nicht gefunden."
-              : "The selected campaign could not be found.",
-        },
-        {
-          status:
-            404,
-        }
-      );
+      const discoveryStatus =
+        await getFreeDiscoverySessionStatus(
+          user.id
+        );
+
+      if (
+        !discoveryStatus.available
+      ) {
+        return NextResponse.json(
+          {
+            ok:
+              false,
+
+            code:
+              discoveryStatus.inProgress
+                ? "FREE_DISCOVERY_IN_PROGRESS"
+                : "FREE_DISCOVERY_ALREADY_USED",
+
+            error:
+              discoveryStatus.inProgress
+                ? (language === "de"
+                    ? "Deine kostenlose Suche läuft bereits. Bitte warte kurz."
+                    : "Your Free discovery search is already running. Please wait for it to finish.")
+                : (language === "de"
+                    ? "Deine einmalige kostenlose Discovery-Suche wurde bereits verwendet. Weitere Suchen sind ab Starter verfügbar."
+                    : "Your one-time Free discovery search has already been used. Additional searches are available from Starter."),
+          },
+          {
+            status:
+              409,
+          }
+        );
+      }
     }
   
     /* =======================================================
@@ -1006,24 +978,102 @@ import {
         >
       >;
   
-    let usageReservationKey: string | null = null;
-
     try {
-      const usageGuard = await assertAiUsageAvailable(user.id, {
-        feature: "ai_lead_search",
-        model: process.env.OPENAI_LEAD_SEARCH_MODEL ?? "gpt-5-mini",
-        metadata: { campaignId },
-      });
-      usageReservationKey = usageGuard.reservationKey;
+      const runInterpretation =
+        async () => {
+          const usageGuard =
+            await assertAiUsageAvailable(
+              user.id,
+              {
+                feature:
+                  "ai_lead_search",
+
+                model:
+                  process.env
+                    .OPENAI_LEAD_SEARCH_MODEL ??
+                  "gpt-5-mini",
+
+                metadata: {
+                  campaignId:
+                    campaignId ||
+                    null,
+
+                  discoveryMode:
+                    campaignId
+                      ? "selected_campaign"
+                      : "auto_campaign",
+                },
+              }
+            );
+
+          const parsedIntent =
+            await interpretPrompt({
+              prompt,
+
+              language,
+
+              context,
+            });
+
+          await recordAiUsage({
+            userId:
+              user.id,
+
+            feature:
+              "ai_lead_search",
+
+            model:
+              parsedIntent._model,
+
+            usage:
+              parsedIntent._usage,
+
+            requestKey:
+              `ai-lead-search:${campaignId || "auto"}:${crypto.randomUUID()}`,
+
+            reservationKey:
+              usageGuard.reservationKey,
+
+            metadata: {
+              campaignId:
+                campaignId ||
+                null,
+
+              prompt:
+                prompt.slice(
+                  0,
+                  240
+                ),
+            },
+          });
+
+          return parsedIntent;
+        };
 
       intent =
-        await interpretPrompt({
-          prompt,
-  
-          language,
-  
-          context,
-        });
+        planAccess.planId ===
+        "free"
+          ? await runWithAiUsageWorkflowContext(
+              {
+                userId:
+                  user.id,
+
+                workflowRunId:
+                  `free-discovery:${user.id}`,
+
+                billingMode:
+                  "fixed_bundle",
+
+                fixedCredits:
+                  0,
+
+                allowedFeatures: [
+                  "ai_lead_search",
+                ],
+              },
+              runInterpretation
+            )
+          : await runInterpretation();
     } catch (
       error
     ) {
@@ -1049,16 +1099,6 @@ import {
         }
       );
     }
-  
-    await recordAiUsage({
-      userId: user.id,
-      feature: "ai_lead_search",
-      model: intent._model,
-      usage: intent._usage,
-      requestKey: `ai-lead-search:${campaignId}:${crypto.randomUUID()}`,
-      reservationKey: usageReservationKey,
-      metadata: { campaignId, prompt: prompt.slice(0, 240) },
-    });
 
     intent = {
       ...intent,
@@ -1102,6 +1142,316 @@ import {
       resultLimit:
         intent.resultLimit,
     };
+  
+    /* =======================================================
+       FREE DISCOVERY CLAIM
+
+       Clarification turns happen above and do not consume the
+       one Free discovery session. The claim starts only now,
+       immediately before a real company-discovery request.
+    ======================================================= */
+
+    let freeDiscoveryClaim:
+      | FreeDiscoverySessionClaim
+      | null =
+      null;
+
+    try {
+      freeDiscoveryClaim =
+        await claimFreeDiscoverySession(
+          user.id
+        );
+    } catch (error) {
+      if (
+        isFreeDiscoverySessionError(
+          error
+        )
+      ) {
+        return NextResponse.json(
+          {
+            ok:
+              false,
+
+            code:
+              error instanceof Error &&
+              error.message ===
+                "FREE_DISCOVERY_IN_PROGRESS"
+                ? "FREE_DISCOVERY_IN_PROGRESS"
+                : "FREE_DISCOVERY_ALREADY_USED",
+
+            error:
+              error instanceof Error &&
+              error.message ===
+                "FREE_DISCOVERY_IN_PROGRESS"
+                ? (language === "de"
+                    ? "Deine kostenlose Suche läuft bereits. Bitte warte kurz."
+                    : "Your Free discovery search is already running. Please wait for it to finish.")
+                : (language === "de"
+                    ? "Deine einmalige kostenlose Discovery-Suche wurde bereits verwendet. Weitere Suchen sind ab Starter verfügbar."
+                    : "Your one-time Free discovery search has already been used. Additional searches are available from Starter."),
+          },
+          {
+            status:
+              409,
+          }
+        );
+      }
+
+      throw error;
+    }
+
+    /* =======================================================
+       RESOLVE / AUTO-CREATE CAMPAIGN
+    ======================================================= */
+
+    const resolvedIndustry =
+      intent.industries.join(
+        ", "
+      );
+
+    let campaign:
+      | {
+          id: string;
+          name: string;
+          status: string;
+        }
+      | null =
+      null;
+
+    if (
+      campaignId
+    ) {
+      const {
+        data,
+        error,
+      } =
+        await supabase
+          .from(
+            "campaigns"
+          )
+          .select(`
+            id,
+            name,
+            status
+          `)
+          .eq(
+            "id",
+            campaignId
+          )
+          .eq(
+            "user_id",
+            user.id
+          )
+          .neq(
+            "status",
+            "ARCHIVED"
+          )
+          .maybeSingle();
+
+      if (
+        error ||
+        !data
+      ) {
+        await releaseFreeDiscoverySession(
+          user.id,
+          freeDiscoveryClaim
+        );
+
+        return NextResponse.json(
+          {
+            ok:
+              false,
+
+            error:
+              language ===
+              "de"
+                ? "Die ausgewählte Kampagne wurde nicht gefunden."
+                : "The selected campaign could not be found.",
+          },
+          {
+            status:
+              404,
+          }
+        );
+      }
+
+      campaign =
+        data;
+    } else {
+      const {
+        data:
+          matchingCampaign,
+        error:
+          matchingCampaignError,
+      } =
+        await supabase
+          .from(
+            "campaigns"
+          )
+          .select(`
+            id,
+            name,
+            status
+          `)
+          .eq(
+            "user_id",
+            user.id
+          )
+          .eq(
+            "target_industry",
+            resolvedIndustry
+          )
+          .eq(
+            "target_geography",
+            intent.location
+          )
+          .neq(
+            "status",
+            "ARCHIVED"
+          )
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            }
+          )
+          .limit(
+            1
+          )
+          .maybeSingle();
+
+      if (
+        matchingCampaignError
+      ) {
+        await releaseFreeDiscoverySession(
+          user.id,
+          freeDiscoveryClaim
+        );
+
+        return NextResponse.json(
+          {
+            ok:
+              false,
+
+            error:
+              language === "de"
+                ? "Die automatische Kampagne konnte nicht vorbereitet werden."
+                : "The automatic campaign could not be prepared.",
+          },
+          {
+            status:
+              500,
+          }
+        );
+      }
+
+      if (
+        matchingCampaign
+      ) {
+        campaign =
+          matchingCampaign;
+      } else {
+        const automaticName =
+          `${intent.location} ${intent.industries[0] ?? resolvedIndustry}`
+            .replace(
+              /\s+/g,
+              " "
+            )
+            .trim()
+            .slice(
+              0,
+              120
+            );
+
+        const {
+          data:
+            createdCampaign,
+          error:
+            createCampaignError,
+        } =
+          await supabase
+            .from(
+              "campaigns"
+            )
+            .insert({
+              user_id:
+                user.id,
+
+              name:
+                automaticName,
+
+              target_industry:
+                resolvedIndustry,
+
+              target_geography:
+                intent.location,
+
+              status:
+                "ACTIVE",
+            })
+            .select(`
+              id,
+              name,
+              status
+            `)
+            .single();
+
+        if (
+          createCampaignError ||
+          !createdCampaign
+        ) {
+          await releaseFreeDiscoverySession(
+            user.id,
+            freeDiscoveryClaim
+          );
+
+          return NextResponse.json(
+            {
+              ok:
+                false,
+
+              error:
+                language === "de"
+                  ? "Die automatische Kampagne konnte nicht erstellt werden."
+                  : "The automatic campaign could not be created.",
+            },
+            {
+              status:
+                500,
+            }
+          );
+        }
+
+        campaign =
+          createdCampaign;
+      }
+    }
+
+    if (
+      !campaign
+    ) {
+      await releaseFreeDiscoverySession(
+        user.id,
+        freeDiscoveryClaim
+      );
+
+      return NextResponse.json(
+        {
+          ok:
+            false,
+
+          error:
+            language === "de"
+              ? "Für diese Suche konnte keine Kampagne vorbereitet werden."
+              : "A campaign could not be prepared for this search.",
+        },
+        {
+          status:
+            500,
+        }
+      );
+    }
   
     /* =======================================================
        CREATE SEARCH
@@ -1162,6 +1512,11 @@ import {
       console.error(
         "Could not create AI lead search:",
         searchError
+      );
+
+      await releaseFreeDiscoverySession(
+        user.id,
+        freeDiscoveryClaim
       );
   
       return NextResponse.json(
@@ -1703,6 +2058,18 @@ import {
           completeError.message
         );
       }
+
+      await finalizeFreeDiscoverySession(
+        user.id,
+        freeDiscoveryClaim,
+        {
+          searchId:
+            search.id,
+
+          campaignId:
+            campaign.id,
+        }
+      );
   
       revalidatePath(
         "/find-leads"
@@ -1845,6 +2212,11 @@ import {
           "user_id",
           user.id
         );
+
+      await releaseFreeDiscoverySession(
+        user.id,
+        freeDiscoveryClaim
+      );
   
       return NextResponse.json(
         {

@@ -31,9 +31,11 @@ import {
 export function DeleteLeadDialog({
   leadId,
   companyName,
+  freeLeadSlotWillRemainUsed = false,
 }: {
   leadId: string;
   companyName: string;
+  freeLeadSlotWillRemainUsed?: boolean;
 }) {
   const {
     language,
@@ -51,7 +53,9 @@ export function DeleteLeadDialog({
             "Lead löschen?",
 
           description:
-            `Du bist dabei, ${companyName} dauerhaft zu löschen. Diese Aktion kann nicht rückgängig gemacht werden.`,
+            freeLeadSlotWillRemainUsed
+              ? `Du bist dabei, ${companyName} dauerhaft zu löschen. Wichtig: Dein einmaliger Free-Lead-Slot bleibt danach verbraucht. Einen neuen Lead kannst du erst ab Starter hinzufügen.`
+              : `Du bist dabei, ${companyName} dauerhaft zu löschen. Diese Aktion kann nicht rückgängig gemacht werden.`,
 
           cancel:
             "Abbrechen",
@@ -67,7 +71,9 @@ export function DeleteLeadDialog({
             "Delete lead?",
 
           description:
-            `You are about to permanently delete ${companyName}. This action cannot be undone.`,
+            freeLeadSlotWillRemainUsed
+              ? `You are about to permanently delete ${companyName}. Important: your one-time Free lead slot stays used after deletion. Starter is required to add another lead.`
+              : `You are about to permanently delete ${companyName}. This action cannot be undone.`,
 
           cancel:
             "Cancel",

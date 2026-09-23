@@ -441,6 +441,7 @@ export function LeadsTable({
   leads,
   groupOrder,
   campaignOptions,
+  freeLeadSlotUsed,
 }: {
   leads:
     LeadTableRow[];
@@ -450,6 +451,9 @@ export function LeadsTable({
 
   campaignOptions:
     QuickCreateCampaignOption[];
+
+  freeLeadSlotUsed:
+    boolean;
 }) {
   const router =
     useRouter();
@@ -3091,6 +3095,7 @@ export function LeadsTable({
             campaigns={campaignOptions}
             language={language}
             label={headerCopy.add}
+            freeLeadLimitReached={freeLeadSlotUsed}
           />
         </div>
       </header>
@@ -3540,7 +3545,16 @@ export function LeadsTable({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{ui.deleteTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{ui.deleteDescription.replace("{count}", String(selectedIds.size))}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {ui.deleteDescription.replace("{count}", String(selectedIds.size))}
+              {planId === "free" && freeLeadSlotUsed ? (
+                <span className="mt-2 block font-medium text-[#9A5106] dark:text-[#E4A35D]">
+                  {language === "de"
+                    ? "Wichtig: Wenn du deinen Free-Lead löschst, bekommst du keinen neuen kostenlosen Lead-Slot. Für einen weiteren Lead brauchst du Starter."
+                    : "Important: Deleting your Free lead does not restore the free lead slot. Starter is required to add another lead."}
+                </span>
+              ) : null}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>{ui.cancel}</AlertDialogCancel>

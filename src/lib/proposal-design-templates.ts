@@ -68,7 +68,7 @@ export type ProposalDesignTemplate =
   (typeof PROPOSAL_DESIGN_TEMPLATES)[number]["id"];
 
 export const DEFAULT_PROPOSAL_DESIGN_TEMPLATE: ProposalDesignTemplate =
-  "signature";
+  "minimal";
 
 export function normalizeProposalDesignTemplate(
   value: unknown

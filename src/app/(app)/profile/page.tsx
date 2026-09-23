@@ -4,22 +4,48 @@ import { WorkspacePageMotion } from "@/components/workspace-page-motion";
 import { createClient } from "@/lib/supabase/server";
 import type { AccountPlanSelection, LeadbaseProfileData, ProposalBrandingDefaults, ProposalTemplateId } from "./actions";
 import { normalizeLeadbaseDesignDefaults } from "@/lib/design-defaults";
-import { resolveAccountCurrency } from "@/lib/account-currency";
+import { normalizeBillingCurrency, resolveAccountCurrency } from "@/lib/account-currency";
 import { ProfilePrecisionClient } from "./profile-precision-client";
 import { getPublicPlan, priceForTier } from "@/lib/public-plans";
+import { readLeadbaseBrandKit } from "@/lib/brand-kit";
 
 function string(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-export default async function ProfilePage() {
-  const supabase = await createClient();
+type ProfilePageProps = {
+  searchParams: Promise<{
+    dialog?: string;
+    access?: string;
+    security?: string;
+  }>;
+};
+
+export default async function ProfilePage({ searchParams }: ProfilePageProps) {
+  const [supabase, params] = await Promise.all([
+    createClient(),
+    searchParams,
+  ]);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
   const stored = (metadata.leadbase_profile ?? {}) as Partial<LeadbaseProfileData>;
   const accountEmail = user.email ?? "";
+  const authUser = user as typeof user & { new_email?: string | null };
+  const pendingEmailRecord = (metadata.leadbase_pending_email_change ?? {}) as Record<string, unknown>;
+  const storedPendingEmail = string(pendingEmailRecord.email);
+  const authPendingEmail = string(authUser.new_email);
+  const pendingAccountEmail = (authPendingEmail || storedPendingEmail) &&
+    (authPendingEmail || storedPendingEmail).toLowerCase() !== accountEmail.toLowerCase()
+      ? (authPendingEmail || storedPendingEmail)
+      : null;
+  const authProviders = Array.isArray(user.app_metadata?.providers)
+    ? user.app_metadata.providers.filter((value): value is string => typeof value === "string")
+    : typeof user.app_metadata?.provider === "string"
+      ? [user.app_metadata.provider]
+      : [];
+  const billingCurrencyPreference = normalizeBillingCurrency(metadata.leadbase_billing_currency, "USD");
 
   const { data: gmailConnection } = await supabase
     .from("gmail_connections")
@@ -58,13 +84,18 @@ export default async function ProfilePage() {
   );
 
   const rawBranding = (metadata.leadbase_proposal_branding ?? {}) as Partial<ProposalBrandingDefaults>;
+  const brandKit = readLeadbaseBrandKit(metadata);
   const templateIds = new Set<ProposalTemplateId>(["signature", "minimal", "kontur", "kanzlei", "prisma", "atelier", "kompakt"]);
-  const rawTemplateId = typeof rawBranding.templateId === "string" ? rawBranding.templateId : "signature";
+  const rawTemplateId = typeof rawBranding.templateId === "string" ? rawBranding.templateId : "minimal";
   const initialBranding: ProposalBrandingDefaults = {
-    accentColor: string(rawBranding.accentColor, "#002BBA"),
-    logoUrl: typeof rawBranding.logoUrl === "string" ? rawBranding.logoUrl : null,
-    logoPath: typeof rawBranding.logoPath === "string" ? rawBranding.logoPath : null,
-    templateId: templateIds.has(rawTemplateId as ProposalTemplateId) ? rawTemplateId as ProposalTemplateId : "signature",
+    accentColor: brandKit.brandColor,
+    logoUrl: brandKit.logoUrl,
+    logoPath: brandKit.logoPath,
+    templateId: templateIds.has(rawTemplateId as ProposalTemplateId) ? rawTemplateId as ProposalTemplateId : "minimal",
+    identityMode: brandKit.identityMode,
+    ctaMode: brandKit.ctaMode,
+    bookingUrl: brandKit.bookingUrl,
+    bookingProviderLabel: brandKit.bookingProviderLabel,
   };
 
   const rawPlanSelectionRecord = (metadata.leadbase_plan_selection ?? {}) as Record<string, unknown>;
@@ -90,14 +121,18 @@ export default async function ProfilePage() {
         planId: activePlan.id,
         tierIndex: activeTierIndex,
         billing: activeBilling,
+        billingCurrency: billingCurrencyPreference,
         checkoutStatus: "active",
         credits: activeTier?.credits ?? Number(billingAccount?.monthly_credit_limit ?? 0),
-        priceEur: activeTier ? priceForTier(activeTier, activeBilling) : 0,
+        price: activeTier ? priceForTier(activeTier, activeBilling, billingCurrencyPreference) : 0,
+        priceEur: activeTier ? priceForTier(activeTier, activeBilling, "EUR") : 0,
+        priceUsd: activeTier ? priceForTier(activeTier, activeBilling, "USD") : 0,
       }
     : {
         planId: rawPlanId === "starter" || rawPlanId === "pro" || rawPlanId === "scale" || rawPlanId === "free" ? rawPlanId : "free",
         tierIndex: Number.isFinite(Number(rawPlanSelection.tierIndex)) ? Math.max(0, Math.min(3, Math.round(Number(rawPlanSelection.tierIndex)))) : 0,
         billing: rawPlanSelection.billing === "yearly" ? "yearly" : "monthly",
+        billingCurrency: billingCurrencyPreference,
         checkoutStatus: rawPlanSelection.checkoutStatus === "pending_checkout" ? "pending_checkout" : "free",
         credits: typeof rawPlanSelection.credits === "number" ? rawPlanSelection.credits : null,
         priceEur: typeof rawPlanSelection.priceEur === "number" ? rawPlanSelection.priceEur : 0,
@@ -109,11 +144,17 @@ export default async function ProfilePage() {
       <ProfilePrecisionClient
         initialProfile={initialProfile}
         accountEmail={accountEmail}
+        pendingAccountEmail={pendingAccountEmail}
+        authProviders={authProviders}
+        initialSecurityStatus={params.security ?? null}
+        initialBillingCurrency={billingCurrencyPreference}
         initialAvatarUrl={typeof metadata.avatar_url === "string" ? metadata.avatar_url : null}
         initialBranding={initialBranding}
         initialDesignDefaults={initialDesignDefaults}
         gmailEmail={gmailConnection?.email_address ?? null}
         initialPlanSelection={initialPlanSelection}
+        initialPlanDialogOpen={params.dialog === "plan"}
+        initialCreditsDialogOpen={params.dialog === "credits"}
       />
     </div>
   );

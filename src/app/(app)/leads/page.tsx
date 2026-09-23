@@ -14,6 +14,7 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
+import { getLeadCreationAccess } from "@/lib/free-experience";
 
 /* =========================================================
    RELATION HELPER
@@ -57,6 +58,9 @@ export default async function LeadsPage() {
     leadsCopy[
       language
     ];
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const leadCreationAccess = user ? await getLeadCreationAccess(user.id) : null;
 
   const {
     data:
@@ -260,6 +264,7 @@ export default async function LeadsPage() {
         name: campaign.name,
         status: campaign.status,
       }))}
+      freeLeadSlotUsed={Boolean(leadCreationAccess?.planId === "free" && leadCreationAccess.freeLeadClaimed)}
     />
   );
 

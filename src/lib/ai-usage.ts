@@ -1,6 +1,7 @@
 import "server-only";
 
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -27,6 +28,41 @@ export type LeadbaseAiFeature =
   | "visual_analysis_localization"
   | "full_lead_workflow"
   | "other";
+
+export type AiUsageWorkflowContext = {
+  userId: string;
+  workflowRunId: string;
+  billingMode: "fixed_bundle" | "passthrough";
+  fixedCredits?: number | null;
+  allowedFeatures?: readonly LeadbaseAiFeature[];
+};
+
+const AI_USAGE_WORKFLOW_CONTEXT =
+  new AsyncLocalStorage<AiUsageWorkflowContext>();
+
+export function getAiUsageWorkflowContext() {
+  return AI_USAGE_WORKFLOW_CONTEXT.getStore() ?? null;
+}
+
+export async function runWithAiUsageWorkflowContext<T>(
+  context: AiUsageWorkflowContext,
+  callback: () => Promise<T>,
+): Promise<T> {
+  return AI_USAGE_WORKFLOW_CONTEXT.run(context, callback);
+}
+
+function workflowMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  context: AiUsageWorkflowContext | null,
+) {
+  return context
+    ? {
+        ...(metadata ?? {}),
+        workflowRunId: context.workflowRunId,
+        workflowBillingMode: context.billingMode,
+      }
+    : (metadata ?? {});
+}
 
 export type AiUsageLike = {
   inputTokens?: number | null;
@@ -125,6 +161,259 @@ function positiveInt(value: unknown) {
 function money(value: unknown) {
   const number = Number(value ?? 0);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function stringRecordValue(
+  value: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  const candidate = value?.[key];
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.trim()
+    : null;
+}
+
+function normalizeUuid(value: string | null | undefined) {
+  if (!value) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null;
+}
+
+function telemetryContext(
+  metadata: Record<string, unknown> | null | undefined,
+  workflowContext: AiUsageWorkflowContext | null,
+) {
+  const mergedMetadata = workflowMetadata(metadata, workflowContext);
+  const leadId = normalizeUuid(
+    stringRecordValue(mergedMetadata, "leadId") ??
+    stringRecordValue(mergedMetadata, "lead_id"),
+  );
+  const workflowRunId = normalizeUuid(
+    workflowContext?.workflowRunId ??
+    stringRecordValue(mergedMetadata, "workflowRunId") ??
+    stringRecordValue(mergedMetadata, "workflow_run_id"),
+  );
+
+  return { mergedMetadata, leadId, workflowRunId };
+}
+
+function classifyAiFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (/429|rate.?limit/i.test(message)) return "provider_rate_limit";
+  if (/timeout|timed out|aborted/i.test(message)) return "provider_timeout";
+  if (/credit|billing|reservation/i.test(message)) return "billing";
+  if (/entitlement|plan/i.test(message)) return "entitlement";
+  if (/network|fetch/i.test(message)) return "network";
+  return "provider_request_failed";
+}
+
+type AiOperationTelemetry = {
+  id: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  creditsReserved: number;
+  reasoningEffort: string | null;
+  leadId: string | null;
+  workflowRunId: string | null;
+  retryCount: number;
+};
+
+async function startAiOperationTelemetry(input: {
+  userId: string;
+  feature: LeadbaseAiFeature;
+  model: string | null;
+  reasoningEffort?: string | null;
+  reservationKey: string;
+  creditsReserved: number;
+  metadata?: Record<string, unknown> | null;
+  workflowContext: AiUsageWorkflowContext | null;
+}) {
+  const admin = createAdminClient();
+  const { mergedMetadata, leadId, workflowRunId } = telemetryContext(
+    input.metadata,
+    input.workflowContext,
+  );
+  const retryCount = positiveInt(mergedMetadata.retryCount);
+  const { error } = await admin.from("ai_operation_runs").insert({
+    user_id: input.userId,
+    feature: input.feature,
+    model: input.model,
+    reasoning_effort: input.reasoningEffort?.trim() || null,
+    status: "running",
+    lead_id: leadId,
+    workflow_run_id: workflowRunId,
+    reservation_key: input.reservationKey,
+    credits_reserved: input.creditsReserved,
+    retry_count: retryCount,
+    metadata: mergedMetadata,
+  });
+
+  if (error) {
+    throw new Error(`AI_TELEMETRY_NOT_READY:${error.message}`);
+  }
+}
+
+async function completeAiOperationTelemetry(input: {
+  userId: string;
+  reservationKey?: string | null;
+  requestKey?: string | null;
+  feature: LeadbaseAiFeature;
+  model: string | null;
+  reasoningEffort?: string | null;
+  usage: ReturnType<typeof calculateAiProviderCostUsd>;
+  creditsCharged: number;
+  metadata?: Record<string, unknown> | null;
+}): Promise<AiOperationTelemetry> {
+  const fallbackContext = telemetryContext(
+    input.metadata,
+    getAiUsageWorkflowContext(),
+  );
+  const fallback: AiOperationTelemetry = {
+    id: null,
+    startedAt: null,
+    completedAt: new Date().toISOString(),
+    durationMs: null,
+    creditsReserved: 0,
+    reasoningEffort: input.reasoningEffort?.trim() || null,
+    leadId: fallbackContext.leadId,
+    workflowRunId: fallbackContext.workflowRunId,
+    retryCount: positiveInt(fallbackContext.mergedMetadata.retryCount),
+  };
+
+  if (!input.reservationKey) return fallback;
+
+  const admin = createAdminClient();
+  const { data, error: loadError } = await admin
+    .from("ai_operation_runs")
+    .select("id,started_at,credits_reserved,reasoning_effort,lead_id,workflow_run_id,retry_count")
+    .eq("user_id", input.userId)
+    .eq("reservation_key", input.reservationKey)
+    .maybeSingle();
+  if (loadError) throw new Error(`AI_TELEMETRY_FINALIZE_FAILED:${loadError.message}`);
+
+  const completedAt = new Date();
+  const startedAt = data?.started_at ? new Date(String(data.started_at)) : null;
+  const durationMs = startedAt && Number.isFinite(startedAt.getTime())
+    ? Math.max(0, completedAt.getTime() - startedAt.getTime())
+    : null;
+
+  if (data?.id) {
+    const { error: updateError } = await admin
+      .from("ai_operation_runs")
+      .update({
+        status: "completed",
+        request_key: input.requestKey?.trim() || null,
+        model: input.usage.canonicalModel ?? input.model,
+        credits_charged: input.creditsCharged,
+        input_tokens: input.usage.inputTokens,
+        cached_input_tokens: input.usage.cachedInputTokens,
+        output_tokens: input.usage.outputTokens,
+        total_tokens: input.usage.totalTokens,
+        provider_cost_usd: input.usage.providerCostUsd,
+        completed_at: completedAt.toISOString(),
+        updated_at: completedAt.toISOString(),
+        error_category: null,
+        error_message: null,
+      })
+      .eq("id", data.id);
+    if (updateError) throw new Error(`AI_TELEMETRY_FINALIZE_FAILED:${updateError.message}`);
+  }
+
+  return {
+    id: data?.id ?? null,
+    startedAt: data?.started_at ? String(data.started_at) : null,
+    completedAt: completedAt.toISOString(),
+    durationMs,
+    creditsReserved: positiveInt(data?.credits_reserved),
+    reasoningEffort:
+      typeof data?.reasoning_effort === "string"
+        ? data.reasoning_effort
+        : fallback.reasoningEffort,
+    leadId: normalizeUuid(typeof data?.lead_id === "string" ? data.lead_id : null) ?? fallback.leadId,
+    workflowRunId:
+      normalizeUuid(typeof data?.workflow_run_id === "string" ? data.workflow_run_id : null) ??
+      fallback.workflowRunId,
+    retryCount: positiveInt(data?.retry_count),
+  };
+}
+
+async function failAiOperationTelemetry(
+  userId: string,
+  reservationKey: string,
+  error: unknown,
+) {
+  const admin = createAdminClient();
+  const completedAt = new Date();
+  const { data, error: loadError } = await admin
+    .from("ai_operation_runs")
+    .select("id,feature,model,reasoning_effort,lead_id,workflow_run_id,credits_reserved,retry_count,metadata,started_at")
+    .eq("user_id", userId)
+    .eq("reservation_key", reservationKey)
+    .maybeSingle();
+
+  if (loadError) {
+    console.error("Could not load AI operation telemetry for failure:", loadError);
+    return;
+  }
+  if (!data?.id) return;
+
+  const message = error instanceof Error ? error.message : "Provider request failed.";
+  const { error: updateError } = await admin
+    .from("ai_operation_runs")
+    .update({
+      status: "failed",
+      error_category: classifyAiFailure(error),
+      error_message: message.slice(0, 2000),
+      completed_at: completedAt.toISOString(),
+      updated_at: completedAt.toISOString(),
+    })
+    .eq("id", data.id);
+
+  if (updateError) {
+    console.error("Could not mark AI operation telemetry failed:", updateError);
+    return;
+  }
+
+  const startedAt = data.started_at ? new Date(String(data.started_at)) : null;
+  const durationMs = startedAt && Number.isFinite(startedAt.getTime())
+    ? Math.max(0, completedAt.getTime() - startedAt.getTime())
+    : null;
+  const failureKey = `failed-operation:${data.id}`;
+  const { error: eventError } = await admin.from("ai_usage_events").insert({
+    user_id: userId,
+    feature: data.feature ?? "other",
+    model: data.model ?? null,
+    reasoning_effort: data.reasoning_effort ?? null,
+    lead_id: data.lead_id ?? null,
+    workflow_run_id: data.workflow_run_id ?? null,
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    provider_cost_usd: 0,
+    credits_reserved: positiveInt(data.credits_reserved),
+    credits_charged: 0,
+    duration_ms: durationMs,
+    success: false,
+    retry_count: positiveInt(data.retry_count),
+    error_category: classifyAiFailure(error),
+    started_at: data.started_at ?? null,
+    completed_at: completedAt.toISOString(),
+    pricing_version: LEADBASE_AI_PRICING_VERSION,
+    request_key: failureKey,
+    metadata: {
+      ...((data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata))
+        ? data.metadata as Record<string, unknown>
+        : {}),
+      operationId: data.id,
+      failed: true,
+    },
+  });
+  if (eventError && eventError.code !== "23505") {
+    console.error("Could not record failed AI usage event:", eventError);
+  }
 }
 
 export function canonicalAiModel(model?: string | null) {
@@ -320,6 +609,40 @@ export async function assertAiUsageAvailable(
     await assertProviderCostGuards(userId);
     const feature = options?.feature ?? "other";
     const model = canonicalAiModel(options?.model) ?? DEFAULT_MODEL_BY_FEATURE[feature];
+    const workflowContext = getAiUsageWorkflowContext();
+    const fixedWorkflow =
+      workflowContext?.userId === userId &&
+      workflowContext.billingMode === "fixed_bundle";
+
+    if (fixedWorkflow) {
+      const allowed = workflowContext.allowedFeatures ?? [];
+      if (allowed.length > 0 && !allowed.includes(feature)) {
+        throw new Error(`AI_ENTITLEMENT_DENIED:FEATURE_NOT_INCLUDED:${snapshot.planId}:${feature}:${model}`);
+      }
+      if (snapshot.creditDebtBalance > 0) {
+        throw new Error(`AI_CREDIT_DEBT:${snapshot.creditDebtBalance}`);
+      }
+
+      const reservationKey = `workflow-sponsored:${workflowContext.workflowRunId}:${crypto.randomUUID()}`;
+      await startAiOperationTelemetry({
+        userId,
+        feature,
+        model,
+        reasoningEffort: options?.reasoningEffort,
+        reservationKey,
+        creditsReserved: 0,
+        metadata: options?.metadata,
+        workflowContext,
+      });
+
+      return {
+        ...snapshot,
+        reservationKey,
+        reservedCredits: 0,
+        model,
+      };
+    }
+
     const entitlement = planAllowsAiRequest({
       planId: snapshot.planId,
       feature,
@@ -340,8 +663,9 @@ export async function assertAiUsageAvailable(
     let reservationKey: string | null = null;
     let reservedCredits = 0;
 
-    // New Phase 13 call sites pass a feature. Reserving before the provider call
-    // prevents concurrent bulk requests from spending the same balance twice.
+    // Reserve before the provider call so concurrent actions cannot spend the
+    // same balance twice. Phase 14D mirrors the reservation into a persistent
+    // operation row used by elapsed timers, navigation-safe progress and telemetry.
     if (options?.feature) {
       reservedCredits = Math.max(
         1,
@@ -356,7 +680,7 @@ export async function assertAiUsageAvailable(
         p_credits: reservedCredits,
         p_feature: feature,
         p_model: model,
-        p_metadata: options.metadata ?? {},
+        p_metadata: workflowMetadata(options.metadata, workflowContext),
       });
       if (error) {
         if (/insufficient/i.test(error.message)) {
@@ -364,30 +688,66 @@ export async function assertAiUsageAvailable(
         }
         throw new Error(`AI_CREDIT_RESERVATION_FAILED:${error.message}`);
       }
+
+      try {
+        await startAiOperationTelemetry({
+          userId,
+          feature,
+          model,
+          reasoningEffort: options?.reasoningEffort,
+          reservationKey,
+          creditsReserved: reservedCredits,
+          metadata: options?.metadata,
+          workflowContext,
+        });
+      } catch (telemetryError) {
+        await admin.rpc("leadbase_release_credit_reservation", {
+          p_user_id: userId,
+          p_request_key: reservationKey,
+          p_reason: "telemetry_start_failed",
+        });
+        throw telemetryError;
+      }
     }
 
     return { ...snapshot, reservationKey, reservedCredits, model };
   } catch (error) {
     if (isAiUsageLimitError(error)) throw error;
-    // Cost controls fail closed. If the billing ledger is unavailable, a public
-    // SaaS must not silently send an unmetered provider request.
     console.error("Could not check Credit budget:", error);
     throw error instanceof Error ? error : new Error("AI_CREDIT_CHECK_FAILED");
   }
 }
 
-export async function releaseAiUsageReservation(userId: string, reservationKey?: string | null) {
+export async function releaseAiUsageReservation(
+  userId: string,
+  reservationKey?: string | null,
+  failure?: unknown,
+) {
   if (!userId || !reservationKey) return;
+  const workflowContext = getAiUsageWorkflowContext();
+  const sponsored =
+    workflowContext?.userId === userId &&
+    workflowContext.billingMode === "fixed_bundle" &&
+    reservationKey.startsWith("workflow-sponsored:");
+
   try {
-    const admin = createAdminClient();
-    const { error } = await admin.rpc("leadbase_release_credit_reservation", {
-      p_user_id: userId,
-      p_request_key: reservationKey,
-      p_reason: "provider_request_failed",
-    });
-    if (error) console.error("Could not release credit reservation:", error);
+    if (!sponsored) {
+      const admin = createAdminClient();
+      const { error } = await admin.rpc("leadbase_release_credit_reservation", {
+        p_user_id: userId,
+        p_request_key: reservationKey,
+        p_reason: "provider_request_failed",
+      });
+      if (error) console.error("Could not release credit reservation:", error);
+    }
+
+    await failAiOperationTelemetry(
+      userId,
+      reservationKey,
+      failure ?? new Error("Provider request failed."),
+    );
   } catch (error) {
-    console.error("Could not release credit reservation:", error);
+    console.error("Could not release AI reservation / telemetry:", error);
   }
 }
 
@@ -399,6 +759,7 @@ export async function recordAiUsage({
   requestKey,
   reservationKey,
   metadata,
+  reasoningEffort,
 }: {
   userId: string;
   feature: LeadbaseAiFeature;
@@ -407,12 +768,68 @@ export async function recordAiUsage({
   requestKey?: string | null;
   reservationKey?: string | null;
   metadata?: Record<string, unknown> | null;
+  reasoningEffort?: string | null;
 }) {
   const calculated = calculateAiProviderCostUsd(model, usage);
-  if (!userId || calculated.totalTokens <= 0) return calculated;
+  if (!userId) return calculated;
 
   try {
     const admin = createAdminClient();
+    const workflowContext = getAiUsageWorkflowContext();
+    const { mergedMetadata } = telemetryContext(metadata, workflowContext);
+    const fixedWorkflow =
+      workflowContext?.userId === userId &&
+      workflowContext.billingMode === "fixed_bundle";
+
+    if (fixedWorkflow) {
+      const telemetry = await completeAiOperationTelemetry({
+        userId,
+        reservationKey,
+        requestKey,
+        feature,
+        model: calculated.canonicalModel ?? model ?? null,
+        reasoningEffort,
+        usage: calculated,
+        creditsCharged: 0,
+        metadata,
+      });
+      const payload = {
+        user_id: userId,
+        feature,
+        model: calculated.canonicalModel ?? model?.trim() ?? null,
+        reasoning_effort: telemetry.reasoningEffort,
+        lead_id: telemetry.leadId,
+        workflow_run_id: telemetry.workflowRunId,
+        input_tokens: calculated.inputTokens,
+        cached_input_tokens: calculated.cachedInputTokens,
+        output_tokens: calculated.outputTokens,
+        total_tokens: calculated.totalTokens,
+        provider_cost_usd: calculated.providerCostUsd,
+        credits_reserved: telemetry.creditsReserved,
+        credits_charged: 0,
+        duration_ms: telemetry.durationMs,
+        success: true,
+        retry_count: telemetry.retryCount,
+        error_category: null,
+        started_at: telemetry.startedAt,
+        completed_at: telemetry.completedAt,
+        pricing_version: calculated.pricingVersion,
+        request_key: requestKey?.trim() || reservationKey || `workflow-usage:${crypto.randomUUID()}`,
+        metadata: {
+          ...mergedMetadata,
+          sponsoredByFixedWorkflow: true,
+          fixedWorkflowCredits: workflowContext.fixedCredits ?? null,
+          operationId: telemetry.id,
+        },
+      };
+
+      const { error } = await admin.from("ai_usage_events").insert(payload);
+      if (error && error.code !== "23505") {
+        throw new Error(error.message);
+      }
+      return calculated;
+    }
+
     let chargedCredits = calculated.credits;
 
     if (reservationKey) {
@@ -422,7 +839,7 @@ export async function recordAiUsage({
         p_actual_credits: calculated.credits,
         p_provider_cost_usd: calculated.providerCostUsd,
         p_metadata: {
-          ...(metadata ?? {}),
+          ...mergedMetadata,
           pricingVersion: calculated.pricingVersion,
         },
       });
@@ -439,7 +856,7 @@ export async function recordAiUsage({
         p_model: calculated.canonicalModel ?? model ?? null,
         p_provider_cost_usd: calculated.providerCostUsd,
         p_metadata: {
-          ...(metadata ?? {}),
+          ...mergedMetadata,
           pricingVersion: calculated.pricingVersion,
           directCharge: true,
         },
@@ -449,19 +866,44 @@ export async function recordAiUsage({
       chargedCredits = positiveInt(charged?.charged_credits) || calculated.credits;
     }
 
+    const telemetry = await completeAiOperationTelemetry({
+      userId,
+      reservationKey,
+      requestKey,
+      feature,
+      model: calculated.canonicalModel ?? model ?? null,
+      reasoningEffort,
+      usage: calculated,
+      creditsCharged: chargedCredits,
+      metadata,
+    });
+
     const payload = {
       user_id: userId,
       feature,
       model: calculated.canonicalModel ?? model?.trim() ?? null,
+      reasoning_effort: telemetry.reasoningEffort,
+      lead_id: telemetry.leadId,
+      workflow_run_id: telemetry.workflowRunId,
       input_tokens: calculated.inputTokens,
       cached_input_tokens: calculated.cachedInputTokens,
       output_tokens: calculated.outputTokens,
       total_tokens: calculated.totalTokens,
       provider_cost_usd: calculated.providerCostUsd,
+      credits_reserved: telemetry.creditsReserved,
       credits_charged: chargedCredits,
+      duration_ms: telemetry.durationMs,
+      success: true,
+      retry_count: telemetry.retryCount,
+      error_category: null,
+      started_at: telemetry.startedAt,
+      completed_at: telemetry.completedAt,
       pricing_version: calculated.pricingVersion,
       request_key: requestKey?.trim() || reservationKey || null,
-      metadata: metadata ?? {},
+      metadata: {
+        ...mergedMetadata,
+        operationId: telemetry.id,
+      },
     };
 
     const { error } = await admin.from("ai_usage_events").insert(payload);
@@ -469,9 +911,7 @@ export async function recordAiUsage({
       console.error("Could not record Leadbase AI usage:", error);
     }
   } catch (error) {
-    // A provider request has already happened at this point. Surface this loudly
-    // instead of silently allowing unmetered usage.
-    console.error("CRITICAL: Could not settle Credits:", error);
+    console.error("CRITICAL: Could not settle Credits / telemetry:", error);
     throw error instanceof Error ? error : new Error("AI_CREDIT_SETTLEMENT_FAILED");
   }
 

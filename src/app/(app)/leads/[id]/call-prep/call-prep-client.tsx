@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   useCallback,
   useEffect,
@@ -12,11 +14,13 @@ import {
   Building2,
   CircleHelp,
   Eye,
+  LockKeyhole,
   Loader2,
   MessageSquareText,
   RefreshCw,
   Target,
   UserRound,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -35,6 +39,8 @@ import {
 import {
   CreditEstimatePill,
 } from "@/components/credit-estimate-pill";
+
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
 
 /* =========================================================
    TYPES
@@ -108,6 +114,16 @@ type CallPrepContext = {
   };
 };
 
+type FreeCallPrepRefresh = {
+  isFree: boolean;
+  eligible: boolean;
+  used: boolean;
+  inProgress: boolean;
+  leadId: string | null;
+  messageId: string | null;
+  reason: string;
+};
+
 type ApiResponse = {
   ok:
     boolean;
@@ -123,6 +139,9 @@ type ApiResponse = {
 
   generatedAt?:
     string | null;
+
+  freeRefresh?:
+    FreeCallPrepRefresh;
 
   error?:
     string;
@@ -203,6 +222,11 @@ export function CallPrepClient({
       null
     );
 
+  const [freeRefresh, setFreeRefresh] =
+    useState<FreeCallPrepRefresh | null>(
+      null
+    );
+
   const [loading, setLoading] =
     useState(
       true
@@ -217,6 +241,19 @@ export function CallPrepClient({
     useRef(
       false
     );
+
+  const {
+    planId,
+    remainingCredits,
+    loading: planLoading,
+  } = useLeadbasePlan();
+
+  const freeDirectLocked = !planLoading && planId === "free";
+  const noCredits =
+    !planLoading &&
+    planId !== "free" &&
+    remainingCredits !== null &&
+    remainingCredits <= 0;
 
   const generate =
     useCallback(
@@ -277,6 +314,15 @@ export function CallPrepClient({
             payload.generatedAt ??
               null
           );
+          if (payload.freeRefresh) {
+            setFreeRefresh(payload.freeRefresh);
+          } else if (freeDirectLocked) {
+            setFreeRefresh((current) =>
+              current?.eligible
+                ? { ...current, eligible: false, used: true, inProgress: false, reason: "ALREADY_USED" }
+                : current
+            );
+          }
         } catch (generationError) {
           setError(
             generationError instanceof Error
@@ -293,6 +339,7 @@ export function CallPrepClient({
         }
       },
       [
+        freeDirectLocked,
         language,
         leadId,
       ]
@@ -339,6 +386,10 @@ export function CallPrepClient({
             );
           }
 
+          setFreeRefresh(
+            payload.freeRefresh ?? null
+          );
+
           if (
             payload.found &&
             payload.prep &&
@@ -360,6 +411,11 @@ export function CallPrepClient({
             return;
           }
 
+          if (freeDirectLocked || noCredits) {
+            setLoading(false);
+            return;
+          }
+
           await generate();
         } catch (loadError) {
           setError(
@@ -376,27 +432,26 @@ export function CallPrepClient({
         }
       },
       [
+        freeDirectLocked,
         generate,
         language,
         leadId,
+        noCredits,
       ]
     );
 
   useEffect(
     () => {
-      if (
-        startedRef.current
-      ) {
+      if (planLoading || startedRef.current) {
         return;
       }
 
-      startedRef.current =
-        true;
-
+      startedRef.current = true;
       void loadSavedOrGenerate();
     },
     [
       loadSavedOrGenerate,
+      planLoading,
     ]
   );
 
@@ -477,10 +532,57 @@ export function CallPrepClient({
     );
   }
 
-  if (
-    !prep ||
-    !context
-  ) {
+  if (!prep || !context) {
+    if (freeDirectLocked) {
+      const refreshReady = Boolean(freeRefresh?.eligible);
+      return (
+        <Card className="leadbase-workspace-card">
+          <CardContent className="flex min-h-64 flex-col items-center justify-center gap-4 p-6 text-center">
+            {refreshReady ? <RefreshCw className="size-6 text-primary" /> : <LockKeyhole className="size-6 text-primary" />}
+            <div>
+              <p className="font-medium">
+                {refreshReady
+                  ? (language === "de" ? "Kostenloses Call-Prep-Refresh verfügbar" : "Free Call Prep refresh available")
+                  : (language === "de" ? "Call Prep im Free-Workflow" : "Call Prep in the Free workflow")}
+              </p>
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                {refreshReady
+                  ? (language === "de" ? "Es wurde eine echte Kundenantwort erkannt. Du kannst deine Call-Vorbereitung einmal kostenlos mit der neuen Antwort aktualisieren." : "A useful customer reply was detected. You can refresh your Call Prep once for free using the new reply.")
+                  : (language === "de" ? "Deine einmalige Free-Call-Vorbereitung wird vom Full Lead Workflow erstellt. Nach einer echten Kundenantwort erhältst du einmalig ein kostenloses Refresh." : "Your one-time Free Call Prep is created by the Full Lead Workflow. After a useful customer reply, you get one free refresh.")}
+              </p>
+            </div>
+            {refreshReady ? (
+              <Button type="button" onClick={() => void generate()} disabled={loading}>
+                {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                {language === "de" ? "Kostenlos aktualisieren" : "Refresh for free"}
+              </Button>
+            ) : (
+              <Link href="/profile?dialog=plan" className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+                {language === "de" ? "Auf Starter upgraden" : "Upgrade to Starter"}
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (noCredits) {
+      return (
+        <Card className="leadbase-workspace-card">
+          <CardContent className="flex min-h-64 flex-col items-center justify-center gap-4 p-6 text-center">
+            <Zap className="size-6 text-primary" />
+            <div>
+              <p className="font-medium">{language === "de" ? "Keine Credits verfügbar" : "No Credits available"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{language === "de" ? "Kaufe Credits, bevor du eine neue Call-Vorbereitung startest." : "Buy Credits before starting a new Call Prep."}</p>
+            </div>
+            <Link href="/profile?dialog=credits" className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+              {language === "de" ? "Credits kaufen" : "Buy Credits"}
+            </Link>
+          </CardContent>
+        </Card>
+      );
+    }
+
     return null;
   }
 
@@ -521,34 +623,30 @@ export function CallPrepClient({
           </Badge>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={
-            loading
-          }
-          onClick={() =>
-            void generate()
-          }
-        >
-          {loading ? (
-            <Loader2 className="size-4 animate-spin" />
+        {freeDirectLocked ? (
+          freeRefresh?.eligible ? (
+            <Button type="button" variant="outline" size="sm" disabled={loading || freeRefresh.inProgress} onClick={() => void generate()}>
+              {loading || freeRefresh.inProgress ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              {language === "de" ? "Kostenlos nach Antwort aktualisieren" : "Free reply refresh"}
+            </Button>
           ) : (
-            <RefreshCw className="size-4" />
-          )}
-
-          {language ===
-          "de"
-            ? "Neu erstellen"
-            : "Regenerate"}
-
-          <CreditEstimatePill
-            feature="call_prep"
-            language={language}
-            hideOnSmall
-          />
-        </Button>
+            <Link href="/profile?dialog=plan" className="inline-flex h-8 items-center gap-2 rounded-md border px-3 text-sm font-medium">
+              <LockKeyhole className="size-4" />
+              {language === "de" ? "Neu erstellen · Starter" : "Regenerate · Starter"}
+            </Link>
+          )
+        ) : noCredits ? (
+          <Link href="/profile?dialog=credits" className="inline-flex h-8 items-center gap-2 rounded-md border px-3 text-sm font-medium">
+            <Zap className="size-4" />
+            {language === "de" ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+          </Link>
+        ) : (
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void generate()}>
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            {language === "de" ? "Neu erstellen" : "Regenerate"}
+            <CreditEstimatePill feature="call_prep" language={language} hideOnSmall />
+          </Button>
+        )}
       </div>
 
       {generatedAt ? (

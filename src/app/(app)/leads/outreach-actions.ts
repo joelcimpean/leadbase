@@ -48,9 +48,15 @@ import {
   recordAiUsage,
 } from "@/lib/ai-usage";
 import { assertPlanFeatureAvailable } from "@/lib/plan-access";
+import { assertDirectAiActionAllowed } from "@/lib/free-experience";
+import {
+  getLeadAiContextPolicy,
+  visualAnalysisForPolicy,
+} from "@/lib/ai-context-policy";
 
 import { getAppLanguage } from "@/lib/i18n-server";
 import { readLeadbaseUserIdentity } from "@/lib/user-identity";
+import { readLeadbaseBrandKit } from "@/lib/brand-kit";
 import { assertOutboundAllowed, logSuccessfulOutreach, logFollowUpEvent } from "@/lib/outreach-pipeline";
 
 /* =========================================================
@@ -1378,6 +1384,7 @@ async function createLeadOutreachDraft({
 
         research_summary,
         visual_analysis,
+        notes,
 
         company:companies (
           id,
@@ -1511,9 +1518,17 @@ async function createLeadOutreachDraft({
     };
   }
 
+  const aiContextPolicy =
+    await getLeadAiContextPolicy(
+      userId
+    );
+
   const visual =
     getRecord(
-      lead.visual_analysis
+      visualAnalysisForPolicy(
+        aiContextPolicy,
+        lead.visual_analysis
+      )
     );
 
   const strengths =
@@ -1568,12 +1583,14 @@ async function createLeadOutreachDraft({
     console.error("Could not load deterministic audit evidence for outreach:", auditError);
   }
 
-  const verifiedEvidence = Array.isArray(evidenceAudit?.findings)
-    ? (evidenceAudit!.findings as Array<Record<string, unknown>>)
-        .filter((finding) => finding && typeof finding.evidence === "string")
-        .slice(0, 8)
-        .map((finding) => String(finding.evidence))
-    : [];
+  const verifiedEvidence =
+    aiContextPolicy.allowEvidenceAudit &&
+    Array.isArray(evidenceAudit?.findings)
+      ? (evidenceAudit!.findings as Array<Record<string, unknown>>)
+          .filter((finding) => finding && typeof finding.evidence === "string")
+          .slice(0, 8)
+          .map((finding) => String(finding.evidence))
+      : [];
 
   const outreachTemplateVersion = language === "de" ? "cold_de_evidence_v1" : "cold_en_evidence_v1";
   const subjectVariant = "subject_ai_v1";
@@ -1623,19 +1640,34 @@ async function createLeadOutreachDraft({
         campaign?.email_tone,
 
       researchSummary:
-        lead.research_summary,
+        aiContextPolicy.allowResearchSummary
+          ? lead.research_summary
+          : null,
+
+      userNotes:
+        aiContextPolicy.allowUserNotes
+          ? lead.notes
+          : null,
 
       structuralScore:
-        lead.structural_score,
+        aiContextPolicy.allowStructuralFindings
+          ? lead.structural_score
+          : null,
 
       visualScore:
-        lead.visual_score,
+        aiContextPolicy.planId === "free"
+          ? null
+          : lead.visual_score,
 
       opportunityScore:
-        lead.opportunity_score,
+        aiContextPolicy.allowStructuralFindings
+          ? lead.opportunity_score
+          : null,
 
       redesignPotential:
-        lead.redesign_potential,
+        aiContextPolicy.planId === "free"
+          ? null
+          : lead.redesign_potential,
 
       visualStrengths:
         strengths,
@@ -1660,7 +1692,7 @@ async function createLeadOutreachDraft({
       senderWebsite: identity.website,
       senderEmail: identity.replyEmail,
       verifiedEvidence,
-      primaryHook: evidenceAudit
+      primaryHook: aiContextPolicy.allowEvidenceAudit && evidenceAudit
         ? {
             category: evidenceAudit.hook_category,
             strength: evidenceAudit.hook_strength,
@@ -1880,6 +1912,150 @@ async function createLeadOutreachDraft({
 }
 
 /* =========================================================
+   FULL LEAD WORKFLOW — OUTREACH DRAFT
+
+   Internal orchestration helper. It deliberately has no redirect so the
+   server-side full workflow can continue to call prep / proposal creation.
+   Normal direct calls still use the ordinary Credit system; only a verified
+   workflow sponsor context can convert the nested AI usage into the fixed
+   one-time Free bundle.
+========================================================= */
+
+export async function generateLeadOutreachDraftForWorkflow(
+  leadId: string,
+): Promise<CreateOutreachResult> {
+  if (!leadId?.trim()) {
+    return {
+      status: "skipped",
+      reason: "Invalid lead ID.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+  const { data: { user }, error: userError } =
+    await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unauthorized.");
+  }
+
+  return createLeadOutreachDraft({
+    supabase,
+    userId: user.id,
+    leadId: leadId.trim(),
+    requirePreview: true,
+    skipExistingDraft: true,
+  });
+}
+
+/* =========================================================
+   CREATE OUTREACH — MANUAL DRAFT
+   No AI provider call and therefore no AI Credits are charged.
+========================================================= */
+
+export async function createManualOutreachDraft(
+  formData: FormData
+) {
+  const leadId = formData.get("leadId");
+  const rawSubject = formData.get("subject");
+  const rawBody = formData.get("body");
+
+  if (
+    typeof leadId !== "string" ||
+    !leadId ||
+    typeof rawSubject !== "string" ||
+    typeof rawBody !== "string"
+  ) {
+    return;
+  }
+
+  const subject = rawSubject.trim();
+  const cleanBody = normalizeTextBlock(rawBody);
+
+  if (!subject || !cleanBody) {
+    console.error("Subject and body are required for a manual outreach draft.");
+    return;
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) redirect("/login");
+
+  const [language, leadResult] = await Promise.all([
+    getAppLanguage(),
+    supabase
+      .from("leads")
+      .select("id, campaign_id, status")
+      .eq("id", leadId)
+      .eq("user_id", user.id)
+      .single(),
+  ]);
+
+  if (leadResult.error || !leadResult.data) {
+    console.error(
+      "Could not load lead for manual outreach draft:",
+      leadResult.error,
+    );
+    return;
+  }
+
+  const identity = readLeadbaseUserIdentity(
+    (user.user_metadata ?? {}) as Record<string, unknown>,
+    user.email ?? null,
+  );
+
+  const body = ensureSignature(cleanBody, identity.signature);
+  const lead = leadResult.data;
+
+  const { error: draftError } = await supabase
+    .from("outreach_drafts")
+    .insert({
+      user_id: user.id,
+      lead_id: lead.id,
+      campaign_id: lead.campaign_id,
+      channel: "EMAIL",
+      language: language === "de" ? "DE" : "EN",
+      subject,
+      body,
+      follow_up_body: null,
+      personalization_points: [],
+      status: "DRAFT",
+      model: "manual",
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+    });
+
+  if (draftError) {
+    console.error("Could not save manual outreach draft:", draftError);
+    return;
+  }
+
+  if (["NEW", "RESEARCHING", "QUALIFIED"].includes(lead.status)) {
+    const { error: leadUpdateError } = await supabase
+      .from("leads")
+      .update({ status: "DRAFT_READY" })
+      .eq("id", lead.id)
+      .eq("user_id", user.id);
+
+    if (leadUpdateError) {
+      console.error(
+        "Manual outreach draft was saved, but lead status could not be updated:",
+        leadUpdateError,
+      );
+    }
+  }
+
+  revalidateLead(lead.id);
+  redirect(`/leads/${lead.id}#outreach`);
+}
+
+/* =========================================================
    GENERATE OUTREACH — SINGLE LEAD
 ========================================================= */
 
@@ -1922,6 +2098,8 @@ export async function generateLeadOutreachDraft(
   }
 
   try {
+    await assertDirectAiActionAllowed(user.id);
+
     await createLeadOutreachDraft({
       supabase,
       userId:
@@ -3753,6 +3931,11 @@ export async function sendApprovedOutreachDraft(
 
             language:
               draft.language,
+
+            brandColor:
+              readLeadbaseBrandKit(
+                (user.user_metadata ?? {}) as Record<string, unknown>
+              ).brandColor,
           });
       }
     }

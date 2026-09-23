@@ -10,12 +10,14 @@ import {
 
 export function ProposalBrandingFields({
   defaultAccentColor,
+  globalAccentColor,
   currentLogoUrl,
   firstTimeClient,
   isGerman,
   disabled = false,
 }: {
   defaultAccentColor: string;
+  globalAccentColor: string;
   currentLogoUrl?: string | null;
   firstTimeClient: boolean;
   isGerman: boolean;
@@ -27,6 +29,16 @@ export function ProposalBrandingFields({
         ? defaultAccentColor.toUpperCase()
         : "#002BBA"
     );
+
+  const [colorTouched, setColorTouched] = useState(false);
+  const [brandColorScope, setBrandColorScope] = useState<"proposal" | "global">("proposal");
+  const normalizedGlobalAccent = /^#[0-9A-F]{6}$/i.test(globalAccentColor)
+    ? globalAccentColor.toUpperCase()
+    : "#002BBA";
+  const normalizedAccent = /^#[0-9A-F]{6}$/i.test(accentColor)
+    ? accentColor.toUpperCase()
+    : "#002BBA";
+  const showBrandChoice = colorTouched && normalizedAccent !== normalizedGlobalAccent;
 
   return (
     <div>
@@ -57,9 +69,11 @@ export function ProposalBrandingFields({
               type="color"
               value={accentColor}
               disabled={disabled}
-              onChange={(event) =>
-                setAccentColor(event.target.value.toUpperCase())
-              }
+              onChange={(event) => {
+                setAccentColor(event.target.value.toUpperCase());
+                setColorTouched(true);
+                setBrandColorScope("proposal");
+              }}
               className="size-9 cursor-pointer rounded-[9px] border border-black/[0.09] bg-white p-1 disabled:opacity-50 dark:border-white/[0.10] dark:bg-[#15161A]"
             />
 
@@ -68,9 +82,11 @@ export function ProposalBrandingFields({
               name="accentColor"
               value={accentColor}
               disabled={disabled}
-              onChange={(event) =>
-                setAccentColor(event.target.value)
-              }
+              onChange={(event) => {
+                setAccentColor(event.target.value);
+                setColorTouched(true);
+                setBrandColorScope("proposal");
+              }}
               onBlur={() =>
                 setAccentColor(
                   /^#[0-9A-F]{6}$/i.test(accentColor)
@@ -84,6 +100,8 @@ export function ProposalBrandingFields({
             />
           </div>
         </div>
+
+        <input type="hidden" name="brandColorScope" value={showBrandChoice ? brandColorScope : "proposal"} />
 
         <div className="rounded-[12px] border border-black/[0.08] p-3.5 dark:border-white/[0.08]">
           <div className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">
@@ -125,6 +143,17 @@ export function ProposalBrandingFields({
           ) : null}
         </div>
       </div>
+
+      {showBrandChoice ? (
+        <div className="mt-3 rounded-[12px] border border-[#002BBA]/20 bg-[#F7F9FF] p-3.5 dark:bg-[#002BBA]/10">
+          <p className="text-[12px] font-medium">{isGerman ? "Soll diese Farbe nur für dieses Angebot gelten?" : "Should this color apply only to this proposal?"}</p>
+          <p className="mt-1 text-[10.5px] leading-5 text-[#6B7078]">{isGerman ? "Deine globale Brand Color bleibt unverändert, außer du übernimmst diese Farbe bewusst überall." : "Your global Brand Color stays unchanged unless you explicitly use this color everywhere."}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => setBrandColorScope("proposal")} className={`h-9 rounded-[9px] border px-3 text-[11px] font-medium ${brandColorScope === "proposal" ? "border-[#002BBA] bg-[#002BBA] text-white" : "border-black/10 bg-white dark:border-white/10 dark:bg-white/[.04]"}`}>{isGerman ? "Nur dieses Angebot" : "Only this proposal"}</button>
+            <button type="button" onClick={() => setBrandColorScope("global")} className={`h-9 rounded-[9px] border px-3 text-[11px] font-medium ${brandColorScope === "global" ? "border-[#002BBA] bg-[#002BBA] text-white" : "border-black/10 bg-white dark:border-white/10 dark:bg-white/[.04]"}`}>{isGerman ? "Als Brand Color überall nutzen" : "Use as my brand color everywhere"}</button>
+          </div>
+        </div>
+      ) : null}
 
       <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-[12px] border border-black/[0.08] p-3.5 dark:border-white/[0.08]">
         <input

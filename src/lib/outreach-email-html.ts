@@ -1,5 +1,7 @@
 import "server-only";
 
+import { normalizeBrandColor, readableTextColor } from "@/lib/brand-kit";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -9,6 +11,7 @@ type BuildOutreachHtmlInput = {
   previewUrl: string;
   gifContentId: string;
   language?: string | null;
+  brandColor?: string | null;
 };
 
 /* =========================================================
@@ -197,6 +200,7 @@ export function buildOutreachHtmlEmail({
   previewUrl,
   gifContentId,
   language,
+  brandColor,
 }: BuildOutreachHtmlInput) {
   const cleanTextBody =
     textBody.trim();
@@ -204,6 +208,16 @@ export function buildOutreachHtmlEmail({
   const cleanContentId =
     sanitizeContentId(
       gifContentId
+    );
+
+  const accentColor =
+    normalizeBrandColor(
+      brandColor
+    );
+
+  const accentTextColor =
+    readableTextColor(
+      accentColor
     );
 
   if (
@@ -294,25 +308,25 @@ export function buildOutreachHtmlEmail({
       }
 
       /*
-       * Keep CTA background blue.
+       * Keep the CTA background on the saved Brand Color.
        *
        * Gmail mobile dark mode can rewrite normal
        * background-color values. The gradient provides
        * another layer that Gmail generally preserves.
        */
       .leadbase-button-cell {
-        background-color: #002BBA !important;
+        background-color: ${accentColor} !important;
         background-image:
           linear-gradient(
-            #002BBA,
-            #002BBA
+            ${accentColor},
+            ${accentColor}
           ) !important;
       }
 
       .leadbase-button-link {
-        color: #ffffff !important;
+        color: ${accentTextColor} !important;
         -webkit-text-fill-color:
-          #ffffff !important;
+          ${accentTextColor} !important;
         text-decoration: none !important;
       }
 
@@ -337,16 +351,16 @@ export function buildOutreachHtmlEmail({
         .gmail-blend-difference {
         background: #000000;
         mix-blend-mode: difference;
-        color: #ffffff !important;
+        color: ${accentTextColor} !important;
         -webkit-text-fill-color:
-          #ffffff !important;
+          ${accentTextColor} !important;
       }
 
       u + .body
         .gmail-blend-difference span {
-        color: #ffffff !important;
+        color: ${accentTextColor} !important;
         -webkit-text-fill-color:
-          #ffffff !important;
+          ${accentTextColor} !important;
       }
 
       @media only screen and (max-width: 620px) {
@@ -386,9 +400,9 @@ export function buildOutreachHtmlEmail({
         }
 
         .leadbase-button-link {
-          color: #ffffff !important;
+          color: ${accentTextColor} !important;
           -webkit-text-fill-color:
-            #ffffff !important;
+            ${accentTextColor} !important;
         }
       }
     </style>
@@ -543,15 +557,15 @@ export function buildOutreachHtmlEmail({
                         <tr>
                           <td
                             class="leadbase-button-cell"
-                            bgcolor="#002BBA"
+                            bgcolor="${accentColor}"
                             style="
                               border-radius:9px;
-                              background-color:#002BBA;
+                              background-color:${accentColor};
                               background-image:linear-gradient(
-                                #002BBA,
-                                #002BBA
+                                ${accentColor},
+                                ${accentColor}
                               );
-                              color:#ffffff;
+                              color:${accentTextColor};
                             "
                           >
                             <a
@@ -562,8 +576,8 @@ export function buildOutreachHtmlEmail({
                                 display:inline-block;
                                 padding:10px 15px;
                                 border-radius:9px;
-                                color:#ffffff !important;
-                                -webkit-text-fill-color:#ffffff !important;
+                                color:${accentTextColor} !important;
+                                -webkit-text-fill-color:${accentTextColor} !important;
                                 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;
                                 font-size:14px;
                                 line-height:20px;
@@ -577,14 +591,14 @@ export function buildOutreachHtmlEmail({
                                 <div
                                   class="gmail-blend-difference"
                                   style="
-                                    color:#ffffff !important;
-                                    -webkit-text-fill-color:#ffffff !important;
+                                    color:${accentTextColor} !important;
+                                    -webkit-text-fill-color:${accentTextColor} !important;
                                   "
                                 >
                                   <span
                                     style="
-                                      color:#ffffff !important;
-                                      -webkit-text-fill-color:#ffffff !important;
+                                      color:${accentTextColor} !important;
+                                      -webkit-text-fill-color:${accentTextColor} !important;
                                     "
                                   >
                                     ${escapeHtml(

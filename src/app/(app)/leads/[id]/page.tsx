@@ -40,6 +40,10 @@ import {
 } from "./analyze-button";
 
 import {
+  FullLeadWorkflowButton,
+} from "./full-lead-workflow-button";
+
+import {
   DeleteLeadDialog,
 } from "./delete-lead-dialog";
 
@@ -95,7 +99,8 @@ import {
 } from "@/lib/supabase/server";
 
 import { normalizeLeadbaseDesignDefaults } from "@/lib/design-defaults";
-import { resolveAccountCurrency } from "@/lib/account-currency";
+import { formatAccountMoney, resolveAccountCurrency } from "@/lib/account-currency";
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
 
 import {
   WorkspacePageMotion,
@@ -849,6 +854,9 @@ export default async function LeadDetailPage({
   const text = leadsCopy[language];
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) notFound();
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  const freeMode = planAccess.planId === "free";
   const designDefaults = normalizeLeadbaseDesignDefaults(user?.user_metadata?.leadbase_design_defaults);
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
@@ -971,13 +979,15 @@ export default async function LeadDetailPage({
       .select("id")
       .eq("lead_id", id)
       .maybeSingle(),
-    supabase
-      .from("lead_audits")
-      .select("id,created_at,audit_version,mobile_score,desktop_score,lcp_ms,cls,tbt_ms,https_valid,has_viewport,has_contact_form,contact_form_reachable,broken_link_count,meta_description_present,cms,raw_results_json,findings,hook_category,hook_strength,hook_value,hook_evidence,hook_sentence")
-      .eq("lead_id", id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    freeMode
+      ? Promise.resolve({ data: null, error: null })
+      : supabase
+          .from("lead_audits")
+          .select("id,created_at,audit_version,mobile_score,desktop_score,lcp_ms,cls,tbt_ms,https_valid,has_viewport,has_contact_form,contact_form_reachable,broken_link_count,meta_description_present,cms,raw_results_json,findings,hook_category,hook_strength,hook_value,hook_evidence,hook_sentence")
+          .eq("lead_id", id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
     supabase
       .from("outreach_events")
       .select("id,status,channel,sent_at,hook_category,hook_strength,hook_value,template_version,subject_variant,opener_variant,sequence_step,gmail_message_id,gmail_thread_id")
@@ -998,7 +1008,9 @@ export default async function LeadDetailPage({
   const company = getSingleRelation(lead.company);
   const contact = getSingleRelation(lead.primary_contact);
   const campaign = getSingleRelation(lead.campaign);
-  const findings = parseWebsiteFindings(lead.website_findings, text.detail.finding);
+  const findings = freeMode
+    ? []
+    : parseWebsiteFindings(lead.website_findings, text.detail.finding);
   const visual = parseVisualAnalysis(lead.visual_analysis);
   const visualSourceLanguage = parseVisualSourceLanguage(lead.visual_analysis);
   const structuralStatus = lead.analysis_status ?? "NOT_ANALYZED";
@@ -1108,11 +1120,11 @@ export default async function LeadDetailPage({
   }
 
   const money = lead.estimated_project_value !== null
-    ? new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", {
-        style: "currency",
-        currency: lead.currency ?? accountCurrency,
-        maximumFractionDigits: 0,
-      }).format(lead.estimated_project_value)
+    ? formatAccountMoney(
+        lead.estimated_project_value,
+        lead.currency ?? accountCurrency,
+        language
+      )
     : null;
 
   const strings = language === "de"
@@ -1237,7 +1249,7 @@ export default async function LeadDetailPage({
           <span className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-[#002BBA]">{strings.eyebrow}</span>
         </div>
 
-        <div className="mt-2 flex items-end justify-between gap-6">
+        <div className="mt-2 flex items-end justify-between gap-6 max-[980px]:flex-col max-[980px]:items-stretch max-[980px]:gap-3">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-3">
               <h1 className="truncate text-[42px] font-semibold leading-none tracking-[-0.035em]">{leadName}</h1>
@@ -1257,23 +1269,32 @@ export default async function LeadDetailPage({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 max-[980px]:hidden">
+          <div className="flex shrink-0 items-center gap-2 max-[980px]:w-full">
+            <FullLeadWorkflowButton
+              leadId={lead.id}
+              companyName={leadName}
+              hasWebsite={Boolean(company?.website_url)}
+              language={language}
+            />
+
             {company?.website_url ? (
-              <a href={normalizeUrl(company.website_url)} target="_blank" rel="noreferrer" className="flex h-[34px] items-center gap-[7px] rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] hover:border-black/[0.16] hover:bg-[#FDFDFE]">
+              <a href={normalizeUrl(company.website_url)} target="_blank" rel="noreferrer" className="flex h-[34px] items-center gap-[7px] rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] hover:border-black/[0.16] hover:bg-[#FDFDFE] max-[980px]:hidden">
                 <ExternalLink className="size-3.5 opacity-60" />
                 {strings.websiteOpen}
               </a>
             ) : null}
 
             {leadEditValue ? (
-              <LeadEditDialog
-                language={language}
-                lead={leadEditValue}
-                campaigns={editableCampaigns}
-              />
+              <div className="max-[980px]:hidden">
+                <LeadEditDialog
+                  language={language}
+                  lead={leadEditValue}
+                  campaigns={editableCampaigns}
+                />
+              </div>
             ) : null}
 
-            <div className="[&_button]:h-[34px] [&_button]:rounded-[10px] [&_button]:border-0 [&_button]:bg-[#002BBA] [&_button]:px-3.5 [&_button]:text-[13px] [&_button]:font-medium [&_button]:text-white [&_button]:shadow-[0_1px_2px_rgba(0,43,186,0.30)] [&_button:hover]:bg-[#00229A]">
+            <div className="max-[980px]:hidden [&_button]:h-[34px] [&_button]:rounded-[10px] [&_button]:border-0 [&_button]:bg-[#002BBA] [&_button]:px-3.5 [&_button]:text-[13px] [&_button]:font-medium [&_button]:text-white [&_button]:shadow-[0_1px_2px_rgba(0,43,186,0.30)] [&_button:hover]:bg-[#00229A]">
               <AnalyzeWebsiteButton leadId={lead.id} hasWebsite={Boolean(company?.website_url)} />
             </div>
           </div>
@@ -1361,6 +1382,7 @@ export default async function LeadDetailPage({
 
           <LeadDetailTabs
             language={language}
+            freeMode={freeMode}
             analyzed={analyzed}
             analyzedAt={formatDateTime(lead.visual_analyzed_at ?? lead.analyzed_at, language)}
             model={lead.visual_model}
@@ -1373,7 +1395,7 @@ export default async function LeadDetailPage({
                 language={language}
                 sourceLanguage={visualSourceLanguage}
                 status={visualStatus}
-                structuralScore={lead.structural_score}
+                structuralScore={freeMode ? null : lead.structural_score}
                 visualScore={lead.visual_score}
                 redesignPotential={lead.redesign_potential}
                 analysis={visual}
@@ -1386,15 +1408,17 @@ export default async function LeadDetailPage({
               />
             }
             structure={
-              <StructuralAnalysisCard
-                language={language}
-                status={structuralStatus}
-                findings={findings}
-                analyzedAt={lead.analyzed_at}
-                error={lead.analysis_error}
-              />
+              freeMode ? null : (
+                <StructuralAnalysisCard
+                  language={language}
+                  status={structuralStatus}
+                  findings={findings}
+                  analyzedAt={lead.analyzed_at}
+                  error={lead.analysis_error}
+                />
+              )
             }
-            evidence={<EvidenceAuditCard language={language} audit={latestEvidenceAudit} />}
+            evidence={freeMode ? null : <EvidenceAuditCard language={language} audit={latestEvidenceAudit} />}
             outreach={<div id="outreach"><OutreachSection leadId={lead.id} /></div>}
             history={
               <div className="space-y-5">
@@ -1426,7 +1450,7 @@ export default async function LeadDetailPage({
           <section className="rounded-[16px] border border-black/[0.08] bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(11,12,14,0.03)]">
             <div className="flex items-center justify-between gap-3">
               <span className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-[#6B7078]">{strings.manage}</span>
-              <div className="[&_button]:h-auto [&_button]:border-0 [&_button]:bg-transparent [&_button]:p-0 [&_button]:text-[10.5px] [&_button]:font-normal [&_button]:text-[#6B7078] [&_button]:shadow-none [&_button:hover]:bg-transparent [&_button:hover]:text-[#0B0C0E]"><DeleteLeadDialog leadId={lead.id} companyName={leadName} /></div>
+              <div className="[&_button]:h-auto [&_button]:border-0 [&_button]:bg-transparent [&_button]:p-0 [&_button]:text-[10.5px] [&_button]:font-normal [&_button]:text-[#6B7078] [&_button]:shadow-none [&_button:hover]:bg-transparent [&_button:hover]:text-[#0B0C0E]"><DeleteLeadDialog leadId={lead.id} companyName={leadName} freeLeadSlotWillRemainUsed={freeMode} /></div>
             </div>
 
             <form action={updateLeadStatus} className="mt-3 flex items-center gap-2">

@@ -17,6 +17,11 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  assertFreeWorkspaceLeadAllowed,
+  getFreeWorkspaceLeadScope,
+} from "@/lib/free-experience";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -49,6 +54,21 @@ function isGmailQuotaError(
       "Units per minute per user"
     )
   );
+}
+
+async function isLeadAllowedForInbox(
+  userId: string,
+  leadId: string
+) {
+  try {
+    await assertFreeWorkspaceLeadAllowed(userId, leadId);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message === "FREE_WORKSPACE_LEAD_SCOPE_DENIED") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 /* =========================================================
@@ -127,6 +147,10 @@ async function markConversationReadInternal(
     return false;
   }
 
+  if (!(await isLeadAllowedForInbox(user.id, leadId))) {
+    return false;
+  }
+
   const {
     error,
   } =
@@ -187,6 +211,10 @@ async function setConversationState(
   if (
     !user
   ) {
+    return false;
+  }
+
+  if (!(await isLeadAllowedForInbox(user.id, leadId))) {
     return false;
   }
 
@@ -266,6 +294,10 @@ async function cancelScheduledEmailsForLead(
     !user
   ) {
     return;
+  }
+
+  if (!(await isLeadAllowedForInbox(user.id, leadId))) {
+    return ;
   }
 
   const now =
@@ -534,6 +566,10 @@ export async function markLeadConversationUnread(
     };
   }
 
+  if (!(await isLeadAllowedForInbox(user.id, leadId))) {
+    return { ok: false };
+  }
+
   const {
     data:
       latestMessage,
@@ -791,6 +827,8 @@ export async function emptyTrash() {
     return;
   }
 
+  const freeScope = await getFreeWorkspaceLeadScope(user.id);
+
   const {
     data:
       trashedStates,
@@ -826,15 +864,12 @@ export async function emptyTrash() {
   }
 
   const leadIds =
-    (
-      trashedStates ??
-      []
-    ).map(
-      (
-        state
-      ) =>
-        state.lead_id
-    );
+    (trashedStates ?? [])
+      .filter((state) =>
+        !freeScope.restricted ||
+        (Boolean(freeScope.leadId) && state.lead_id === freeScope.leadId)
+      )
+      .map((state) => state.lead_id);
 
   if (
     leadIds.length ===

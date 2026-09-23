@@ -14,6 +14,13 @@ import {
     assertAiUsageAvailable,
     recordAiUsage,
   } from "@/lib/ai-usage";
+
+  import {
+    assertDirectAiActionAllowed,
+    assertFreeWorkspaceLeadAllowed,
+    isFreeDirectAiActionError,
+    isFreeWorkspaceLeadScopeError,
+  } from "@/lib/free-experience";
   
   export const runtime =
     "nodejs";
@@ -203,6 +210,27 @@ import {
           "Not authenticated.",
           401
         );
+      }
+
+      try {
+        await assertFreeWorkspaceLeadAllowed(user.id, leadId);
+      } catch (scopeError) {
+        if (isFreeWorkspaceLeadScopeError(scopeError)) {
+          return jsonError("This conversation is not available on Free.", 403);
+        }
+        throw scopeError;
+      }
+
+      try {
+        await assertDirectAiActionAllowed(user.id);
+      } catch (accessError) {
+        if (isFreeDirectAiActionError(accessError)) {
+          return NextResponse.json(
+            { ok: false, code: "FREE_FULL_WORKFLOW_ONLY", error: "AI reply generation is available from Starter. You can still reply manually on Free." },
+            { status: 403 },
+          );
+        }
+        throw accessError;
       }
   
       /* =====================================================

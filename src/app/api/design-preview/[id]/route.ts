@@ -13,6 +13,12 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    assertPlanFeatureAvailable,
+    isPlanAccessError,
+    planAccessMessage,
+  } from "@/lib/plan-access";
   
   /* =========================================================
      CONFIG
@@ -360,6 +366,21 @@ import {
             401,
         }
       );
+    }
+
+    try {
+      await assertPlanFeatureAvailable(user.id, "design_generation");
+    } catch (error) {
+      if (isPlanAccessError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: planAccessMessage(error, "en") ?? "Design editing is available from Starter.",
+          },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
   
     /* =======================================================
@@ -820,6 +841,21 @@ import {
             401,
         }
       );
+    }
+
+    try {
+      await assertPlanFeatureAvailable(user.id, "design_generation");
+    } catch (error) {
+      if (isPlanAccessError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: planAccessMessage(error, "en") ?? "Design editing is available from Starter.",
+          },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
   
     /* =======================================================

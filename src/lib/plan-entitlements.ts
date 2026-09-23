@@ -35,6 +35,7 @@ export type LeadbaseFeatureId =
   | "campaigns"
   | "analytics"
   | "projects"
+  | "project_creation"
   | "reminders"
   | "proposal_builder"
   | "proposal_sharing"
@@ -132,6 +133,14 @@ export const LEADBASE_FEATURE_CATALOG = {
     metering: "included",
     providers: ["supabase"],
     customerVisible: true,
+  },
+  project_creation: {
+    label: "Project creation",
+    category: "core",
+    metering: "included",
+    providers: ["supabase"],
+    customerVisible: true,
+    note: "Accepted proposals may materialize a locked project preview on Free; manual project creation and management require Starter+.",
   },
   reminders: {
     label: "Reminders",
@@ -433,7 +442,6 @@ export type LeadbasePlanEntitlements = {
 const CORE_FEATURES = [
   "crm_core",
   "campaigns",
-  "analytics",
   "projects",
   "reminders",
   "proposal_builder",
@@ -444,6 +452,11 @@ const CORE_FEATURES = [
   "gmail_send",
   "gmail_schedule",
   "pexels_search",
+] as const satisfies readonly LeadbaseFeatureId[];
+
+const PAID_WORKSPACE_FEATURES = [
+  "analytics",
+  "project_creation",
 ] as const satisfies readonly LeadbaseFeatureId[];
 
 const BASIC_AI_FEATURES = [
@@ -484,7 +497,7 @@ export const LEADBASE_PLAN_ENTITLEMENTS: Record<LeadbasePlanId, LeadbasePlanEnti
       "full_lead_workflow",
     ],
     limits: {
-      leadMonthlyLimit: 25,
+      leadMonthlyLimit: 1,
       emailDailyLimit: 20,
       redesignMonthlyLimit: 1,
       aiLeadSearchMaxResultsPerRun: 10,
@@ -512,6 +525,7 @@ export const LEADBASE_PLAN_ENTITLEMENTS: Record<LeadbasePlanId, LeadbasePlanEnti
     maxDesignReasoning: "medium",
     features: [
       ...CORE_FEATURES,
+      ...PAID_WORKSPACE_FEATURES,
       ...BASIC_AI_FEATURES,
       "design_research",
       "design_generation",
@@ -548,6 +562,7 @@ export const LEADBASE_PLAN_ENTITLEMENTS: Record<LeadbasePlanId, LeadbasePlanEnti
     maxDesignReasoning: "high",
     features: [
       ...CORE_FEATURES,
+      ...PAID_WORKSPACE_FEATURES,
       ...BASIC_AI_FEATURES,
       "competitor_research",
       "design_research",
@@ -588,6 +603,7 @@ export const LEADBASE_PLAN_ENTITLEMENTS: Record<LeadbasePlanId, LeadbasePlanEnti
     maxDesignReasoning: "max",
     features: [
       ...CORE_FEATURES,
+      ...PAID_WORKSPACE_FEATURES,
       ...BASIC_AI_FEATURES,
       "competitor_research",
       "design_research",

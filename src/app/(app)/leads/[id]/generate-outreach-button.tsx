@@ -1,8 +1,12 @@
 "use client";
 
+import Link from "next/link";
+
 import {
+  LockKeyhole,
   RefreshCw,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -24,6 +28,7 @@ import {
 import {
   useLanguage,
 } from "@/components/language-provider";
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
 
 /* =========================================================
    TYPES
@@ -42,6 +47,36 @@ export function GenerateOutreachButton({
   leadId,
   hasDraft = false,
 }: GenerateOutreachButtonProps) {
+  const { language } = useLanguage();
+  const { planId, remainingCredits, loading: planLoading } = useLeadbasePlan();
+  const noCredits = !planLoading && remainingCredits !== null && remainingCredits <= 0;
+
+  if (!planLoading && planId === "free") {
+    return (
+      <Link
+        href="/profile?dialog=plan"
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-[#002BBA]/20 bg-[#EEF2FF] px-3 text-xs font-medium text-[#002BBA] transition-colors hover:bg-[#E4EAFF]"
+      >
+        <LockKeyhole className="size-3.5" />
+        {hasDraft
+          ? language === "de" ? "Neu erstellen · ab Starter" : "Regenerate · Starter+"
+          : language === "de" ? "AI-Outreach · ab Starter" : "AI outreach · Starter+"}
+      </Link>
+    );
+  }
+
+  if (noCredits) {
+    return (
+      <Link
+        href="/profile?dialog=credits"
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-[9px] bg-[#002BBA] px-3 text-xs font-medium text-white transition-colors hover:bg-[#00229A]"
+      >
+        <Zap className="size-3.5" />
+        {language === "de" ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+      </Link>
+    );
+  }
+
   return (
     <form
       action={

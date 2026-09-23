@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { assertFreeWorkspaceLeadAllowed, isFreeWorkspaceLeadScopeError } from "@/lib/free-experience";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +134,18 @@ function jsonError(
       status,
     }
   );
+}
+
+async function assertInboxLeadScope(userId: string, leadId: string) {
+  try {
+    await assertFreeWorkspaceLeadAllowed(userId, leadId);
+    return null;
+  } catch (error) {
+    if (isFreeWorkspaceLeadScopeError(error)) {
+      return jsonError("This conversation is not available on Free.", 403);
+    }
+    throw error;
+  }
 }
 
 /* =========================================================
@@ -670,6 +683,9 @@ export async function GET(
       );
     }
 
+    const scopeError = await assertInboxLeadScope(user.id, leadId);
+    if (scopeError) return scopeError;
+
     const {
       data:
         schedule,
@@ -973,6 +989,9 @@ export async function POST(
         401
       );
     }
+
+    const scopeError = await assertInboxLeadScope(user.id, leadId);
+    if (scopeError) return scopeError;
 
     let resolvedReplyToMessageId = replyToMessageId;
     let virtualTarget: {
@@ -1575,6 +1594,22 @@ export async function PATCH(
       );
     }
 
+    const { data: scheduleScope, error: scheduleScopeError } = await supabase
+      .from("scheduled_emails")
+      .select("lead_id")
+      .eq("id", payload.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (scheduleScopeError) {
+      return jsonError("Could not verify the scheduled reply.", 500);
+    }
+    if (!scheduleScope) {
+      return jsonError("Scheduled reply not found.", 404);
+    }
+    const scopeError = await assertInboxLeadScope(user.id, scheduleScope.lead_id);
+    if (scopeError) return scopeError;
+
     const {
       data:
         updatedSchedule,
@@ -1785,6 +1820,9 @@ export async function DELETE(
         404
       );
     }
+
+    const scopeError = await assertInboxLeadScope(user.id, existingSchedule.lead_id);
+    if (scopeError) return scopeError;
 
     if (
       existingSchedule.status !==

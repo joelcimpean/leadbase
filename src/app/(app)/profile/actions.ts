@@ -1,21 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  inferCurrencyFromLocation,
+  normalizeBillingCurrency,
   normalizeLeadbaseCurrency,
+  type LeadbaseBillingCurrency,
   type LeadbaseCurrencyMode,
 } from "@/lib/account-currency";
 import { createClient } from "@/lib/supabase/server";
 import {
+  normalizeBrandColor,
+  normalizeClientPreviewCtaMode,
+  normalizeHttpsUrl,
+  normalizePublicIdentityMode,
+  readLeadbaseBrandKit,
+  type LeadbaseClientPreviewCtaMode,
+  type LeadbasePublicIdentityMode,
+} from "@/lib/brand-kit";
+import {
   LEADBASE_CREDIT_TOPUPS,
+  customCreditPrice,
   customCreditPriceEur,
   getPublicPlan,
   normalizeCustomCredits,
   normalizeTierIndex,
   priceForTier,
+  priceForTopup,
   type LeadbaseBillingInterval,
   type LeadbasePublicPlanId,
 } from "@/lib/public-plans";
@@ -51,15 +64,22 @@ export type ProposalBrandingDefaults = {
   logoUrl: string | null;
   logoPath: string | null;
   templateId: ProposalTemplateId;
+  identityMode: LeadbasePublicIdentityMode;
+  ctaMode: LeadbaseClientPreviewCtaMode;
+  bookingUrl: string;
+  bookingProviderLabel: string;
 };
 
 export type AccountPlanSelection = {
   planId: LeadbasePublicPlanId | "free";
   tierIndex: number;
   billing: LeadbaseBillingInterval;
+  billingCurrency?: LeadbaseBillingCurrency;
   checkoutStatus: "free" | "pending_checkout" | "active";
   credits: number | null;
+  price?: number;
   priceEur: number;
+  priceUsd?: number;
 };
 
 const PROPOSAL_TEMPLATE_IDS = new Set<ProposalTemplateId>([
@@ -103,6 +123,17 @@ async function authenticatedUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new Error("Not signed in.");
   return { supabase, user };
+}
+
+async function appOrigin() {
+  const configured = process.env.LEADBASE_PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host?.includes("localhost") ? "http" : "https");
+  if (!host) return "http://localhost:3000";
+  return `${protocol}://${host}`;
 }
 
 async function updateUserMetadata(
@@ -163,11 +194,8 @@ export async function saveProfile(
       clean(gmailConnection?.email_address, 254) ||
       clean(user.email, 254);
 
-    const currencyMode: LeadbaseCurrencyMode =
-      input.currencyMode === "manual" ? "manual" : "auto";
-    const currency = currencyMode === "manual"
-      ? normalizeLeadbaseCurrency(input.currency)
-      : (inferCurrencyFromLocation(location) ?? normalizeLeadbaseCurrency(input.currency));
+    const currencyMode: LeadbaseCurrencyMode = "manual";
+    const currency = normalizeLeadbaseCurrency(input.currency);
 
     const profile: LeadbaseProfileData = {
       senderName: clean(input.senderName, 120) || fullName,
@@ -246,14 +274,24 @@ export async function saveProposalBranding(
 ): Promise<ActionResult<ProposalBrandingDefaults>> {
   try {
     const { supabase, user } = await authenticatedUser();
-    const current = (user.user_metadata?.leadbase_proposal_branding ?? {}) as Record<string, unknown>;
-    let logoUrl = typeof current.logoUrl === "string" ? current.logoUrl : null;
-    let logoPath = typeof current.logoPath === "string" ? current.logoPath : null;
-    const accentColor = normalizeColor(String(formData.get("accentColor") ?? "#002BBA"));
+    const currentKit = readLeadbaseBrandKit((user.user_metadata ?? {}) as Record<string, unknown>);
+    const currentProposal = (user.user_metadata?.leadbase_proposal_branding ?? {}) as Record<string, unknown>;
+    let logoUrl = currentKit.logoUrl;
+    let logoPath = currentKit.logoPath;
+    const accentColor = normalizeBrandColor(formData.get("accentColor"));
     const templateId = normalizeProposalTemplateId(formData.get("templateId"));
+    const identityMode = normalizePublicIdentityMode(formData.get("identityMode"));
+    const ctaMode = normalizeClientPreviewCtaMode(formData.get("ctaMode"));
+    const rawBookingUrl = clean(formData.get("bookingUrl"), 500);
+    const bookingUrl = normalizeHttpsUrl(rawBookingUrl);
+    const bookingProviderLabel = clean(formData.get("bookingProviderLabel"), 80);
     const removeLogo = String(formData.get("removeLogo") ?? "") === "1";
     const file = formData.get("logo");
     const admin = createAdminClient();
+
+    if ((ctaMode === "booking" || ctaMode === "both") && !bookingUrl) {
+      return { ok: false, error: "Add a valid HTTPS booking link before enabling booking." };
+    }
 
     if (removeLogo && logoPath) {
       await admin.storage.from("proposal-assets").remove([logoPath]);
@@ -265,7 +303,7 @@ export async function saveProposalBranding(
       if (file.size > 2 * 1024 * 1024) return { ok: false, error: "The logo may be up to 2 MB." };
       const extension = extensionFor(file.type);
       if (!extension) return { ok: false, error: "Please upload the logo as PNG, JPG or WebP." };
-      const path = `${user.id}/profile/proposal-branding-logo.${extension}`;
+      const path = `${user.id}/profile/brand-kit-logo.${extension}`;
       if (logoPath && logoPath !== path) await admin.storage.from("proposal-assets").remove([logoPath]);
       const { error: uploadError } = await admin.storage.from("proposal-assets").upload(
         path,
@@ -278,14 +316,47 @@ export async function saveProposalBranding(
       logoUrl = `${data.publicUrl}?v=${Date.now()}`;
     }
 
-    const branding: ProposalBrandingDefaults = { accentColor, logoUrl, logoPath, templateId };
-    await updateUserMetadata(supabase, user, { leadbase_proposal_branding: branding });
+    if (identityMode === "logo" && !logoUrl) {
+      return { ok: false, error: "Upload a logo before choosing Logo as your public identity." };
+    }
+
+    const branding: ProposalBrandingDefaults = {
+      accentColor,
+      logoUrl,
+      logoPath,
+      templateId,
+      identityMode,
+      ctaMode,
+      bookingUrl,
+      bookingProviderLabel,
+    };
+
+    const brandKit = {
+      brandColor: accentColor,
+      logoUrl,
+      logoPath,
+      identityMode,
+      ctaMode,
+      bookingUrl,
+      bookingProviderLabel,
+    };
+
+    await updateUserMetadata(supabase, user, {
+      leadbase_brand_kit: brandKit,
+      leadbase_proposal_branding: {
+        ...currentProposal,
+        accentColor,
+        logoUrl,
+        logoPath,
+        templateId,
+      },
+    });
 
     revalidatePath("/profile");
     revalidatePath("/leads", "layout");
     return { ok: true, data: branding };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Branding could not be saved." };
+    return { ok: false, error: error instanceof Error ? error.message : "Brand Kit could not be saved." };
   }
 }
 
@@ -294,12 +365,14 @@ export async function saveAccountPlanSelection(input: {
   planId: LeadbasePublicPlanId;
   tierIndex: number;
   billing: LeadbaseBillingInterval;
+  billingCurrency?: LeadbaseBillingCurrency;
 }): Promise<ActionResult<AccountPlanSelection>> {
   try {
     const { supabase, user } = await authenticatedUser();
     const plan = getPublicPlan(input.planId);
     if (!plan) return { ok: false, error: "Unknown plan." };
     const billing: LeadbaseBillingInterval = input.billing === "yearly" ? "yearly" : "monthly";
+    const billingCurrency = normalizeBillingCurrency(input.billingCurrency);
     const tierIndex = normalizeTierIndex(plan, input.tierIndex);
     const tier = plan.tiers[tierIndex];
     if (!tier) return { ok: false, error: "Invalid plan tier." };
@@ -308,13 +381,17 @@ export async function saveAccountPlanSelection(input: {
       planId: plan.id,
       tierIndex,
       billing,
+      billingCurrency,
       checkoutStatus: "pending_checkout",
       credits: tier.credits,
-      priceEur: priceForTier(tier, billing),
+      price: priceForTier(tier, billing, billingCurrency),
+      priceEur: priceForTier(tier, billing, "EUR"),
+      priceUsd: priceForTier(tier, billing, "USD"),
     };
     await updateUserMetadata(supabase, user, {
       leadbase_plan_selection: selection,
       leadbase_plan_requested_at: new Date().toISOString(),
+      leadbase_billing_currency: billingCurrency,
     });
 
     revalidatePath("/profile");
@@ -333,18 +410,22 @@ export async function saveAccountPlanSelection(input: {
 export async function requestCreditTopup(input: {
   presetId: string;
   credits: number;
-}): Promise<ActionResult<{ presetId: string; credits: number; priceEur: number | null }>> {
+  billingCurrency?: LeadbaseBillingCurrency;
+}): Promise<ActionResult<{ presetId: string; credits: number; billingCurrency: LeadbaseBillingCurrency; price: number | null; priceEur: number | null }>> {
   try {
     const { supabase, user } = await authenticatedUser();
     const preset = LEADBASE_CREDIT_TOPUPS.find((item) => item.id === input.presetId);
+    const billingCurrency = normalizeBillingCurrency(input.billingCurrency);
     let credits: number;
     let priceEur: number | null;
+    let price: number | null;
     let presetId: string;
 
     if (preset) {
       presetId = preset.id;
       credits = preset.credits;
       priceEur = preset.priceEur;
+      price = priceForTopup(preset, billingCurrency);
     } else if (input.presetId === "custom") {
       const normalized = normalizeCustomCredits(input.credits);
       if (normalized === null) {
@@ -353,6 +434,7 @@ export async function requestCreditTopup(input: {
       credits = normalized;
       presetId = "custom";
       priceEur = customCreditPriceEur(credits);
+      price = customCreditPrice(credits, billingCurrency);
     } else {
       return { ok: false, error: "Unknown credit package." };
     }
@@ -360,16 +442,21 @@ export async function requestCreditTopup(input: {
     const request = {
       presetId,
       credits,
+      billingCurrency,
+      price,
       priceEur,
       checkoutStatus: "pending_checkout" as const,
       requestedAt: new Date().toISOString(),
     };
-    await updateUserMetadata(supabase, user, { leadbase_pending_credit_topup: request });
+    await updateUserMetadata(supabase, user, {
+      leadbase_pending_credit_topup: request,
+      leadbase_billing_currency: billingCurrency,
+    });
 
     revalidatePath("/profile");
     return {
       ok: true,
-      data: { presetId, credits, priceEur },
+      data: { presetId, credits, billingCurrency, price, priceEur },
       message: "Credit package selected. Credits are added only after a successful checkout.",
     };
   } catch (error) {
@@ -377,27 +464,77 @@ export async function requestCreditTopup(input: {
   }
 }
 
-export async function changeAccountEmail(nextEmail: string): Promise<ActionResult> {
+export async function saveBillingCurrencyPreference(
+  value: LeadbaseBillingCurrency,
+): Promise<ActionResult<{ billingCurrency: LeadbaseBillingCurrency }>> {
   try {
-    const { supabase } = await authenticatedUser();
+    const { supabase, user } = await authenticatedUser();
+    const billingCurrency = normalizeBillingCurrency(value);
+    await updateUserMetadata(supabase, user, { leadbase_billing_currency: billingCurrency });
+    revalidatePath("/profile");
+    return { ok: true, data: { billingCurrency } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Billing currency could not be saved." };
+  }
+}
+
+export async function changeAccountEmail(
+  nextEmail: string,
+): Promise<ActionResult<{ pendingEmail: string | null; activeEmail: string }>> {
+  try {
+    const { supabase, user } = await authenticatedUser();
     const email = clean(nextEmail, 254).toLowerCase();
+    const currentEmail = clean(user.email, 254).toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, error: "Please enter a valid email address." };
-    const { error } = await supabase.auth.updateUser({ email });
+    if (email === currentEmail) return { ok: false, error: "That is already your account email." };
+
+    const origin = await appOrigin();
+    const next = encodeURIComponent("/profile?security=email-verified");
+    const { data, error } = await supabase.auth.updateUser(
+      { email },
+      { emailRedirectTo: `${origin}/auth/callback?next=${next}` },
+    );
     if (error) return { ok: false, error: error.message };
-    return { ok: true, message: "A confirmation email was sent if email confirmation is enabled." };
+
+    const activeEmail = clean(data.user?.email, 254).toLowerCase() || currentEmail;
+    const pendingEmail = activeEmail === email ? null : email;
+    await updateUserMetadata(supabase, data.user ?? user, {
+      leadbase_pending_email_change: pendingEmail
+        ? { email: pendingEmail, requestedAt: new Date().toISOString() }
+        : null,
+    });
+
+    revalidatePath("/profile");
+    return {
+      ok: true,
+      data: { pendingEmail, activeEmail },
+      message: pendingEmail
+        ? "Verification sent. Your current email stays active until the new address is confirmed."
+        : "Account email updated.",
+    };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Email could not be changed." };
   }
 }
 
-export async function changePassword(nextPassword: string): Promise<ActionResult> {
+export async function requestPasswordChange(): Promise<ActionResult> {
   try {
-    const { supabase } = await authenticatedUser();
-    if (nextPassword.length < 8) return { ok: false, error: "The password must be at least 8 characters long." };
-    const { error } = await supabase.auth.updateUser({ password: nextPassword });
+    const { supabase, user } = await authenticatedUser();
+    const email = clean(user.email, 254).toLowerCase();
+    if (!email) return { ok: false, error: "This account has no email address for password recovery." };
+
+    const origin = await appOrigin();
+    const next = encodeURIComponent("/auth/reset");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/auth/callback?next=${next}`,
+    });
     if (error) return { ok: false, error: error.message };
-    return { ok: true };
+
+    return {
+      ok: true,
+      message: "A secure password-change link was sent to your account email.",
+    };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Password could not be changed." };
+    return { ok: false, error: error instanceof Error ? error.message : "Password-change email could not be sent." };
   }
 }

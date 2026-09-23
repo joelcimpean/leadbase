@@ -49,8 +49,10 @@ import {
 
   import {
     assertAiUsageAvailable,
+    getAiUsageWorkflowContext,
     recordAiUsage,
     releaseAiUsageReservation,
+    runWithAiUsageWorkflowContext,
   } from "@/lib/ai-usage";
 
   import {
@@ -59,6 +61,15 @@ import {
     isPlanAccessError,
     planAccessMessage,
   } from "@/lib/plan-access";
+
+  import {
+    resolveWorkflowSponsorFromRequest,
+  } from "@/lib/full-lead-workflow-run";
+
+  import {
+    getLeadAiContextPolicy,
+    visualAnalysisForPolicy,
+  } from "@/lib/ai-context-policy";
   
   /* =========================================================
      CONFIG
@@ -737,12 +748,87 @@ import {
       params,
     }:
       RouteContext
-  ) {
+  ): Promise<Response> {
     const {
       id:
         leadId,
     } =
       await params;
+
+    /* =======================================================
+       FULL WORKFLOW SPONSOR WRAPPER
+
+       The free activation workflow is allowed to create one
+       Standard Sol design even though normal Free users cannot
+       invoke design_generation directly. The internal token is
+       server-only and the wrapper is scoped to this request.
+    ======================================================= */
+
+    const workflowRunHeader =
+      request.headers.get("x-leadbase-workflow-run");
+    const workflowTokenHeader =
+      request.headers.get("x-leadbase-workflow-token");
+    const workflowContextActive =
+      request.headers.get("x-leadbase-workflow-context") === "1";
+
+    if (
+      workflowRunHeader &&
+      workflowTokenHeader &&
+      !workflowContextActive
+    ) {
+      const authClient =
+        await createClient();
+      const { data: { user: workflowUser } } =
+        await authClient.auth.getUser();
+
+      if (!workflowUser) {
+        return NextResponse.json(
+          { ok: false, error: "Unauthorized." },
+          { status: 401 },
+        );
+      }
+
+      const sponsor =
+        await resolveWorkflowSponsorFromRequest(
+          request,
+          workflowUser.id,
+        );
+
+      if (
+        !sponsor ||
+        sponsor.run.lead_id !== leadId ||
+        sponsor.run.current_step !== "design"
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid workflow design request." },
+          { status: 403 },
+        );
+      }
+
+      const bodyText =
+        await request.text();
+      const headers =
+        new Headers(request.headers);
+      headers.set(
+        "x-leadbase-workflow-context",
+        "1",
+      );
+
+      const wrappedRequest =
+        new Request(request.url, {
+          method: "POST",
+          headers,
+          body: bodyText || undefined,
+        });
+
+      return runWithAiUsageWorkflowContext(
+        sponsor.context,
+        () => POST(
+          wrappedRequest,
+          { params: Promise.resolve({ id: leadId }) },
+        ),
+      );
+    }
   
     let body:
       PostBody = {};
@@ -827,19 +913,42 @@ import {
       );
     }
 
+    const workflowContext =
+      getAiUsageWorkflowContext();
+    const fixedWorkflowDesign =
+      workflowContext?.userId === user.id &&
+      workflowContext.billingMode === "fixed_bundle";
+
     try {
-      await assertPlanAiSelectionAvailable(user.id, {
-        feature: "design_generation",
-        model: selectedDesignModel,
-        reasoningEffort: selectedReasoningEffort,
-      });
+      if (fixedWorkflowDesign) {
+        if (
+          selectedDesignModel !== "gpt-5.6-sol" ||
+          selectedReasoningEffort !== "low" ||
+          selectedMotionPreset !== "none" ||
+          body.bulk === true
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "The free full workflow only allows Standard Sol / Low without motion or bulk mode.",
+            },
+            { status: 403 },
+          );
+        }
+      } else {
+        await assertPlanAiSelectionAvailable(user.id, {
+          feature: "design_generation",
+          model: selectedDesignModel,
+          reasoningEffort: selectedReasoningEffort,
+        });
 
-      if (selectedMotionPreset !== "none") {
-        await assertPlanFeatureAvailable(user.id, "design_motion");
-      }
+        if (selectedMotionPreset !== "none") {
+          await assertPlanFeatureAvailable(user.id, "design_motion");
+        }
 
-      if (body.bulk === true) {
-        await assertPlanFeatureAvailable(user.id, "bulk_design");
+        if (body.bulk === true) {
+          await assertPlanFeatureAvailable(user.id, "bulk_design");
+        }
       }
     } catch (error) {
       if (isPlanAccessError(error)) {
@@ -1121,6 +1230,11 @@ import {
        ANALYSIS
     ======================================================= */
   
+    const aiContextPolicy =
+      await getLeadAiContextPolicy(
+        user.id
+      );
+
     const analysis:
       RedesignAnalysisContext = {
       company: {
@@ -1138,13 +1252,20 @@ import {
       },
   
       researchSummary:
-        lead.research_summary,
+        aiContextPolicy.allowResearchSummary
+          ? lead.research_summary
+          : null,
   
       websiteFindings:
-        lead.website_findings,
+        aiContextPolicy.allowStructuralFindings
+          ? lead.website_findings
+          : null,
   
       visualAnalysis:
-        lead.visual_analysis,
+        visualAnalysisForPolicy(
+          aiContextPolicy,
+          lead.visual_analysis
+        ),
     };
   
     /* =======================================================
@@ -1155,7 +1276,9 @@ import {
       existing.storedResearch;
   
     if (
-      !designResearch
+      !designResearch &&
+      !fixedWorkflowDesign &&
+      aiContextPolicy.allowAdvancedDesignResearch
     ) {
       const {
         data:
@@ -1238,7 +1361,9 @@ import {
       );
   
     if (
-      !designResearch
+      !designResearch &&
+      !fixedWorkflowDesign &&
+      aiContextPolicy.allowAdvancedDesignResearch
     ) {
       const cookieStore =
         await cookies();
@@ -1369,6 +1494,23 @@ import {
 
           reasoningEffort:
             selectedReasoningEffort,
+
+          // The one-time Free workflow promises a fixed 50-Credit bundle.
+          // Keep the expensive Sol step bounded: one low-reasoning generation,
+          // no automatic second provider call if structural QA fails.
+          maxOutputTokens:
+            fixedWorkflowDesign
+              ? 7_000
+              : undefined,
+
+          allowRepair:
+            !fixedWorkflowDesign,
+
+          // Keep the fixed Free bundle close to its provider-cost budget. The
+          // engine still receives verified website image URLs/metadata, but it
+          // does not attach binary vision inputs for this sponsored design.
+          allowVision:
+            !fixedWorkflowDesign,
         });
     } catch (
       error

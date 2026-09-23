@@ -1,5 +1,7 @@
 "use client";
 
+import { formatAccountMoney } from "@/lib/account-currency";
+
 import { useEffect, useMemo, useState } from "react";
 
 import { ProposalTemplateDocument } from "@/components/proposal-template-document";
@@ -78,15 +80,7 @@ function parseSections(raw: string): PreviewSection[] {
 function formatPrice(value: string, currency: string, isGerman: boolean) {
   const amount = Number(value || 0);
   const safeAmount = Number.isFinite(amount) ? amount : 0;
-  try {
-    return new Intl.NumberFormat(isGerman ? "de-DE" : "en-GB", {
-      style: "currency",
-      currency: currency || "EUR",
-      maximumFractionDigits: Number.isInteger(safeAmount) ? 0 : 2,
-    }).format(safeAmount);
-  } catch {
-    return `${safeAmount.toLocaleString(isGerman ? "de-DE" : "en-GB")} ${currency || "EUR"}`;
-  }
+  return formatAccountMoney(safeAmount, currency || "EUR", isGerman ? "de" : "en");
 }
 
 export function ProposalLivePreview({

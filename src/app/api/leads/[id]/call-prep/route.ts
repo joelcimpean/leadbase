@@ -11,7 +11,23 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
-import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
+import {
+  assertAiUsageAvailable,
+  recordAiUsage,
+  runWithAiUsageWorkflowContext,
+} from "@/lib/ai-usage";
+import {
+  assertDirectAiActionAllowed,
+  claimFreePostReplyCallPrepRefresh,
+  finalizeFreePostReplyCallPrepRefresh,
+  getFreePostReplyCallPrepStatus,
+  isFreeDirectAiActionError,
+  releaseFreePostReplyCallPrepRefresh,
+} from "@/lib/free-experience";
+import {
+  getLeadAiContextPolicy,
+  visualAnalysisForPolicy,
+} from "@/lib/ai-context-policy";
 
 export const runtime =
   "nodejs";
@@ -472,6 +488,12 @@ export async function GET(
       );
     }
 
+    const freeRefresh =
+      await getFreePostReplyCallPrepStatus(
+        user.id,
+        id
+      );
+
     const snapshot =
       readSavedSnapshot(
         lead.call_prep_snapshot
@@ -486,6 +508,8 @@ export async function GET(
 
         found:
           false,
+
+        freeRefresh,
       });
     }
 
@@ -505,6 +529,8 @@ export async function GET(
       generatedAt:
         lead.call_prep_generated_at ??
         null,
+
+      freeRefresh,
     });
   } catch (error) {
     console.error(
@@ -530,7 +556,7 @@ export async function POST(
     Request,
   context:
     RouteContext
-) {
+): Promise<Response> {
   try {
     const {
       id,
@@ -582,6 +608,82 @@ export async function POST(
         "Not authenticated.",
         401
       );
+    }
+
+    try {
+      await assertDirectAiActionAllowed(user.id);
+    } catch (error) {
+      if (isFreeDirectAiActionError(error)) {
+        const claim =
+          await claimFreePostReplyCallPrepRefresh(
+            user.id,
+            id
+          );
+
+        if (!claim) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "FREE_FULL_WORKFLOW_ONLY",
+              error: language === "de"
+                ? "Im Free-Plan wird Call Prep über den einmaligen Full Workflow erstellt. Nach einer echten Kundenantwort ist einmalig ein kostenloses Refresh verfügbar."
+                : "On Free, Call Prep is created through the one-time Full Workflow. After a useful customer reply, one free refresh becomes available.",
+            },
+            { status: 403 },
+          );
+        }
+
+        const replayRequest = new Request(
+          request.url,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ language }),
+          }
+        );
+
+        try {
+          const response: Response = await runWithAiUsageWorkflowContext(
+            {
+              userId: user.id,
+              workflowRunId: `free-post-reply-call-prep:${claim.token}`,
+              billingMode: "fixed_bundle",
+              fixedCredits: 0,
+              allowedFeatures: ["call_prep"],
+            },
+            (): Promise<Response> => POST(
+              replayRequest,
+              { params: Promise.resolve({ id }) }
+            )
+          );
+
+          if (response.ok) {
+            await finalizeFreePostReplyCallPrepRefresh(
+              user.id,
+              id,
+              claim
+            );
+          } else {
+            await releaseFreePostReplyCallPrepRefresh(
+              user.id,
+              id,
+              claim
+            );
+          }
+
+          return response;
+        } catch (refreshError) {
+          await releaseFreePostReplyCallPrepRefresh(
+            user.id,
+            id,
+            claim
+          );
+          throw refreshError;
+        }
+      }
+      throw error;
     }
 
     const [
@@ -770,6 +872,17 @@ export async function POST(
       );
     }
 
+    const aiContextPolicy =
+      await getLeadAiContextPolicy(
+        user.id
+      );
+
+    const promptVisualAnalysis =
+      visualAnalysisForPolicy(
+        aiContextPolicy,
+        lead.visual_analysis
+      );
+
     if (
       draftResult.error
     ) {
@@ -909,38 +1022,34 @@ export async function POST(
       null;
 
     const websiteContext = [
-      lead.website_score !==
-      null
+      aiContextPolicy.allowStructuralFindings &&
+      lead.website_score !== null
         ? `Website score: ${lead.website_score}`
         : null,
 
-      lead.opportunity_score !==
-      null
+      aiContextPolicy.allowStructuralFindings &&
+      lead.opportunity_score !== null
         ? `Opportunity score: ${lead.opportunity_score}`
         : null,
 
-      lead.visual_score !==
-      null
+      aiContextPolicy.planId !== "free" &&
+      lead.visual_score !== null
         ? `Visual score: ${lead.visual_score}`
         : null,
 
-      lead.redesign_potential !==
-      null
+      aiContextPolicy.planId !== "free" &&
+      lead.redesign_potential !== null
         ? `Redesign potential: ${lead.redesign_potential}`
         : null,
 
-      safeJson(
-        lead.website_findings
-      ),
+      aiContextPolicy.allowStructuralFindings
+        ? safeJson(lead.website_findings)
+        : null,
 
-      safeJson(
-        lead.visual_analysis
-      ),
+      safeJson(promptVisualAnalysis),
     ]
       .filter(Boolean)
-      .join(
-        "\n\n"
-      );
+      .join("\n\n");
 
     const outreachContext =
       draftResult.data
@@ -1037,24 +1146,37 @@ export async function POST(
         leadStatus:
           lead.status,
         priority:
-          lead.priority,
+          aiContextPolicy.allowStructuralFindings
+            ? lead.priority
+            : null,
         notes:
-          lead.notes,
+          aiContextPolicy.allowUserNotes
+            ? lead.notes
+            : null,
         researchSummary:
-          lead.research_summary,
+          aiContextPolicy.allowResearchSummary
+            ? lead.research_summary
+            : null,
         websiteContext:
           websiteContext ||
           null,
         outreachContext,
         conversationContext:
+          aiContextPolicy.allowEmailThread &&
           chronological.length >
           0
             ? formatConversation(
                 chronological
               )
             : null,
-        latestReplyContext,
-        previewContext,
+        latestReplyContext:
+          aiContextPolicy.allowEmailThread
+            ? latestReplyContext
+            : null,
+        previewContext:
+          aiContextPolicy.allowPreviewSignals
+            ? previewContext
+            : null,
       });
 
     const prep:

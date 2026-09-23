@@ -21,12 +21,12 @@ import {
   type OnboardingProfileInput,
 } from "@/app/onboarding/actions";
 import { createClient } from "@/lib/supabase/client";
-import { saveAvatar } from "@/app/(app)/profile/actions";
+import { saveAvatar, saveProposalBranding } from "@/app/(app)/profile/actions";
 import { CityField, CurrencyField, PhoneField } from "@/components/profile-account-center-dialogs";
 import { useLanguage } from "@/components/language-provider";
 import { AnimatedNumber } from "@/components/animated-number";
 import { dialCodeFromLocale } from "@/lib/country-dial-codes";
-import { inferCurrencyFromLocation, inferCurrencyFromLocale } from "@/lib/account-currency";
+import { type LeadbaseBillingCurrency } from "@/lib/account-currency";
 import {
   LEADBASE_PUBLIC_PLANS,
   LEADBASE_YEARLY_DISCOUNT_PERCENT,
@@ -86,6 +86,8 @@ function clampTier(value: number) {
   return Math.max(0, Math.min(3, Math.round(value)));
 }
 
+const ONBOARDING_PROFILE_DRAFT_KEY = "leadbase:onboarding-profile-draft:v1";
+
 export function PublicOnboardingGate({
   initialStep = "entry",
   accountEmail = null,
@@ -97,6 +99,7 @@ export function PublicOnboardingGate({
   const text = (german: string, english: string) => de ? german : english;
   const [step, setStep] = useState<Step>(initialStep);
   const [billing, setBilling] = useState<LeadbaseBillingInterval>("monthly");
+  const billingCurrency: LeadbaseBillingCurrency = "USD";
   const [planId, setPlanId] = useState<LeadbasePublicPlanId | "free">("pro");
   const [tiers, setTiers] = useState<Record<LeadbasePublicPlanId, number>>({
     starter: 0,
@@ -113,10 +116,16 @@ export function PublicOnboardingGate({
   const [phoneCountryCode, setPhoneCountryCode] = useState("");
   const [phone, setPhone] = useState("");
   const [currency, setCurrency] = useState("USD");
-  const [currencyMode, setCurrencyMode] = useState<"auto" | "manual">("auto");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [optional, setOptional] = useState<Record<string, string>>({});
+  const [brandColor, setBrandColor] = useState("#002BBA");
+  const [brandIdentityMode, setBrandIdentityMode] = useState<"logo" | "avatar" | "none">("avatar");
+  const [brandCtaMode, setBrandCtaMode] = useState<"email" | "booking" | "both">("email");
+  const [bookingUrl, setBookingUrl] = useState("");
+  const [bookingProviderLabel, setBookingProviderLabel] = useState("");
+  const [brandLogoFile, setBrandLogoFile] = useState<File | null>(null);
+  const [brandLogoPreview, setBrandLogoPreview] = useState<string | null>(null);
   const [showOptionalMobile, setShowOptionalMobile] = useState(false);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const locationRef = useRef<HTMLInputElement | null>(null);
@@ -126,17 +135,53 @@ export function PublicOnboardingGate({
       const guessed = dialCodeFromLocale(navigator.language);
       if (guessed) setPhoneCountryCode(guessed);
     }
-    if (currencyMode === "auto") {
-      const guessedCurrency = inferCurrencyFromLocation(location) ?? inferCurrencyFromLocale(navigator.language) ?? "USD";
-      setCurrency(guessedCurrency);
+  }, [phoneCountryCode]);
+
+  useEffect(() => {
+    if (step !== "profile") return;
+    try {
+      const raw = window.sessionStorage.getItem(ONBOARDING_PROFILE_DRAFT_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        name?: string;
+        location?: string;
+        phoneCountryCode?: string;
+        phone?: string;
+        currency?: string;
+        optional?: Record<string, string>;
+        brandColor?: string;
+        brandIdentityMode?: "logo" | "avatar" | "none";
+        brandCtaMode?: "email" | "booking" | "both";
+        bookingUrl?: string;
+        bookingProviderLabel?: string;
+        brandLogoUrl?: string;
+        showOptionalMobile?: boolean;
+      };
+      if (typeof saved.name === "string") setName(saved.name);
+      if (typeof saved.location === "string") setLocation(saved.location);
+      if (typeof saved.phoneCountryCode === "string") setPhoneCountryCode(saved.phoneCountryCode);
+      if (typeof saved.phone === "string") setPhone(saved.phone);
+      if (typeof saved.currency === "string") setCurrency(saved.currency);
+      if (saved.optional && typeof saved.optional === "object") setOptional(saved.optional);
+      if (typeof saved.brandColor === "string") setBrandColor(saved.brandColor);
+      if (saved.brandIdentityMode === "logo" || saved.brandIdentityMode === "avatar" || saved.brandIdentityMode === "none") setBrandIdentityMode(saved.brandIdentityMode);
+      if (saved.brandCtaMode === "email" || saved.brandCtaMode === "booking" || saved.brandCtaMode === "both") setBrandCtaMode(saved.brandCtaMode);
+      if (typeof saved.bookingUrl === "string") setBookingUrl(saved.bookingUrl);
+      if (typeof saved.bookingProviderLabel === "string") setBookingProviderLabel(saved.bookingProviderLabel);
+      if (typeof saved.brandLogoUrl === "string" && saved.brandLogoUrl) setBrandLogoPreview(saved.brandLogoUrl);
+      if (typeof saved.showOptionalMobile === "boolean") setShowOptionalMobile(saved.showOptionalMobile);
+      window.sessionStorage.removeItem(ONBOARDING_PROFILE_DRAFT_KEY);
+    } catch {
+      window.sessionStorage.removeItem(ONBOARDING_PROFILE_DRAFT_KEY);
     }
-  }, [currencyMode, location, phoneCountryCode]);
+  }, [step]);
 
   useEffect(() => {
     return () => {
       if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
+      if (brandLogoPreview?.startsWith("blob:")) URL.revokeObjectURL(brandLogoPreview);
     };
-  }, [avatarPreview]);
+  }, [avatarPreview, brandLogoPreview]);
 
   function chooseOnboardingAvatar(file: File | null) {
     if (!file) return;
@@ -152,6 +197,70 @@ export function PublicOnboardingGate({
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
     setProfileError(null);
+  }
+
+  function chooseOnboardingBrandLogo(file: File | null) {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileError(text("Das Logo darf maximal 2 MB groß sein.", "The logo may be up to 2 MB."));
+      return;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setProfileError(text("Bitte PNG, JPG oder WebP für das Logo verwenden.", "Please use PNG, JPG or WebP for the logo."));
+      return;
+    }
+    if (brandLogoPreview?.startsWith("blob:")) URL.revokeObjectURL(brandLogoPreview);
+    setBrandLogoFile(file);
+    setBrandLogoPreview(URL.createObjectURL(file));
+    setBrandIdentityMode("logo");
+    setProfileError(null);
+  }
+
+  async function connectGmailFromOnboarding() {
+    setProfileError(null);
+    setBusy(true);
+    try {
+      if (avatarFile) {
+        const avatarData = new FormData();
+        avatarData.set("avatar", avatarFile);
+        const avatarResult = await saveAvatar(avatarData);
+        if (!avatarResult.ok) throw new Error(avatarResult.error);
+        setAvatarFile(null);
+      }
+
+      const brandKitData = new FormData();
+      brandKitData.set("accentColor", brandColor);
+      brandKitData.set("templateId", "minimal");
+      brandKitData.set("identityMode", brandIdentityMode);
+      brandKitData.set("ctaMode", brandCtaMode);
+      brandKitData.set("bookingUrl", bookingUrl);
+      brandKitData.set("bookingProviderLabel", bookingProviderLabel);
+      if (brandLogoFile) brandKitData.set("logo", brandLogoFile);
+      const brandKitResult = await saveProposalBranding(brandKitData);
+      if (!brandKitResult.ok || !brandKitResult.data) throw new Error(brandKitResult.ok ? "Brand Kit could not be saved." : brandKitResult.error);
+      setBrandLogoFile(null);
+
+      window.sessionStorage.setItem(ONBOARDING_PROFILE_DRAFT_KEY, JSON.stringify({
+        name,
+        location,
+        phoneCountryCode,
+        phone,
+        currency,
+        optional,
+        brandColor,
+        brandIdentityMode,
+        brandCtaMode,
+        bookingUrl,
+        bookingProviderLabel,
+        brandLogoUrl: brandKitResult.data.logoUrl || "",
+        showOptionalMobile,
+      }));
+
+      window.location.assign("/api/google/gmail/connect?returnTo=%2F");
+    } catch (error) {
+      setBusy(false);
+      setProfileError(error instanceof Error ? error.message : text("Gmail konnte nicht verbunden werden.", "Gmail connection could not be started."));
+    }
   }
 
   const rows = useMemo(staticRows, []);
@@ -200,8 +309,9 @@ export function PublicOnboardingGate({
     const supabase = createClient();
     try {
       if (step === "forgot") {
+        const next = encodeURIComponent("/auth/reset");
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/reset`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${next}`,
         });
         if (error) throw error;
         setAuthError(text("Link gesendet, falls ein Konto existiert.", "Reset link sent if an account exists."));
@@ -246,7 +356,7 @@ export function PublicOnboardingGate({
     setAuthError(null);
     try {
       const tierIndex = nextPlanId === "free" ? 0 : tiers[nextPlanId];
-      const result = await saveOnboardingPlan({ planId: nextPlanId, tierIndex, billing });
+      const result = await saveOnboardingPlan({ planId: nextPlanId, tierIndex, billing, billingCurrency });
       if (!result.ok) throw new Error(result.error);
       setPlanId(nextPlanId);
       setStep("profile");
@@ -276,7 +386,7 @@ export function PublicOnboardingGate({
       phoneCountryCode,
       phone,
       currency,
-      currencyMode,
+      currencyMode: "manual",
       website: optional.website,
       outreachRole: optional.outreachRole,
       company: optional.company,
@@ -298,6 +408,18 @@ export function PublicOnboardingGate({
         if (result.field === "location") locationRef.current?.focus();
         throw new Error(result.error);
       }
+
+      const brandKitData = new FormData();
+      brandKitData.set("accentColor", brandColor);
+      brandKitData.set("templateId", "minimal");
+      brandKitData.set("identityMode", brandIdentityMode);
+      brandKitData.set("ctaMode", brandCtaMode);
+      brandKitData.set("bookingUrl", bookingUrl);
+      brandKitData.set("bookingProviderLabel", bookingProviderLabel);
+      if (brandLogoFile) brandKitData.set("logo", brandLogoFile);
+      const brandKitResult = await saveProposalBranding(brandKitData);
+      if (!brandKitResult.ok) throw new Error(brandKitResult.error);
+
       if (planId !== "free") {
         const checkoutResponse = await fetch("/api/billing/checkout", {
           method: "POST",
@@ -307,6 +429,7 @@ export function PublicOnboardingGate({
             planId,
             tierIndex: tiers[planId],
             billing,
+            billingCurrency,
           }),
         });
         const checkoutPayload = await checkoutResponse.json() as { url?: string; error?: string };
@@ -316,6 +439,7 @@ export function PublicOnboardingGate({
         window.location.assign(checkoutPayload.url);
         return;
       }
+      window.sessionStorage.removeItem(ONBOARDING_PROFILE_DRAFT_KEY);
       setStep("done");
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : text("Profil konnte nicht gespeichert werden.", "Profile could not be saved."));
@@ -405,6 +529,7 @@ export function PublicOnboardingGate({
                   <Mail /> {text("Mit E-Mail fortfahren", "Continue with email")}
                 </button>
               </div>
+              
               <div className={styles.authSwitch}>{text("Du hast schon einen Account?", "Already have an account?")} <button type="button" onClick={() => setStep("login")}>{text("Anmelden", "Sign in")}</button></div>
               <p className={styles.legal}>{text("Mit dem Fortfahren stimmst du den Nutzungsbedingungen und der Datenschutzerklärung zu.", "By continuing, you agree to the Terms of Service and Privacy Policy.")}</p>
             </div>
@@ -464,11 +589,11 @@ export function PublicOnboardingGate({
                   const on = planId === plan.id;
                   const tierIndex = tiers[plan.id];
                   const tier = plan.tiers[tierIndex];
-                  const price = priceForTier(tier, billing);
+                  const price = priceForTier(tier, billing, billingCurrency);
                   return (
                     <article key={plan.id} className={cn(styles.planCard, on && styles.planCardSelected)} onClick={() => setPlanId(plan.id)}>
                       <div className={styles.planNameRow}><strong>{plan.name}</strong>{plan.recommended ? <span>{text("Empfohlen", "Recommended")}</span> : null}<i className={on ? styles.radioOn : ""}>{on ? <b /> : null}</i></div>
-                      <div className={styles.priceRow}><strong><AnimatedNumber value={price} locale={language === "de" ? "de-DE" : "en-US"} /> €</strong><span>{billing === "monthly" ? text("/ Monat", "/ month") : text("/ Jahr", "/ year")}</span></div>
+                      <div className={styles.priceRow}><strong>$<AnimatedNumber value={price} locale="en-US" /></strong><span>{billing === "monthly" ? text("/ Monat", "/ month") : text("/ Jahr", "/ year")}</span></div>
                       <small>{billing === "monthly" ? text("monatlich kündbar", "cancel monthly") : text(`${LEADBASE_YEARLY_DISCOUNT_PERCENT}% günstiger · jährlich abgerechnet`, `${LEADBASE_YEARLY_DISCOUNT_PERCENT}% off · billed yearly`)}</small>
                       <div
                         className={styles.creditSlider}
@@ -502,7 +627,7 @@ export function PublicOnboardingGate({
               {authError ? <div className={styles.inlineAlert}><AlertCircle />{authError}</div> : null}
               <div className={styles.planFooter}>
                 <button type="button" className={styles.primaryButton} disabled={busy || !currentPlan} onClick={() => currentPlan && void persistPlan(currentPlan.id)}>
-                  {busy ? text("Bitte warten…", "Please wait…") : currentPlan && currentTier ? <>{text("Mit", "Continue with")} {currentPlan.name} · <AnimatedNumber value={priceForTier(currentTier, billing)} locale={language === "de" ? "de-DE" : "en-US"} /> €</> : text("Fortfahren", "Continue")}<ArrowRight />
+                  {busy ? text("Bitte warten…", "Please wait…") : currentPlan && currentTier ? <>{text("Mit", "Continue with")} {currentPlan.name} · $<AnimatedNumber value={priceForTier(currentTier, billing, billingCurrency)} locale="en-US" /></> : text("Fortfahren", "Continue")}<ArrowRight />
                 </button>
                 <button type="button" className={styles.textButton} disabled={busy} onClick={() => void persistPlan("free")}>{text("Kostenlos fortfahren →", "Continue free →")}</button>
                 <span className={styles.billingNote}><AlertCircle /> {text("Nach dem Profil wirst du sicher zu Stripe Checkout weitergeleitet.", "After your profile, you’ll continue securely to Stripe Checkout.")}</span>
@@ -524,13 +649,7 @@ export function PublicOnboardingGate({
               </div>
               <div className={styles.requiredGrid}>
                 <label>{text("Vollständiger Name", "Full name")} <span>*</span><input ref={nameRef} className={profileTouched && !name.trim() ? styles.invalid : ""} value={name} onChange={(event) => setName(event.target.value)} placeholder={text("Vollständiger Name", "Full name")} />{profileTouched && !name.trim() ? <small>{text("Dieses Feld ist erforderlich.", "This field is required.")}</small> : null}</label>
-                <label>{text("Standort", "Location")} <span>*</span><div ref={(node) => { locationRef.current = node?.querySelector("input") ?? null; }}><CityField value={location} language={language} onChange={(value) => {
-                  setLocation(value);
-                  if (currencyMode === "auto") {
-                    const next = inferCurrencyFromLocation(value);
-                    if (next) setCurrency(next);
-                  }
-                }} /></div>{profileTouched && !location.trim() ? <small>{text("Dieses Feld ist erforderlich.", "This field is required.")}</small> : null}</label>
+                <label>{text("Standort", "Location")} <span>*</span><div ref={(node) => { locationRef.current = node?.querySelector("input") ?? null; }}><CityField value={location} language={language} onChange={setLocation} /></div>{profileTouched && !location.trim() ? <small>{text("Dieses Feld ist erforderlich.", "This field is required.")}</small> : null}</label>
               </div>
               <button type="button" className={styles.mobileOptionalToggle} onClick={() => setShowOptionalMobile((open) => !open)}>{text("Optionale Angaben", "Optional details")} {showOptionalMobile ? text("schließen ↑", "close ↑") : text("öffnen ↓", "open ↓")}</button>
               <div className={cn(styles.optionalSection, showOptionalMobile && styles.optionalSectionOpen)}>
@@ -539,22 +658,41 @@ export function PublicOnboardingGate({
                   <label>{text("Telefon", "Phone")}<PhoneField code={phoneCountryCode} phone={phone} language={language} onCode={setPhoneCountryCode} onPhone={setPhone} /></label>
                   <label>{text("Währung", "Currency")}<CurrencyField
                     currency={currency}
-                    currencyMode={currencyMode}
-                    location={location}
                     language={language}
                     onCurrency={setCurrency}
-                    onMode={(mode) => {
-                      setCurrencyMode(mode);
-                      if (mode === "auto") setCurrency(inferCurrencyFromLocation(location) ?? inferCurrencyFromLocale(navigator.language) ?? "USD");
-                    }}
                   /></label>
                   {optionalFields(language).map(([key, label, placeholder]) => (
                     <label key={key}>{label}<input value={optional[key] ?? ""} onChange={(event) => setOptional((current) => ({ ...current, [key]: event.target.value }))} placeholder={placeholder} /></label>
                   ))}
                 </div>
+                <div className="mt-4 rounded-[14px] border border-black/[.08] bg-white p-4 dark:border-white/10 dark:bg-white/[.03]">
+                  <div className="flex items-start justify-between gap-4"><div><strong className="text-[12.5px]">Brand Kit</strong><p className="mt-1 text-[10.5px] leading-4 text-[#6B7078]">{text("Wird für zukünftige Outreach-CTAs, Kundenvorschauen und Proposals verwendet.", "Used for future outreach CTAs, customer previews and proposals.")}</p></div><div className="flex items-center gap-2"><input type="color" value={brandColor} onChange={(event) => setBrandColor(event.target.value.toUpperCase())} className="size-8 rounded-[8px] border border-black/10 bg-white p-1" /><input value={brandColor} onChange={(event) => setBrandColor(event.target.value.toUpperCase())} maxLength={7} className="h-8 w-[92px] rounded-[8px] border border-black/10 px-2 font-mono text-[10.5px]" /></div></div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div><span className="text-[10.5px] font-medium">{text("Öffentliche Identität", "Public identity")}</span><div className="mt-2 grid grid-cols-3 gap-1.5">{([['avatar', text("Profil", "Profile")], ['logo', 'Logo'], ['none', text("Keine", "None")]] as const).map(([id,label]) => <button key={id} type="button" disabled={id === 'logo' && !brandLogoPreview} onClick={() => setBrandIdentityMode(id)} className={cn("h-8 rounded-[8px] border text-[10px] font-medium disabled:opacity-35", brandIdentityMode === id ? "border-[#002BBA] bg-[#002BBA] text-white" : "border-black/10 bg-white")}>{label}</button>)}</div></div>
+                    <div><span className="text-[10.5px] font-medium">{text("Projekt besprechen", "Discuss project")}</span><div className="mt-2 grid grid-cols-3 gap-1.5">{([['email', text("E-Mail", "Email")], ['booking', 'Booking'], ['both', text("Beides", "Both")]] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setBrandCtaMode(id)} className={cn("h-8 rounded-[8px] border text-[10px] font-medium", brandCtaMode === id ? "border-[#002BBA] bg-[#002BBA] text-white" : "border-black/10 bg-white")}>{label}</button>)}</div></div>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className="text-[10.5px]">Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { chooseOnboardingBrandLogo(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} className="mt-1 block w-full text-[10px]" /></label>
+                    {brandLogoPreview ? <div className="flex h-12 items-center justify-center rounded-[9px] border border-black/10 bg-white"><img src={brandLogoPreview} alt="" className="max-h-8 max-w-[120px] object-contain" /></div> : <div className="flex h-12 items-center justify-center rounded-[9px] border border-dashed border-black/10 text-[9.5px] text-[#8A9099]">{text("Optionales Logo", "Optional logo")}</div>}
+                  </div>
+                  {brandCtaMode !== "email" ? <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_150px]"><input type="url" value={bookingUrl} onChange={(event) => setBookingUrl(event.target.value)} placeholder="https://cal.com/you/30min" className="h-9 rounded-[8px] border border-black/10 px-2.5 text-[10.5px]" /><input value={bookingProviderLabel} onChange={(event) => setBookingProviderLabel(event.target.value)} placeholder="Cal.com" className="h-9 rounded-[8px] border border-black/10 px-2.5 text-[10.5px]" /></div> : null}
+                </div>
                 <label className={styles.descriptionField}>{text("Kurzbeschreibung", "Short description")}<textarea rows={2} value={optional.description ?? ""} onChange={(event) => setOptional((current) => ({ ...current, description: event.target.value }))} placeholder={text("Ich baue schnelle, konversionsstarke Websites für meine Zielgruppe.", "I build fast, conversion-focused websites for my target audience.")} /></label>
               </div>
-              <div className={styles.replyBox}><Mail /><div><strong>{text("Antwort-Adresse", "Reply address")}: {replyEmail}</strong><p>{gmailEmail ? text("Verbundenes Gmail-Konto · wird für Antworten und Versand verwendet.", "Connected Gmail account · used for replies and sending.") : text("Konto-E-Mail · Gmail noch nicht verbunden – die Adresse wird automatisch abgeleitet.", "Account email · Gmail is not connected yet — the address is derived automatically.")}</p></div></div>
+              <div className={styles.replyBox}>
+                <Mail />
+                <div className={styles.replyBoxCopy}>
+                  <strong>{text("Antwort-Adresse", "Reply address")}: {replyEmail}</strong>
+                  <p>{gmailEmail ? text("Gmail ist verbunden und wird für Antworten und Versand verwendet.", "Gmail is connected and used for replies and sending.") : text("Optional: Verbinde Gmail jetzt oder später in den Einstellungen.", "Optional: connect Gmail now or later in Settings.")}</p>
+                </div>
+                {!gmailEmail ? (
+                  <button type="button" className={styles.gmailConnectButton} disabled={busy} onClick={() => void connectGmailFromOnboarding()}>
+                    {busy ? text("Verbindet…", "Connecting…") : text("Gmail verbinden", "Connect Gmail")}
+                  </button>
+                ) : (
+                  <span className={styles.gmailConnected}><Check />{text("Verbunden", "Connected")}</span>
+                )}
+              </div>
               {profileError ? <div className={styles.inlineAlert}><AlertCircle />{profileError}</div> : null}
               <div className={styles.profileFooter}>
                 <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void finishProfile()}>{busy ? text("Speichern…", "Saving…") : text("Profil speichern", "Save profile")}</button>

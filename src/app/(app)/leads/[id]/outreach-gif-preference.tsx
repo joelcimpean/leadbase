@@ -110,6 +110,10 @@ export function OutreachGifPreference({
             "GIF preference could not be saved.",
         };
 
+  if (!gifReady) {
+    return null;
+  }
+
   function togglePreference() {
     if (
       pending

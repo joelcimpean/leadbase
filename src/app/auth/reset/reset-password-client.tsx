@@ -22,8 +22,12 @@ export function ResetPasswordClient({ language }: { language: "de" | "en" }) {
     setBusy(true);
     const supabase = createClient();
     const { error: updateError } = await supabase.auth.updateUser({ password });
+    if (updateError) {
+      setBusy(false);
+      return setError(updateError.message);
+    }
+    await fetch("/auth/reset/complete", { method: "POST" }).catch(() => undefined);
     setBusy(false);
-    if (updateError) return setError(updateError.message);
     setDone(true);
   }
 

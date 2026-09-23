@@ -2,6 +2,7 @@
 
 import {
   type ReactNode,
+  useEffect,
   useState,
 } from "react";
 
@@ -27,6 +28,7 @@ export function LeadDetailTabs({
   outreach,
   history,
   notes,
+  freeMode = false,
 }: {
   language: "de" | "en";
   analyzed: boolean;
@@ -41,8 +43,24 @@ export function LeadDetailTabs({
   outreach: ReactNode;
   history: ReactNode;
   notes: ReactNode;
+  freeMode?: boolean;
 }) {
   const [tab, setTab] = useState<LeadDetailTabKey>("visual");
+
+  useEffect(() => {
+    const validTabs: LeadDetailTabKey[] = freeMode
+      ? ["visual", "outreach", "history", "notes"]
+      : ["visual", "structure", "evidence", "outreach", "history", "notes"];
+
+    function syncTabFromHash() {
+      const hash = window.location.hash.replace(/^#/, "") as LeadDetailTabKey;
+      if (validTabs.includes(hash)) setTab(hash);
+    }
+
+    syncTabFromHash();
+    window.addEventListener("hashchange", syncTabFromHash);
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
+  }, [freeMode]);
 
   const labels = language === "de"
     ? {
@@ -66,14 +84,21 @@ export function LeadDetailTabs({
         notes: "Notes",
       };
 
-  const items: { key: LeadDetailTabKey; label: string; meta?: string }[] = [
-    { key: "visual", label: labels.visual },
-    { key: "structure", label: labels.structure, meta: structureTotal > 0 ? `${structurePassed}/${structureTotal}` : undefined },
-    { key: "evidence", label: labels.evidence },
-    { key: "outreach", label: labels.outreach },
-    { key: "history", label: labels.history },
-    { key: "notes", label: labels.notes },
-  ];
+  const items: { key: LeadDetailTabKey; label: string; meta?: string }[] = freeMode
+    ? [
+        { key: "visual", label: labels.visual },
+        { key: "outreach", label: labels.outreach },
+        { key: "history", label: labels.history },
+        { key: "notes", label: labels.notes },
+      ]
+    : [
+        { key: "visual", label: labels.visual },
+        { key: "structure", label: labels.structure, meta: structureTotal > 0 ? `${structurePassed}/${structureTotal}` : undefined },
+        { key: "evidence", label: labels.evidence },
+        { key: "outreach", label: labels.outreach },
+        { key: "history", label: labels.history },
+        { key: "notes", label: labels.notes },
+      ];
 
   const current = {
     visual,
@@ -104,7 +129,14 @@ export function LeadDetailTabs({
             <button
               key={item.key}
               type="button"
-              onClick={() => setTab(item.key)}
+              onClick={() => {
+                setTab(item.key);
+                window.history.replaceState(
+                  null,
+                  "",
+                  `${window.location.pathname}${window.location.search}#${item.key}`,
+                );
+              }}
               className={`h-[26px] rounded-[8px] px-2.5 text-[11px] transition-[background-color,color,box-shadow] ${tab === item.key ? "bg-white font-medium text-[#0B0C0E] shadow-[0_1px_2px_rgba(11,12,14,0.12)]" : "text-[#6B7078] hover:text-[#0B0C0E]"}`}
             >
               {item.label}{item.meta ? ` ${item.meta}` : ""}

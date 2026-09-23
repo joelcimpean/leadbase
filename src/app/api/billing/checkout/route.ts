@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 
 import {
   LEADBASE_CREDIT_TOPUPS,
+  customCreditPrice,
   customCreditPriceEur,
   getPublicPlan,
   normalizeCustomCredits,
   normalizeTierIndex,
+  priceForTopup,
   stripePlanLookupKey,
   stripeTopupLookupKey,
 } from "@/lib/public-plans";
@@ -36,6 +38,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const kind = body.kind === "credits" ? "credits" : "subscription";
+    const billingCurrency = "USD" as const;
     const admin = createAdminClient();
     const { data: account } = await admin
       .from("ai_usage_accounts")
@@ -66,6 +69,7 @@ export async function POST(request: Request) {
         tier_index: String(tierIndex),
         credits: String(tier.credits),
         billing_interval: billing,
+        billing_currency: billingCurrency,
       };
     } else {
       const preset = LEADBASE_CREDIT_TOPUPS.find((item) => item.id === body.presetId);
@@ -78,12 +82,15 @@ export async function POST(request: Request) {
           user_id: user.id,
           topup_id: preset.id,
           credits: String(preset.credits),
+          billing_currency: billingCurrency,
+          price_amount: String(priceForTopup(preset, billingCurrency)),
           price_eur: String(preset.priceEur),
         };
       } else if (body.presetId === "custom") {
         const credits = normalizeCustomCredits(body.credits);
         const priceEur = customCreditPriceEur(credits);
-        if (credits === null || priceEur === null) {
+        const selectedPrice = customCreditPrice(credits, billingCurrency);
+        if (credits === null || priceEur === null || selectedPrice === null) {
           return NextResponse.json({ error: "Custom credits must be between 500 and 50,000 in steps of 100." }, { status: 400 });
         }
         metadata = {
@@ -91,11 +98,13 @@ export async function POST(request: Request) {
           user_id: user.id,
           topup_id: "custom",
           credits: String(credits),
+          billing_currency: billingCurrency,
+          price_amount: String(selectedPrice),
           price_eur: String(priceEur),
         };
         customPrice = {
-          currency: "eur",
-          unitAmount: priceEur * 100,
+          currency: billingCurrency.toLowerCase(),
+          unitAmount: selectedPrice * 100,
           productName: `${credits.toLocaleString("en-US")} Credits`,
           productMetadata: {
             leadbase_type: "credit_topup",
@@ -119,10 +128,23 @@ export async function POST(request: Request) {
       email: user.email,
       stripeCustomerId: typeof account?.stripe_customer_id === "string" ? account.stripe_customer_id : null,
       metadata,
+      currency: billingCurrency,
     });
 
     if (!session.url) throw new Error("Stripe did not return a checkout URL.");
-    return NextResponse.json({ ok: true, url: session.url });
+
+    // Billing currency is an account preference, separate from the workspace
+    // currency used for proposals/projects. Persist it only after a valid
+    // checkout session has been created so future dialogs reopen consistently.
+    const currentMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const { error: currencyPreferenceError } = await supabase.auth.updateUser({
+      data: { ...currentMetadata, leadbase_billing_currency: billingCurrency },
+    });
+    if (currencyPreferenceError) {
+      console.warn("Could not persist billing currency preference:", currencyPreferenceError.message);
+    }
+
+    return NextResponse.json({ ok: true, url: session.url, billingCurrency });
   } catch (error) {
     console.error("Could not create Leadbase Stripe checkout:", error);
     const message = error instanceof Error ? error.message : "Checkout could not be created.";

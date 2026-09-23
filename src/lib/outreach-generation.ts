@@ -32,6 +32,7 @@ export type GenerateOutreachDraftInput = {
   campaignOutreachAngle?: string | null;
   campaignEmailTone?: string | null;
   researchSummary?: string | null;
+  userNotes?: string | null;
   structuralScore?: number | null;
   visualScore?: number | null;
   opportunityScore?: number | null;
@@ -196,6 +197,7 @@ function buildContext(input: GenerateOutreachDraftInput) {
         angle: "Kampagnen-Ansatz",
         tone: "Gewünschter Ton",
         summary: "Recherche-Zusammenfassung",
+        notes: "Notizen des Nutzers",
         redesignReason: "Redesign-Grund",
         suggestedAngle: "Vorgeschlagener Outreach-Ansatz",
         preview: "Designvorschau vorhanden",
@@ -215,6 +217,7 @@ function buildContext(input: GenerateOutreachDraftInput) {
         angle: "Campaign angle",
         tone: "Preferred tone",
         summary: "Research summary",
+        notes: "User notes",
         redesignReason: "Redesign reason",
         suggestedAngle: "Suggested outreach angle",
         preview: "Client preview available",
@@ -235,6 +238,7 @@ function buildContext(input: GenerateOutreachDraftInput) {
     optionalLine(labels.angle, input.campaignOutreachAngle),
     optionalLine(labels.tone, input.campaignEmailTone),
     optionalLine(labels.summary, input.researchSummary),
+    optionalLine(labels.notes, input.userNotes),
     optionalLine("Structural score", input.structuralScore),
     optionalLine("Visual score", input.visualScore),
     optionalLine("Opportunity score", input.opportunityScore),

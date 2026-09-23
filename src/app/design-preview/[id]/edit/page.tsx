@@ -4,6 +4,7 @@ import type {
   
   import {
     notFound,
+    redirect,
   } from "next/navigation";
   
   import {
@@ -13,6 +14,7 @@ import type {
   import {
     createClient,
   } from "@/lib/supabase/server";
+  import { getLeadbasePlanAccess } from "@/lib/plan-access";
   
   /* =========================================================
      CONFIG
@@ -153,6 +155,11 @@ import type {
       !user
     ) {
       notFound();
+    }
+
+    const planAccess = await getLeadbasePlanAccess(user.id);
+    if (planAccess.planId === "free") {
+      redirect("/profile?dialog=plan");
     }
   
     /* =======================================================

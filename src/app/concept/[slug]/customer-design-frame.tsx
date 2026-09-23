@@ -45,15 +45,13 @@ type CustomerDesignFrameProps = {
 };
 
 type CustomerContactChoiceProps = {
-  companyName:
-    string;
-
-  mailUrl:
-    string
-    | null;
-
-  calendarUrl:
-    string;
+  companyName: string;
+  mailUrl: string | null;
+  bookingUrl: string | null;
+  bookingProviderLabel: string;
+  ctaMode: "email" | "booking" | "both";
+  accentColor: string;
+  accentTextColor: string;
 };
 
 /* =========================================================
@@ -178,295 +176,88 @@ ${html}`;
 export function CustomerContactChoice({
   companyName,
   mailUrl,
-  calendarUrl,
+  bookingUrl,
+  bookingProviderLabel,
+  ctaMode,
+  accentColor,
+  accentTextColor,
 }: CustomerContactChoiceProps) {
-  const [
-    open,
-    setOpen,
-  ] =
-    useState(
-      false
-    );
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  const [
-    mounted,
-    setMounted,
-  ] =
-    useState(
-      false
-    );
+  const showEmail = ctaMode !== "booking" && Boolean(mailUrl);
+  const showBooking = ctaMode !== "email" && Boolean(bookingUrl);
+  const effectiveEmail = showEmail || !showBooking;
+  const effectiveBooking = showBooking;
 
-  /* =======================================================
-     MOUNT
-  ======================================================= */
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
-  useEffect(
-    () => {
-      setMounted(
-        true
-      );
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
 
-      return () => {
-        setMounted(
-          false
-        );
-      };
-    },
-    []
-  );
+  const optionCount = Number(effectiveEmail) + Number(effectiveBooking);
+  const modal = open && mounted
+    ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}
+          className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-neutral-950/50 p-0 backdrop-blur-[8px] sm:items-center sm:p-6"
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="customer-contact-title" className="relative my-0 w-full max-h-[calc(100dvh-24px)] overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white shadow-[0_30px_100px_rgba(15,23,42,.24)] sm:my-auto sm:max-w-[720px] sm:rounded-[30px]">
+            <button type="button" onClick={() => setOpen(false)} aria-label="Dialog schließen" className="absolute right-4 top-4 z-20 flex size-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition-all hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:right-5 sm:top-5"><X className="size-4" /></button>
 
-  /* =======================================================
-     ESCAPE + BODY LOCK
-  ======================================================= */
-
-  useEffect(
-    () => {
-      if (
-        !open
-      ) {
-        return;
-      }
-
-      const previousOverflow =
-        document.body.style.overflow;
-
-      document.body.style.overflow =
-        "hidden";
-
-      function handleKeyDown(
-        event:
-          KeyboardEvent
-      ) {
-        if (
-          event.key ===
-          "Escape"
-        ) {
-          setOpen(
-            false
-          );
-        }
-      }
-
-      window.addEventListener(
-        "keydown",
-        handleKeyDown
-      );
-
-      return () => {
-        document.body.style.overflow =
-          previousOverflow;
-
-        window.removeEventListener(
-          "keydown",
-          handleKeyDown
-        );
-      };
-    },
-    [
-      open,
-    ]
-  );
-
-  /* =======================================================
-     MODAL
-  ======================================================= */
-
-  const modal =
-    open &&
-    mounted
-      ? createPortal(
-          <div
-            role="presentation"
-            onMouseDown={(
-              event
-            ) => {
-              if (
-                event.target ===
-                event.currentTarget
-              ) {
-                setOpen(
-                  false
-                );
-              }
-            }}
-            className="fixed inset-0 z-[9999] flex items-end justify-center overflow-y-auto bg-neutral-950/50 p-0 backdrop-blur-[8px] sm:items-center sm:p-6"
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="customer-contact-title"
-              className="relative my-0 w-full max-h-[calc(100dvh-24px)] overflow-y-auto rounded-t-[30px] border border-neutral-200 bg-white shadow-[0_30px_100px_rgba(15,23,42,.24)] sm:my-auto sm:max-w-[720px] sm:rounded-[30px]"
-            >
-              {/* ===========================================
-                  CLOSE
-              =========================================== */}
-
-              <button
-                type="button"
-                onClick={() =>
-                  setOpen(
-                    false
-                  )
-                }
-                aria-label="Dialog schließen"
-                className="absolute right-4 top-4 z-20 flex size-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm transition-all hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:right-5 sm:top-5"
-              >
-                <X className="size-4" />
-              </button>
-
-              {/* ===========================================
-                  HEADER
-              =========================================== */}
-
-              <div className="border-b border-neutral-100 px-5 pb-6 pt-7 pr-16 sm:px-8 sm:pb-7 sm:pt-8 sm:pr-20">
-                <p className="inline-flex items-center gap-2 rounded-full border border-[#002BBA]/10 bg-[#002BBA]/[0.045] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[#002BBA]">
-                  Designvorschau
-                </p>
-
-                <h2
-                  id="customer-contact-title"
-                  className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-neutral-950 sm:text-[30px]"
-                >
-                  Wie möchten Sie weitermachen?
-                </h2>
-
-                <p className="mt-3 max-w-[590px] text-sm leading-6 text-neutral-600 sm:text-[15px]">
-                  Wenn Ihnen die Richtung für{" "}
-                  <strong className="font-semibold text-neutral-900">
-                    {
-                      companyName
-                    }
-                  </strong>{" "}
-                  grundsätzlich gefällt, können Sie mir direkt schreiben oder die Vorschau persönlich in einem kurzen Gespräch mit mir besprechen.
-                </p>
-              </div>
-
-              {/* ===========================================
-                  OPTIONS
-              =========================================== */}
-
-              <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-6">
-                {/* =========================================
-                    EMAIL
-                ========================================= */}
-
-                {mailUrl ? (
-                  <a
-                    href={
-                      mailUrl
-                    }
-                    onClick={() =>
-                      setOpen(
-                        false
-                      )
-                    }
-                    className="group flex min-h-[210px] flex-col rounded-[22px] border border-neutral-200 bg-white p-5 text-neutral-950 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#002BBA]/25 hover:shadow-[0_18px_50px_rgba(15,23,42,.08)]"
-                  >
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-900 ring-1 ring-neutral-200">
-                      <Mail className="size-4" />
-                    </div>
-
-                    <div className="mt-5">
-                      <p className="text-base font-semibold">
-                        Per E-Mail schreiben
-                      </p>
-
-                      <p className="mt-2 text-sm leading-6 text-neutral-500">
-                        Schreiben Sie mir direkt eine kurze Nachricht. Betreff und ein kurzer Einstieg sind bereits vorbereitet.
-                      </p>
-                    </div>
-
-                    <div className="mt-auto flex items-center gap-1.5 pt-5 text-sm font-semibold">
-                      E-Mail öffnen
-
-                      <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                    </div>
-                  </a>
-                ) : null}
-
-                {/* =========================================
-                    CAL.COM
-                ========================================= */}
-
-                <a
-                  href={
-                    calendarUrl
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() =>
-                    setOpen(
-                      false
-                    )
-                  }
-                  className="group flex min-h-[210px] flex-col rounded-[22px] border border-[#002BBA] bg-[#002BBA] p-5 text-white shadow-[0_16px_40px_rgba(0,43,186,.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0026a6] hover:shadow-[0_22px_54px_rgba(0,43,186,.24)]"
-                >
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-white/95 text-[#002BBA]">
-                    <CalendarDays className="size-4" />
-                  </div>
-
-                  <div className="mt-5">
-                    <p className="text-base font-semibold">
-                      30-Minuten-Call buchen
-                    </p>
-
-                    <p className="mt-2 text-sm leading-6 text-white/75">
-                      Falls Sie die Vorschau lieber persönlich mit mir besprechen möchten, können Sie direkt einen passenden Termin auswählen.
-                    </p>
-                  </div>
-
-                  <div className="mt-auto flex items-center gap-1.5 pt-5 text-sm font-semibold">
-                    Termin auswählen
-
-                    <ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                  </div>
-                </a>
-              </div>
-
-              {/* ===========================================
-                  FOOTER
-              =========================================== */}
-
-              <div className="border-t border-neutral-100 bg-neutral-50/70 px-5 py-3.5 text-center text-[11px] leading-5 text-neutral-400 sm:px-7">
-                Beides ist unverbindlich – wählen Sie einfach den Weg, der für Sie angenehmer ist.
-              </div>
+            <div className="border-b border-neutral-100 px-5 pb-6 pt-7 pr-16 sm:px-8 sm:pb-7 sm:pt-8 sm:pr-20">
+              <p className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ borderColor: `${accentColor}22`, backgroundColor: `${accentColor}0D`, color: accentColor }}>Designvorschau</p>
+              <h2 id="customer-contact-title" className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-neutral-950 sm:text-[30px]">Wie möchten Sie weitermachen?</h2>
+              <p className="mt-3 max-w-[590px] text-sm leading-6 text-neutral-600 sm:text-[15px]">Wenn Ihnen die Richtung für <strong className="font-semibold text-neutral-900">{companyName}</strong> grundsätzlich gefällt, wählen Sie einfach den Kontaktweg, der für Sie am angenehmsten ist.</p>
             </div>
-          </div>,
-          document.body
-        )
-      : null;
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+            <div className={optionCount > 1 ? "grid gap-3 p-4 sm:grid-cols-2 sm:p-6" : "grid gap-3 p-4 sm:p-6"}>
+              {effectiveEmail && mailUrl ? (
+                <a href={mailUrl} onClick={() => setOpen(false)} className="group flex min-h-[210px] flex-col rounded-[22px] border border-neutral-200 bg-white p-5 text-neutral-950 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(15,23,42,.08)]">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-neutral-100 text-neutral-900 ring-1 ring-neutral-200"><Mail className="size-4" /></div>
+                  <div className="mt-5"><p className="text-base font-semibold">Per E-Mail schreiben</p><p className="mt-2 text-sm leading-6 text-neutral-500">Schreiben Sie direkt eine kurze Nachricht. Betreff und ein kurzer Einstieg sind bereits vorbereitet.</p></div>
+                  <div className="mt-auto flex items-center gap-1.5 pt-5 text-sm font-semibold" style={{ color: accentColor }}>E-Mail öffnen<ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div>
+                </a>
+              ) : null}
+
+              {effectiveBooking && bookingUrl ? (
+                <a href={bookingUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)} className="group flex min-h-[210px] flex-col rounded-[22px] border p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_54px_rgba(15,23,42,.16)]" style={{ borderColor: accentColor, backgroundColor: accentColor, color: accentTextColor }}>
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-white/95" style={{ color: accentColor }}><CalendarDays className="size-4" /></div>
+                  <div className="mt-5"><p className="text-base font-semibold">Termin buchen</p><p className="mt-2 text-sm leading-6 opacity-75">Wählen Sie direkt einen passenden Termin{bookingProviderLabel ? ` über ${bookingProviderLabel}` : ""}.</p></div>
+                  <div className="mt-auto flex items-center gap-1.5 pt-5 text-sm font-semibold">Termin auswählen<ArrowUpRight className="size-3.5 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" /></div>
+                </a>
+              ) : null}
+            </div>
+
+            <div className="border-t border-neutral-100 bg-neutral-50/70 px-5 py-3.5 text-center text-[11px] leading-5 text-neutral-400 sm:px-7">Unverbindlich – wählen Sie einfach den Weg, der für Sie passt.</div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() =>
-          setOpen(
-            true
-          )
-        }
-        className="group inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#002BBA] px-3 text-[11px] font-semibold text-white shadow-[0_10px_24px_rgba(0,43,186,.16)] transition-all duration-300 ease-out hover:-translate-y-px hover:bg-[#0026a6] min-[390px]:gap-2 min-[390px]:px-3.5 min-[390px]:text-xs sm:h-11 sm:px-5 sm:text-sm"
-      >
-        <Mail className="size-3.5 shrink-0 sm:size-4" />
-
-        <span className="min-[390px]:hidden">
-          Kontakt
-        </span>
-
-        <span className="hidden min-[390px]:inline">
-          Projekt besprechen
-        </span>
-
+      <button type="button" onClick={() => setOpen(true)} className="group inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 text-[11px] font-semibold shadow-[0_10px_24px_rgba(15,23,42,.14)] transition-all duration-300 ease-out hover:-translate-y-px min-[390px]:gap-2 min-[390px]:px-3.5 min-[390px]:text-xs sm:h-11 sm:px-5 sm:text-sm" style={{ backgroundColor: accentColor, color: accentTextColor }}>
+        {effectiveBooking && !effectiveEmail ? <CalendarDays className="size-3.5 shrink-0 sm:size-4" /> : <Mail className="size-3.5 shrink-0 sm:size-4" />}
+        <span className="min-[390px]:hidden">Kontakt</span>
+        <span className="hidden min-[390px]:inline">Projekt besprechen</span>
         <ArrowUpRight className="hidden size-3.5 shrink-0 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 sm:block" />
       </button>
-
-      {
-        modal
-      }
+      {modal}
     </>
   );
 }

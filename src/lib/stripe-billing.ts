@@ -130,6 +130,7 @@ export async function createStripeCheckoutSession(input: {
   email?: string | null;
   stripeCustomerId?: string | null;
   metadata: Record<string, string>;
+  currency?: string | null;
 }) {
   if (!input.priceId && !input.customPrice) {
     throw new Error("STRIPE_ERROR:Checkout requires a price.");
@@ -160,6 +161,8 @@ export async function createStripeCheckoutSession(input: {
     line_items: [lineItem],
     metadata: input.metadata,
   };
+
+  if (input.currency) body.currency = input.currency.toLowerCase();
 
   if (input.stripeCustomerId) body.customer = input.stripeCustomerId;
   else if (input.email) body.customer_email = input.email;

@@ -12,6 +12,7 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 import { resolveAccountCurrency } from "@/lib/account-currency";
+import { getLeadCreationAccess } from "@/lib/free-experience";
 
 /* =========================================================
    WEBSITE DOMAIN
@@ -184,6 +185,21 @@ export async function saveCandidateAsLead(
     );
 
     return;
+  }
+
+  const leadAccess =
+    await getLeadCreationAccess(
+      user.id
+    );
+
+  if (
+    !leadAccess.allowed
+  ) {
+    redirect(
+      `/find-leads?review=1&error=${encodeURIComponent(
+        "Your one-time Free lead slot has already been used. Upgrade to Starter to save another lead."
+      )}`
+    );
   }
 
   const candidateDomain =
@@ -692,6 +708,18 @@ export async function saveCandidateAsLead(
         "Could not create lead:",
         leadError
       );
+
+      if (
+        leadError?.message?.includes(
+          "FREE_LEAD_LIMIT_REACHED"
+        )
+      ) {
+        redirect(
+          `/find-leads?review=1&error=${encodeURIComponent(
+            "Your one-time Free lead slot has already been used. Upgrade to Starter to save another lead."
+          )}`
+        );
+      }
 
       return;
     }

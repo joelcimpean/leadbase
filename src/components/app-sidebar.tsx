@@ -55,6 +55,8 @@ import {
   cn,
 } from "@/lib/utils";
 
+
+import { normalizePlanId, type LeadbasePlanId } from "@/lib/plan-entitlements";
 type SidebarCampaign = {
   id: string;
   name: string;
@@ -152,8 +154,10 @@ function SidebarContent({
     avatarUrl: null,
   });
   const [creditUsage, setCreditUsage] = useState<number | null>(null);
+  const [rawTokenUsage, setRawTokenUsage] = useState<number | null>(null);
   const [openAIUsageConfigured, setOpenAIUsageConfigured] = useState<boolean | null>(null);
   const [creditRemaining, setCreditRemaining] = useState<number | null>(null);
+  const [planId, setPlanId] = useState<LeadbasePlanId>("free");
 
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
@@ -196,8 +200,10 @@ function SidebarContent({
 
     function clearUsage() {
       setCreditUsage(null);
+      setRawTokenUsage(null);
       setCreditRemaining(null);
       setOpenAIUsageConfigured(null);
+      setPlanId("free");
     }
 
     async function loadUsage(userId: string) {
@@ -208,15 +214,18 @@ function SidebarContent({
         );
         const data = await response.json() as {
           configured?: boolean;
-          totals?: { creditsUsed?: number };
-          plan?: { remainingCredits?: number };
+          totals?: { creditsUsed?: number; totalTokens?: number };
+          plan?: { id?: string; remainingCredits?: number };
         };
         if (cancelled || currentUserId !== userId) return;
         const creditsUsed = typeof data.totals?.creditsUsed === "number" ? data.totals.creditsUsed : null;
+        const totalTokens = typeof data.totals?.totalTokens === "number" ? data.totals.totalTokens : null;
         const remainingCredits = typeof data.plan?.remainingCredits === "number" ? data.plan.remainingCredits : null;
         const configured = data.configured === true && creditsUsed !== null && remainingCredits !== null;
         setCreditUsage(creditsUsed);
+        setRawTokenUsage(totalTokens);
         setCreditRemaining(remainingCredits);
+        setPlanId(normalizePlanId(data.plan?.id));
         setOpenAIUsageConfigured(configured);
         window.dispatchEvent(new CustomEvent("leadbase:ai-usage-updated", { detail: { creditsUsed, remainingCredits, userId } }));
       } catch {
@@ -356,6 +365,26 @@ function SidebarContent({
         ? 100
         : 0;
 
+  const usagePercentLabel =
+    usagePercent > 0 && usagePercent < 1
+      ? "<1%"
+      : `${Math.round(usagePercent)}%`;
+
+  const usageTooltip = [
+    creditUsage !== null
+      ? language === "de"
+        ? `${creditUsage.toLocaleString("de-DE")} Credits verbraucht`
+        : `${creditUsage.toLocaleString("en-US")} Credits used`
+      : null,
+    rawTokenUsage !== null
+      ? language === "de"
+        ? `${rawTokenUsage.toLocaleString("de-DE")} AI-Tokens verarbeitet`
+        : `${rawTokenUsage.toLocaleString("en-US")} AI tokens processed`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const navigation = [
     {
       key: "dashboard",
@@ -478,7 +507,8 @@ function SidebarContent({
 
       <nav className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-3 pt-0">
         <div className="space-y-[2px]">
-          {navigation.map(
+          {navigation
+            .map(
             (
               item
             ) => {
@@ -631,7 +661,11 @@ function SidebarContent({
                 <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${usagePercent}%` }} />
               </div>
               <div className="mt-[6px] flex items-center justify-between gap-2 font-mono text-[8.5px] uppercase tracking-[0.06em] text-[var(--lb-text-muted)] dark:text-[#8C9199]">
-                <span>{language === "de" ? `${compactCreditsUsed ?? "0"} verbraucht` : `${compactCreditsUsed ?? "0"} used`}</span>
+                <span title={usageTooltip || undefined}>
+                  {language === "de"
+                    ? `${usagePercentLabel} verbraucht`
+                    : `${usagePercentLabel} used`}
+                </span>
                 <span>{language === "de" ? "So funktioniert’s" : "How it works"}</span>
               </div>
             </>

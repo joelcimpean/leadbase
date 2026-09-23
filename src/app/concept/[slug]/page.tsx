@@ -113,6 +113,23 @@ import type {
       height?:
         number;
     };
+
+    leadbaseBrandKit?: {
+      brandColor?: string;
+      textColor?: string;
+      logoUrl?: string | null;
+      identityMode?: "logo" | "avatar" | "none";
+      ctaMode?: "email" | "booking" | "both";
+      bookingUrl?: string;
+      bookingProviderLabel?: string;
+    };
+
+    leadbaseOwner?: {
+      name?: string;
+      website?: string;
+      email?: string;
+      avatarUrl?: string | null;
+    };
   };
   
   /* =========================================================
@@ -428,36 +445,81 @@ import type {
        NORMAL CUSTOMER PREVIEW
     ======================================================= */
   
+    const storedOwner =
+      snapshot.leadbaseOwner ?? {};
+
+    const storedBrandKit =
+      snapshot.leadbaseBrandKit ?? {};
+
     const designerName =
-      process.env
-        .DESIGNER_NAME
-        ?.trim() ||
-      "Joel Cimpean";
-  
+      storedOwner.name?.trim() ||
+      process.env.DESIGNER_NAME?.trim() ||
+      "Leadbase user";
+
+    const rawPortfolioUrl =
+      storedOwner.website?.trim() ||
+      process.env.DESIGNER_PORTFOLIO_URL?.trim() ||
+      "";
+
     const portfolioUrl =
-      process.env
-        .DESIGNER_PORTFOLIO_URL
-        ?.trim() ||
-      "https://joelcimpean.com";
-  
+      rawPortfolioUrl
+        ? /^https?:\/\//i.test(rawPortfolioUrl)
+          ? rawPortfolioUrl
+          : `https://${rawPortfolioUrl}`
+        : null;
+
     const designerEmail =
-      process.env
-        .DESIGNER_EMAIL
-        ?.trim() ||
-      "hello@joelcimpean.com";
-  
-    const calendarUrl =
-      process.env
-        .DESIGNER_CALENDAR_URL
-        ?.trim() ||
-      "https://cal.com/joel-cimpean-ag9kpu/30min";
+      storedOwner.email?.trim() ||
+      process.env.DESIGNER_EMAIL?.trim() ||
+      "";
+
+    const brandColor =
+      /^#[0-9A-F]{6}$/i.test(storedBrandKit.brandColor ?? "")
+        ? String(storedBrandKit.brandColor).toUpperCase()
+        : "#002BBA";
+
+    const brandTextColor =
+      /^#[0-9A-F]{6}$/i.test(storedBrandKit.textColor ?? "")
+        ? String(storedBrandKit.textColor).toUpperCase()
+        : "#FFFFFF";
+
+    const publicIdentityMode =
+      storedBrandKit.identityMode === "logo" ||
+      storedBrandKit.identityMode === "avatar" ||
+      storedBrandKit.identityMode === "none"
+        ? storedBrandKit.identityMode
+        : "avatar";
+
+    const ctaMode =
+      storedBrandKit.ctaMode === "booking" ||
+      storedBrandKit.ctaMode === "both" ||
+      storedBrandKit.ctaMode === "email"
+        ? storedBrandKit.ctaMode
+        : "email";
+
+    const bookingUrl =
+      storedBrandKit.bookingUrl?.trim() ||
+      process.env.DESIGNER_CALENDAR_URL?.trim() ||
+      "";
+
+    const bookingProviderLabel =
+      storedBrandKit.bookingProviderLabel?.trim() ||
+      "";
+
+    const identityLogoUrl =
+      storedBrandKit.logoUrl?.trim() ||
+      null;
+
+    const identityAvatarUrl =
+      storedOwner.avatarUrl?.trim() ||
+      null;
   
     const mailSubject =
       `Designvorschau für ${companyName}`;
   
     const mailBody =
       [
-        "Hallo Joel,",
+        `Hallo ${designerName.split(/\s+/)[0] || ""},`.trim(),
         "",
         `ich habe mir die Designvorschau für ${companyName} angesehen und würde mich gerne kurz dazu austauschen.`,
         "",
@@ -510,13 +572,24 @@ import type {
         <div className="fixed inset-x-0 top-0 z-[100] overflow-x-hidden border-b border-neutral-200/70 bg-white/[0.88] shadow-[0_1px_0_rgba(15,23,42,.02),0_10px_32px_rgba(15,23,42,.045)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.78]">
           <div className="mx-auto flex h-[68px] w-full max-w-[1600px] items-center justify-between gap-3 px-4 sm:h-[72px] sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#002BBA] text-white shadow-[0_8px_20px_rgba(0,43,186,.16)] sm:size-10">
-                <span className="text-[17px] font-semibold leading-none">⚡︎</span>
-              </div>
+              {publicIdentityMode !== "none" ? (
+                <div
+                  className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-black/[.06] bg-white shadow-[0_8px_20px_rgba(15,23,42,.08)] sm:size-10"
+                  style={publicIdentityMode === "avatar" && !identityAvatarUrl ? { background: brandColor, color: brandTextColor } : undefined}
+                >
+                  {publicIdentityMode === "logo" && identityLogoUrl ? (
+                    <img src={identityLogoUrl} alt="" className="max-h-7 max-w-8 object-contain sm:max-w-9" />
+                  ) : publicIdentityMode === "avatar" && identityAvatarUrl ? (
+                    <img src={identityAvatarUrl} alt="" className="size-full object-cover" />
+                  ) : (
+                    <span className="text-[12px] font-semibold">{designerName.slice(0, 1).toUpperCase()}</span>
+                  )}
+                </div>
+              ) : null}
 
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="hidden size-1.5 shrink-0 rounded-full bg-[#002BBA] sm:block" />
+                  <span className="hidden size-1.5 shrink-0 rounded-full sm:block" style={{ backgroundColor: brandColor }} />
                   <p className="truncate text-[9px] font-semibold uppercase tracking-[0.16em] text-neutral-500 sm:text-[10px]">
                     Persönliches Designkonzept
                   </p>
@@ -536,25 +609,33 @@ import type {
             </div>
 
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <a
-                href={portfolioUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group hidden items-center gap-1.5 rounded-xl px-2.5 py-2 text-right transition-colors hover:bg-neutral-100/80 lg:flex"
-              >
-                <span>
-                  <span className="block text-[9px] leading-none text-neutral-400">Erstellt von</span>
-                  <span className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold leading-none text-neutral-800 transition-colors group-hover:text-[#002BBA]">
-                    {designerName}
-                    <ArrowUpRight className="size-3 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+              {portfolioUrl ? (
+                <a
+                  href={portfolioUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group hidden items-center gap-1.5 rounded-xl px-2.5 py-2 text-right transition-colors hover:bg-neutral-100/80 lg:flex"
+                >
+                  <span>
+                    <span className="block text-[9px] leading-none text-neutral-400">Erstellt von</span>
+                    <span className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold leading-none text-neutral-800 transition-colors" style={{ color: brandColor }}>
+                      {designerName}
+                      <ArrowUpRight className="size-3 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </span>
                   </span>
-                </span>
-              </a>
+                </a>
+              ) : (
+                <div className="hidden text-right lg:block"><span className="block text-[9px] leading-none text-neutral-400">Erstellt von</span><span className="mt-1 block text-xs font-semibold" style={{ color: brandColor }}>{designerName}</span></div>
+              )}
 
               <CustomerContactChoice
                 companyName={companyName}
                 mailUrl={mailUrl}
-                calendarUrl={calendarUrl}
+                bookingUrl={bookingUrl || null}
+                bookingProviderLabel={bookingProviderLabel}
+                ctaMode={ctaMode}
+                accentColor={brandColor}
+                accentTextColor={brandTextColor}
               />
             </div>
           </div>

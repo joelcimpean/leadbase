@@ -991,6 +991,7 @@ export function FindLeadsWorkspace({
   candidates,
   initialReviewOpen,
   pageError,
+  freeDiscovery,
 }: {
   language:
     "de" | "en";
@@ -1017,6 +1018,16 @@ export function FindLeadsWorkspace({
   pageError:
     | string
     | null;
+
+  freeDiscovery: {
+    isFree: boolean;
+    available: boolean;
+    used: boolean;
+    inProgress: boolean;
+    searchId: string | null;
+    campaignId: string | null;
+    usedAt: string | null;
+  };
 }) {
   const router =
     useRouter();
@@ -1080,7 +1091,7 @@ export function FindLeadsWorkspace({
         campaign.id ===
         campaignId
     ) ??
-    defaultCampaign;
+    null;
 
   const [
     industry,
@@ -1107,7 +1118,9 @@ export function FindLeadsWorkspace({
     setResultLimit,
   ] =
     useState(
-      20
+      freeDiscovery.isFree
+        ? 10
+        : 20
     );
 
   const [
@@ -1495,8 +1508,9 @@ export function FindLeadsWorkspace({
 
     if (
       !clean ||
-      !campaignId ||
-      promptLoading
+      promptLoading ||
+      (freeDiscovery.isFree &&
+        !freeDiscovery.available)
     ) {
       return;
     }
@@ -1992,19 +2006,55 @@ export function FindLeadsWorkspace({
                 </div>
               </div>
 
-              {activeCampaigns.length ===
-              0 ? (
-                <div className="mt-4 flex items-center justify-between gap-4 rounded-[12px] border border-dashed border-black/[0.10] bg-[#F7F8FA] px-4 py-3.5 max-[680px]:items-start max-[680px]:flex-col">
-                  <p className="min-w-0 text-[12px] leading-5 text-[#6B7078]">
-                    {text.createCampaign}
+              {freeDiscovery.isFree ? (
+                <div className="mt-4 flex items-center justify-between gap-4 rounded-[12px] border border-[#002BBA]/10 bg-[#F5F7FF] px-4 py-3 max-[760px]:items-start max-[760px]:flex-col">
+                  <div className="min-w-0">
+                    <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#002BBA]">
+                      {language === "de" ? "Kostenlose Discovery" : "Free discovery"}
+                    </div>
+                    <p className="mt-1 text-[11.5px] leading-5 text-[#40454E]">
+                      {freeDiscovery.used
+                        ? (language === "de"
+                            ? "Deine kostenlose Suche wurde verwendet. Prüfe die Ergebnisse und wähle genau ein Unternehmen als deinen Free Lead aus."
+                            : "Your free search has been used. Review the results and choose exactly one company as your Free lead.")
+                        : freeDiscovery.inProgress
+                          ? (language === "de"
+                              ? "Deine kostenlose Suche läuft bereits in einem anderen Tab oder Request."
+                              : "Your free search is already running in another tab or request.")
+                          : (language === "de"
+                              ? "1 Discovery-Session · bis zu 10 Ergebnisse · wähle 1 Unternehmen für deinen kostenlosen Workflow. Rückfragen verbrauchen die Session noch nicht."
+                              : "1 discovery session · up to 10 results · choose 1 company for your free workflow. Clarifying questions do not consume the session.")}
+                    </p>
+                  </div>
+
+                  {!freeDiscovery.available ? (
+                    <Link
+                      href="/profile?dialog=plan"
+                      className="inline-flex h-8 shrink-0 items-center rounded-[9px] bg-[#002BBA] px-3 text-[11.5px] font-medium text-white shadow-[0_1px_2px_rgba(0,43,186,.25)] transition-colors hover:bg-[#00229A]"
+                    >
+                      {language === "de" ? "Auf Starter upgraden" : "Upgrade to Starter"}
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {freeDiscovery.isFree &&
+              !freeDiscovery.available ? (
+                <div className="mt-4 rounded-[12px] border border-dashed border-black/[0.10] bg-[#F7F8FA] px-4 py-4">
+                  <p className="text-[12px] font-medium text-[#0B0C0E]">
+                    {freeDiscovery.inProgress
+                      ? (language === "de" ? "Suche läuft bereits" : "Search already in progress")
+                      : (language === "de" ? "Kostenlose Suche verwendet" : "Free search used")}
                   </p>
-                  <Link
-                    href="/campaigns/new"
-                    className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] bg-[#002BBA] px-3 text-[11.5px] font-medium text-white shadow-[0_1px_2px_rgba(0,43,186,.25)] transition-colors hover:bg-[#00229A]"
-                  >
-                    <Megaphone className="size-3.5" />
-                    {text.createCampaignAction}
-                  </Link>
+                  <p className="mt-1 text-[11px] leading-5 text-[#6B7078]">
+                    {freeDiscovery.inProgress
+                      ? (language === "de"
+                          ? "Warte kurz auf den laufenden Request. Ein zweiter Tab kann keine zweite Free-Suche starten."
+                          : "Wait for the active request to finish. A second tab cannot start another Free search.")
+                      : (language === "de"
+                          ? "Du kannst deine gefundenen Unternehmen weiter prüfen. Weitere Discovery-Suchen sind ab Starter verfügbar."
+                          : "You can keep reviewing the companies you found. Additional discovery searches are available from Starter.")}
+                  </p>
                 </div>
               ) : mode ===
                 "criteria" ? (
@@ -2033,7 +2083,9 @@ export function FindLeadsWorkspace({
                         <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
                           {
                             selectedCampaign?.name ??
-                            text.noCampaign
+                            (language === "de"
+                              ? "Automatische Kampagne"
+                              : "Auto campaign")
                           }
                         </span>
 
@@ -2063,8 +2115,13 @@ export function FindLeadsWorkspace({
                             )
                           }
                           className="absolute inset-0 cursor-pointer opacity-0"
-                          required
                         >
+                          <option value="">
+                            {language === "de"
+                              ? "Automatisch aus Suche"
+                              : "Auto-create from search"}
+                          </option>
+
                           {activeCampaigns.map(
                             (
                               campaign
@@ -2087,9 +2144,11 @@ export function FindLeadsWorkspace({
                       </div>
 
                       <p className="pt-1.5 text-[10.5px] leading-4 text-[#6B7078]">
-                        {
-                          text.campaignHelp
-                        }
+                        {selectedCampaign
+                          ? text.campaignHelp
+                          : (language === "de"
+                              ? "Leadbase erstellt die Kampagne erst, wenn diese Suche wirklich gestartet wird."
+                              : "Leadbase creates the campaign only when this search is actually started.")}
                       </p>
                     </div>
 
@@ -2137,17 +2196,22 @@ export function FindLeadsWorkspace({
                             )
                           }
                           className="absolute inset-0 cursor-pointer opacity-0"
+                          disabled={
+                            freeDiscovery.isFree
+                          }
                         >
-                          {[
-                            10,
-                            15,
-                            20,
-                            25,
-                            30,
-                            40,
-                            50,
-                            60,
-                          ].map(
+                          {(freeDiscovery.isFree
+                            ? [10]
+                            : [
+                                10,
+                                15,
+                                20,
+                                25,
+                                30,
+                                40,
+                                50,
+                                60,
+                              ]).map(
                             (
                               value
                             ) => (
@@ -2281,7 +2345,9 @@ export function FindLeadsWorkspace({
                         }{" "}
                         {
                           selectedCampaign?.name ??
-                          text.noCampaign
+                          (language === "de"
+                            ? "Automatische Kampagne"
+                            : "Auto campaign")
                         }{" "}
                         {
                           text.assignedTail
@@ -2333,7 +2399,9 @@ export function FindLeadsWorkspace({
                       <span className="truncate text-[12.5px] font-medium">
                         {
                           selectedCampaign?.name ??
-                          text.noCampaign
+                          (language === "de"
+                            ? "Automatische Kampagne"
+                            : "Auto campaign")
                         }
                       </span>
 
@@ -2353,6 +2421,12 @@ export function FindLeadsWorkspace({
                         }
                         className="absolute inset-0 cursor-pointer opacity-0"
                       >
+                        <option value="">
+                          {language === "de"
+                            ? "Automatisch aus Suche"
+                            : "Auto-create from search"}
+                        </option>
+
                         {activeCampaigns.map(
                           (
                             campaign
@@ -2379,7 +2453,8 @@ export function FindLeadsWorkspace({
                       disabled={
                         promptLoading ||
                         !prompt.trim() ||
-                        !campaignId
+                        (freeDiscovery.isFree &&
+                          !freeDiscovery.available)
                       }
                       className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#002BBA] text-white shadow-[0_1px_2px_rgba(0,43,186,0.30)] transition-colors hover:bg-[#00229A] disabled:pointer-events-none disabled:opacity-40"
                     >
@@ -2465,7 +2540,9 @@ export function FindLeadsWorkspace({
                       <div className="mt-[3px] truncate text-[11.5px] text-white/80">
                         {
                           selectedCampaign?.name ??
-                          text.noCampaign
+                          (language === "de"
+                            ? "Automatische Kampagne"
+                            : "Auto campaign")
                         }
                       </div>
                     </div>
@@ -2475,7 +2552,8 @@ export function FindLeadsWorkspace({
                       disabled={
                         promptLoading ||
                         !prompt.trim() ||
-                        !campaignId
+                        (freeDiscovery.isFree &&
+                          !freeDiscovery.available)
                       }
                       className="flex h-9 shrink-0 items-center gap-2 rounded-[10px] bg-white px-4 text-[13px] font-semibold text-[#002BBA] transition-colors hover:bg-white/90 disabled:pointer-events-none disabled:opacity-60"
                     >
@@ -2951,7 +3029,9 @@ export function FindLeadsWorkspace({
               <h2 className="mt-2.5 text-[14px] font-semibold tracking-[-0.015em]">
                 {
                   selectedCampaign?.name ??
-                  text.noCampaign
+                  (language === "de"
+                    ? "Automatische Kampagne"
+                    : "Auto campaign")
                 }
               </h2>
 

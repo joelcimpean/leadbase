@@ -10,11 +10,16 @@ import {
 
 type UsagePlanResponse = {
   configured?: boolean;
-  plan?: { id?: string | null };
+  plan?: {
+    id?: string | null;
+    remainingCredits?: number | null;
+  };
 };
 
 export function useLeadbasePlan() {
   const [planId, setPlanId] = useState<LeadbasePlanId>("free");
+  const [remainingCredits, setRemainingCredits] = useState<number | null>(null);
+  const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -25,10 +30,21 @@ export function useLeadbasePlan() {
       const data = (await response.json()) as UsagePlanResponse;
       if (response.ok && data.configured === true) {
         setPlanId(normalizePlanId(data.plan?.id));
+        setRemainingCredits(
+          typeof data.plan?.remainingCredits === "number"
+            ? data.plan.remainingCredits
+            : null,
+        );
+        setConfigured(true);
+      } else {
+        setConfigured(false);
+        setRemainingCredits(null);
       }
     } catch {
       // Server-side plan checks remain authoritative. The UI falls back to Free
       // if entitlement metadata cannot be loaded.
+      setConfigured(false);
+      setRemainingCredits(null);
     } finally {
       setLoading(false);
     }
@@ -49,6 +65,8 @@ export function useLeadbasePlan() {
   return {
     planId,
     entitlements,
+    remainingCredits,
+    configured,
     loading,
     refresh,
   };

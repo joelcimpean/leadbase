@@ -13,6 +13,8 @@ import {
   useFormStatus,
 } from "react-dom";
 
+import { readableTextColor } from "@/lib/brand-kit";
+
 type ProposalActionButtonProps = {
   children: ReactNode;
   pendingLabel: string;
@@ -46,7 +48,7 @@ export function ProposalActionButton({
             accentColor,
           borderColor:
             accentColor,
-          color: "#ffffff",
+          color: readableTextColor(accentColor),
         }
       : {};
 
@@ -61,7 +63,7 @@ export function ProposalActionButton({
         railSecondary
           ? "h-8 w-full rounded-[9px] border-black/[0.12] bg-white px-2 text-[10.5px] text-[#6B6660] hover:border-black/[0.26] hover:text-[#14161A]"
           : primary
-            ? "h-10 rounded-full px-4 text-[11.5px] text-white hover:opacity-90"
+            ? "h-10 rounded-full px-4 text-[11.5px] hover:opacity-90"
             : "h-10 rounded-full border-black/[0.14] bg-white px-4 text-[11.5px] text-[#6B6660] hover:border-black/[0.30] hover:text-[#14161A]",
       ].join(" ")}
     >

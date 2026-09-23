@@ -35,6 +35,7 @@ import {
 import {
   applyDiscoveredEmailCandidate,
   approveOutreachDraft,
+  createManualOutreachDraft,
   cancelScheduledOutreach,
   resetSentOutreachDraft,
   updateLeadContactSalutation,
@@ -1152,24 +1153,87 @@ export async function OutreachSection({
                   text.noDraftDescription
                 }
               </p>
+
+              <details className="group mt-5 text-left">
+                <summary className="mx-auto flex h-9 w-fit cursor-pointer list-none items-center justify-center gap-2 rounded-[9px] border bg-background px-3 text-xs font-medium transition-colors hover:bg-muted/40">
+                  <PencilLine className="size-3.5" />
+                  {language === "de" ? "E-Mail selbst schreiben" : "Write email manually"}
+                </summary>
+
+                <form
+                  action={createManualOutreachDraft}
+                  className="mt-4 space-y-4 rounded-[12px] border bg-background p-4 text-left"
+                >
+                  <input type="hidden" name="leadId" value={leadId} />
+
+                  <div>
+                    <label
+                      htmlFor="manual-outreach-subject"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      {language === "de" ? "Betreff" : "Subject"}
+                    </label>
+                    <input
+                      id="manual-outreach-subject"
+                      name="subject"
+                      type="text"
+                      required
+                      className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring"
+                      placeholder={language === "de" ? "Betreff eingeben…" : "Enter subject…"}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="manual-outreach-body"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      {language === "de" ? "Nachricht" : "Message"}
+                    </label>
+                    <textarea
+                      id="manual-outreach-body"
+                      name="body"
+                      required
+                      rows={8}
+                      className="mt-2 min-h-[190px] w-full resize-y rounded-md border bg-background px-3 py-3 text-sm leading-6 outline-none transition-shadow focus:ring-2 focus:ring-ring"
+                      placeholder={language === "de" ? "E-Mail schreiben…" : "Write your email…"}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 border-t pt-3">
+                    <span className="text-[11px] leading-5 text-muted-foreground">
+                      {language === "de"
+                        ? "Manuelle Entwürfe verbrauchen keine AI-Credits."
+                        : "Manual drafts do not use AI Credits."}
+                    </span>
+                    <PendingSubmitButton
+                      pendingText={language === "de" ? "Speichert…" : "Saving…"}
+                      className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                    >
+                      <Save className="size-3.5" />
+                      {language === "de" ? "Entwurf speichern" : "Save draft"}
+                    </PendingSubmitButton>
+                  </div>
+                </form>
+              </details>
             </div>
           </div>
         ) : (
           <>
-            <div className="border-t px-4 py-3 sm:px-5">
-              <OutreachGifPreference
-                leadId={
-                  leadId
-                }
-                initialEnabled={
-                  lead?.outreach_gif_enabled ??
-                  true
-                }
-                gifReady={
-                  outreachGifReady
-                }
-              />
-            </div>
+            {outreachGifReady ? (
+              <div className="border-t px-4 py-3 sm:px-5">
+                <OutreachGifPreference
+                  leadId={
+                    leadId
+                  }
+                  initialEnabled={
+                    lead?.outreach_gif_enabled ??
+                    true
+                  }
+                  gifReady
+                />
+              </div>
+            ) : null}
 
             <div className="border-t bg-muted/20 px-4 py-4 sm:px-5">
               <div className="grid gap-4">

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   getPublicPlan,
   normalizeTierIndex,
+  priceForTier,
   type LeadbaseBillingInterval,
   type LeadbasePublicPlanId,
 } from "@/lib/public-plans";
@@ -14,8 +15,9 @@ import {
 } from "@/lib/design-defaults";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  inferCurrencyFromLocation,
+  normalizeBillingCurrency,
   normalizeLeadbaseCurrency,
+  type LeadbaseBillingCurrency,
   type LeadbaseCurrencyMode,
 } from "@/lib/account-currency";
 import { createClient } from "@/lib/supabase/server";
@@ -30,6 +32,7 @@ export type OnboardingPlanSelection = {
   planId: LeadbasePublicPlanId | "free";
   tierIndex: number;
   billing: LeadbaseBillingInterval;
+  billingCurrency?: LeadbaseBillingCurrency;
 };
 
 export type OnboardingProfileInput = {
@@ -69,6 +72,7 @@ export async function saveOnboardingPlan(
     const { supabase, user } = await getAuthenticatedUser();
     const billing: LeadbaseBillingInterval =
       selection.billing === "yearly" ? "yearly" : "monthly";
+    const billingCurrency = normalizeBillingCurrency(selection.billingCurrency);
 
     let storedPlan: Record<string, unknown>;
     if (selection.planId === "free") {
@@ -76,9 +80,12 @@ export async function saveOnboardingPlan(
         id: "free",
         planId: "free",
         billing,
+        billingCurrency,
         tierIndex: 0,
         credits: null,
+        price: 0,
         priceEur: 0,
+        priceUsd: 0,
         checkoutStatus: "free",
       };
     } else {
@@ -90,12 +97,12 @@ export async function saveOnboardingPlan(
         id: plan.id,
         planId: plan.id,
         billing,
+        billingCurrency,
         tierIndex,
         credits: tier.credits,
-        priceEur:
-          billing === "yearly"
-            ? tier.monthlyPriceEur * 10
-            : tier.monthlyPriceEur,
+        price: priceForTier(tier, billing, billingCurrency),
+        priceEur: priceForTier(tier, billing, "EUR"),
+        priceUsd: priceForTier(tier, billing, "USD"),
         checkoutStatus: "pending_checkout",
       };
     }
@@ -161,10 +168,8 @@ export async function saveOnboardingProfile(
     const replyEmail =
       clean(gmailConnection?.email_address, 254) || clean(user.email, 254);
 
-    const currencyMode: LeadbaseCurrencyMode = input.currencyMode === "manual" ? "manual" : "auto";
-    const currency = currencyMode === "manual"
-      ? normalizeLeadbaseCurrency(input.currency)
-      : (inferCurrencyFromLocation(location) ?? normalizeLeadbaseCurrency(input.currency));
+    const currencyMode: LeadbaseCurrencyMode = "manual";
+    const currency = normalizeLeadbaseCurrency(input.currency);
 
     const profile = {
       senderName: fullName,

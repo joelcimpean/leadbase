@@ -10,6 +10,7 @@ import {
   normalizeProposalDesignTemplate,
   type ProposalDesignTemplate,
 } from "@/lib/proposal-design-templates";
+import { readableTextColor } from "@/lib/brand-kit";
 
 export type ProposalTemplateCustomSection = {
   id: string;
@@ -357,6 +358,7 @@ function normalizeAcceptanceName(value: string) {
 export function ProposalTemplateDocument(props: ProposalTemplateDocumentProps) {
   const template = normalizeProposalDesignTemplate(props.template);
   const accent = normalizeAccent(props.accentColor);
+  const accentText = readableTextColor(accent);
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [acceptanceName, setAcceptanceName] = useState("");
@@ -543,13 +545,13 @@ export function ProposalTemplateDocument(props: ProposalTemplateDocumentProps) {
         { label: isGerman ? "Positionen" : "Items", value: String(props.scope.length) },
       ],
       coverGlow: `position:absolute;top:-180px;right:-120px;width:560px;height:560px;border-radius:999px;pointer-events:none;background:radial-gradient(circle, ${accent}55, rgba(0,0,0,0) 68%)`,
-      markStyle: `width:36px;height:36px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Instrument Serif', Georgia, serif;font-size:19px;color:#FFFFFF;background:${accent}`,
-      prismaMark: `width:30px;height:30px;flex:none;border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono', monospace;font-size:11px;font-weight:500;color:#FFFFFF;background:${accent}`,
-      prismaBand: `display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:24px 32px;padding:26px 28px;background:${accent};color:#FFFFFF`,
+      markStyle: `width:36px;height:36px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Instrument Serif', Georgia, serif;font-size:19px;color:${accentText};background:${accent}`,
+      prismaMark: `width:30px;height:30px;flex:none;border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Geist Mono', monospace;font-size:11px;font-weight:500;color:${accentText};background:${accent}`,
+      prismaBand: `display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:24px 32px;padding:26px 28px;background:${accent};color:${accentText}`,
       accentDotStyle: `width:5px;height:5px;border-radius:999px;background:${accent}`,
       dotStyle: `width:5px;height:5px;flex:none;margin-top:8px;border-radius:999px;background:${accent}`,
-      ctaPill: `height:46px;padding:0 22px;border:none;border-radius:999px;display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;color:#FFFFFF;cursor:pointer;background:${accent};box-shadow:0 8px 20px -10px ${accent}99`,
-      ctaSquare: `height:42px;padding:0 20px;border:none;border-radius:8px;display:flex;align-items:center;font-size:13.5px;font-weight:500;color:#FFFFFF;cursor:pointer;background:${accent}`,
+      ctaPill: `height:46px;padding:0 22px;border:none;border-radius:999px;display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:500;color:${accentText};cursor:pointer;background:${accent};box-shadow:0 8px 20px -10px ${accent}99`,
+      ctaSquare: `height:42px;padding:0 20px;border:none;border-radius:8px;display:flex;align-items:center;font-size:13.5px;font-weight:500;color:${accentText};cursor:pointer;background:${accent}`,
       modalOpen,
       notConfirmed: !confirmed || acceptanceName.trim().length < 2 || !acceptanceNameMatches,
       expectedAcceptanceName,
@@ -597,8 +599,8 @@ export function ProposalTemplateDocument(props: ProposalTemplateDocumentProps) {
       },
       boxStyle: `width:18px;height:18px;flex:none;margin-top:1px;border-radius:5px;display:flex;align-items:center;justify-content:center;transition:all .15s ease;${confirmed ? `background:${accent};border:1px solid ${accent}` : "background:#FFFFFF;border:1px solid rgba(20,22,26,.22)"}`,
       boxCheckStyle: `width:11px;height:11px;background:#FFFFFF;mask:url(data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2024%2024%27%20fill=%27none%27%20stroke=%27%23000%27%20stroke-width=%272%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpath%20d=%27M20%206%209%2017l-5-5%27/%3E%3C/svg%3E) center/contain no-repeat;opacity:${confirmed ? "1" : "0"}`,
-      confirmBtnStyle: `height:42px;padding:0 18px;border:none;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#FFFFFF;background:${accent};${confirmed && acceptanceNameMatches ? "cursor:pointer;opacity:1" : "cursor:not-allowed;opacity:.38"}`,
-      railCta: `margin-top:16px;width:100%;height:40px;border:none;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:#FFFFFF;cursor:pointer;background:${accent}`,
+      confirmBtnStyle: `height:42px;padding:0 18px;border:none;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:${accentText};background:${accent};${confirmed && acceptanceNameMatches ? "cursor:pointer;opacity:1" : "cursor:not-allowed;opacity:.38"}`,
+      railCta: `margin-top:16px;width:100%;height:40px;border:none;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:${accentText};cursor:pointer;background:${accent}`,
     };
   }, [
     accent,

@@ -20,6 +20,7 @@ type AcceptedProposalProjectInput = {
 type EnsureProjectResult = {
   projectId: string | null;
   created: boolean;
+  upgradeRequired: boolean;
   error: string | null;
 };
 
@@ -63,6 +64,9 @@ export async function ensureProjectFromAcceptedProposal({
     let projectId = existing?.id ?? null;
     let created = false;
 
+    // Accepted proposals always materialize into a project, including Free.
+    // Free can see that the project exists, but project management remains
+    // plan-gated elsewhere. This preserves the full lead -> client journey.
     if (!projectId) {
       const projectNotes = [
         `Automatisch aus angenommenem Leadbase-Angebot erstellt.`,
@@ -125,12 +129,14 @@ export async function ensureProjectFromAcceptedProposal({
     return {
       projectId,
       created,
+      upgradeRequired: false,
       error: null,
     };
   } catch (error) {
     return {
       projectId: null,
       created: false,
+      upgradeRequired: false,
       error: cleanError(error),
     };
   }

@@ -15,6 +15,10 @@ import {
   useLanguage,
 } from "@/components/language-provider";
 
+import {
+  PersistentAiActivityRows,
+} from "@/components/persistent-ai-activity";
+
 function ProgressRow({
   icon: Icon,
   label,
@@ -92,17 +96,10 @@ export function BackgroundTaskDock() {
   } =
     useLanguage();
 
-  if (
-    !analysisTask.running &&
-    !designTask.running &&
-    !gifTask.running
-  ) {
-    return null;
-  }
-
   return (
     <div className="pointer-events-none fixed bottom-20 right-4 z-[90] w-[min(360px,calc(100vw-2rem))] space-y-2 md:bottom-20 md:right-5">
       <div className="pointer-events-auto space-y-2">
+        <PersistentAiActivityRows />
         {analysisTask.running ? (
           <ProgressRow
             icon={Sparkles}

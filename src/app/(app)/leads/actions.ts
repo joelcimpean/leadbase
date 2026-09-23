@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resolveAccountCurrency } from "@/lib/account-currency";
 import { cancelPendingFollowUps } from "@/lib/outreach-pipeline";
+import { getLeadCreationAccess } from "@/lib/free-experience";
 
 const validStatuses = [
   "NEW",
@@ -54,6 +55,15 @@ export async function createLead(formData: FormData) {
 
   if (userError || !user) {
     redirect("/login");
+  }
+
+  const leadAccess = await getLeadCreationAccess(user.id);
+  if (!leadAccess.allowed) {
+    redirect(
+      `/leads/new?error=${encodeURIComponent(
+        "Your one-time Free lead slot has already been used. Upgrade to Starter to add another lead."
+      )}`
+    );
   }
 
   const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
@@ -249,9 +259,13 @@ export async function createLead(formData: FormData) {
       ? `&campaign=${encodeURIComponent(cleanCampaignId)}`
       : "";
 
+    const freeLimitReached = leadError?.message?.includes("FREE_LEAD_LIMIT_REACHED");
+
     redirect(
       `/leads/new?error=${encodeURIComponent(
-        "Der Lead konnte nicht gespeichert werden."
+        freeLimitReached
+          ? "Your one-time Free lead slot has already been used. Upgrade to Starter to add another lead."
+          : "Der Lead konnte nicht gespeichert werden."
       )}${campaignQuery}`
     );
   }

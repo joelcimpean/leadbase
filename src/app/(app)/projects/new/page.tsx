@@ -50,6 +50,10 @@ import {
   WorkspacePageMotion,
 } from "@/components/workspace-page-motion";
 
+import { AccessGatePanel } from "@/components/access-gate-panel";
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -115,6 +119,34 @@ export default async function NewProjectPage({
       language
     ].projects;
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return (
+      <AccessGatePanel
+        eyebrow="Account"
+        title="Sign in required"
+        description="Sign in to continue."
+        ctaLabel="Sign in"
+        ctaHref="/login"
+      />
+    );
+  }
+
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  if (!planAllowsFeature(planAccess.planId, "project_creation")) {
+    return (
+      <AccessGatePanel
+        eyebrow={language === "de" ? "Plan-Zugriff" : "Plan access"}
+        title={language === "de" ? "Projekte sind ab Starter verfügbar" : "Project creation is available from Starter"}
+        description={language === "de" ? "Gewonnene Free-Leads bekommen automatisch ein Projekt. Zum Öffnen, Bearbeiten oder manuellen Anlegen von Projekten brauchst du Starter." : "Won Free leads still get an automatic project. Starter is required to open, edit or manually create projects."}
+        ctaLabel={language === "de" ? "Auf Starter upgraden" : "Upgrade to Starter"}
+        ctaHref="/profile?dialog=plan"
+        secondaryLabel={language === "de" ? "Zurück zu Projekten" : "Back to projects"}
+        secondaryHref="/projects"
+      />
+    );
+  }
+
   const leadId =
     params.leadId
       ?.trim() ??
@@ -130,20 +162,12 @@ export default async function NewProjectPage({
     leadId
   ) {
     const {
-      data: {
-        user,
-      },
-    } =
-      await supabase.auth.getUser();
-
-    const {
       data:
         lead,
       error:
         leadError,
     } =
-      user
-        ? await supabase
+      await supabase
         .from(
           "leads"
         )
@@ -164,14 +188,7 @@ export default async function NewProjectPage({
           "user_id",
           user.id
         )
-        .maybeSingle()
-        : {
-            data:
-              null,
-
-            error:
-              null,
-          };
+        .maybeSingle();
 
     if (
       leadError

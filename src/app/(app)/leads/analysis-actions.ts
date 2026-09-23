@@ -14,6 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai-usage";
 import { assertPlanFeatureAvailable } from "@/lib/plan-access";
+import { assertDirectAiActionAllowed } from "@/lib/free-experience";
 
 /* =========================================================
    HELPERS
@@ -81,6 +82,8 @@ export async function analyzeLeadWebsite(
 
   if (formData.get("bulk") === "1") {
     await assertPlanFeatureAvailable(user.id, "bulk_analyze");
+  } else {
+    await assertDirectAiActionAllowed(user.id);
   }
 
   /* =========================================================

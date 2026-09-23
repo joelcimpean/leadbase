@@ -1,3 +1,4 @@
+import { type LeadbaseBillingCurrency } from "@/lib/account-currency";
 import {
   LEADBASE_PLAN_ENTITLEMENTS,
   type LeadbaseBillingInterval,
@@ -7,6 +8,7 @@ import {
 export type LeadbasePlanTier = {
   credits: number;
   monthlyPriceEur: number;
+  monthlyPriceUsd: number;
 };
 
 export type LeadbasePublicPlan = {
@@ -66,10 +68,10 @@ export const LEADBASE_PUBLIC_PLANS: readonly LeadbasePublicPlan[] = [
     extraEn:
       "Limited bulk actions · Sol design model Standard · ~100 emails/day",
     tiers: [
-      { credits: 500, monthlyPriceEur: 29 },
-      { credits: 1_000, monthlyPriceEur: 45 },
-      { credits: 2_000, monthlyPriceEur: 69 },
-      { credits: 3_000, monthlyPriceEur: 89 },
+      { credits: 500, monthlyPriceEur: 29, monthlyPriceUsd: 29 },
+      { credits: 1_000, monthlyPriceEur: 45, monthlyPriceUsd: 45 },
+      { credits: 2_000, monthlyPriceEur: 69, monthlyPriceUsd: 69 },
+      { credits: 3_000, monthlyPriceEur: 89, monthlyPriceUsd: 89 },
     ],
   },
   {
@@ -84,10 +86,10 @@ export const LEADBASE_PUBLIC_PLANS: readonly LeadbasePublicPlan[] = [
     extraEn:
       "Bulk design / GIF · Competitor research · Sol High · ~300 emails/day",
     tiers: [
-      { credits: 1_500, monthlyPriceEur: 69 },
-      { credits: 3_000, monthlyPriceEur: 109 },
-      { credits: 5_000, monthlyPriceEur: 149 },
-      { credits: 8_000, monthlyPriceEur: 199 },
+      { credits: 1_500, monthlyPriceEur: 69, monthlyPriceUsd: 69 },
+      { credits: 3_000, monthlyPriceEur: 109, monthlyPriceUsd: 109 },
+      { credits: 5_000, monthlyPriceEur: 149, monthlyPriceUsd: 149 },
+      { credits: 8_000, monthlyPriceEur: 199, monthlyPriceUsd: 199 },
     ],
   },
   {
@@ -101,18 +103,18 @@ export const LEADBASE_PUBLIC_PLANS: readonly LeadbasePublicPlan[] = [
     extraEn:
       "Everything in Pro · GPT-6 Astra · highest bulk limits · ~500 emails/day",
     tiers: [
-      { credits: 4_000, monthlyPriceEur: 149 },
-      { credits: 8_000, monthlyPriceEur: 239 },
-      { credits: 15_000, monthlyPriceEur: 379 },
-      { credits: 25_000, monthlyPriceEur: 549 },
+      { credits: 4_000, monthlyPriceEur: 149, monthlyPriceUsd: 149 },
+      { credits: 8_000, monthlyPriceEur: 239, monthlyPriceUsd: 239 },
+      { credits: 15_000, monthlyPriceEur: 379, monthlyPriceUsd: 379 },
+      { credits: 25_000, monthlyPriceEur: 549, monthlyPriceUsd: 549 },
     ],
   },
 ] as const;
 
 export const LEADBASE_CREDIT_TOPUPS = [
-  { id: "small", credits: 500, priceEur: 19 },
-  { id: "medium", credits: 1_500, priceEur: 49 },
-  { id: "large", credits: 4_000, priceEur: 119 },
+  { id: "small", credits: 500, priceEur: 19, priceUsd: 19 },
+  { id: "medium", credits: 1_500, priceEur: 49, priceUsd: 49 },
+  { id: "large", credits: 4_000, priceEur: 119, priceUsd: 119 },
 ] as const;
 
 export function getPublicPlan(planId: unknown) {
@@ -128,8 +130,17 @@ export function normalizeTierIndex(plan: LeadbasePublicPlan, value: unknown) {
 export function priceForTier(
   tier: LeadbasePlanTier,
   billing: LeadbaseBillingInterval,
+  currency: LeadbaseBillingCurrency = "USD",
 ) {
-  return billing === "yearly" ? tier.monthlyPriceEur * LEADBASE_YEARLY_MONTHS_CHARGED : tier.monthlyPriceEur;
+  const monthly = currency === "EUR" ? tier.monthlyPriceEur : tier.monthlyPriceUsd;
+  return billing === "yearly" ? monthly * LEADBASE_YEARLY_MONTHS_CHARGED : monthly;
+}
+
+export function priceForTopup(
+  pack: { priceEur: number; priceUsd: number },
+  currency: LeadbaseBillingCurrency = "USD",
+) {
+  return currency === "EUR" ? pack.priceEur : pack.priceUsd;
 }
 
 
@@ -153,6 +164,19 @@ export function customCreditPriceEur(value: unknown) {
     return Math.round(19 + (credits - 500) * 0.03);
   }
   return Math.round(49 + (credits - 1_500) * 0.028);
+}
+
+export function customCreditPriceUsd(value: unknown) {
+  // USD is the international default. Keep the same public numeric ladder
+  // as EUR so pricing is predictable ($19 / $49 / $119 anchors).
+  return customCreditPriceEur(value);
+}
+
+export function customCreditPrice(
+  value: unknown,
+  currency: LeadbaseBillingCurrency = "USD",
+) {
+  return currency === "EUR" ? customCreditPriceEur(value) : customCreditPriceUsd(value);
 }
 
 export function stripePlanLookupKey(

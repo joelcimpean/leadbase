@@ -1,0 +1,18 @@
+{
+  "created_at": "20260916-132454",
+  "files": [
+    "src/app/(app)/leads/[id]/page.tsx",
+    "src/app/(app)/leads/outreach-actions.ts",
+    "src/app/api/leads/[id]/redesign-v2/route.ts",
+    "src/lib/ai-usage.ts",
+    "src/lib/sol-static-design-engine.ts"
+  ],
+  "new_files": [
+    "sql/23-phase14C-full-lead-workflow.sql",
+    "src/app/(app)/leads/[id]/full-lead-workflow-button.tsx",
+    "src/app/api/leads/[id]/full-workflow/route.ts",
+    "src/lib/full-lead-workflow-run.ts",
+    "src/lib/full-workflow-call-prep.ts",
+    "src/lib/full-workflow-proposal.ts"
+  ]
+}

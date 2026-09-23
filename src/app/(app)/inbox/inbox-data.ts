@@ -8,6 +8,10 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  getFreeWorkspaceLeadScope,
+} from "@/lib/free-experience";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -632,6 +636,11 @@ export async function loadInboxData(
     );
   }
 
+  const freeScope =
+    await getFreeWorkspaceLeadScope(
+      user.id
+    );
+
   /* =======================================================
      TRASH RETENTION
   ======================================================= */
@@ -886,12 +895,18 @@ export async function loadInboxData(
   ======================================================= */
 
   const drafts =
-    draftsResult.data ??
-    [];
+    (draftsResult.data ?? [])
+      .filter((draft) =>
+        !freeScope.restricted ||
+        (Boolean(freeScope.leadId) && draft.lead_id === freeScope.leadId)
+      );
 
   const emailMessages =
-    messagesResult.data ??
-    [];
+    (messagesResult.data ?? [])
+      .filter((message) =>
+        !freeScope.restricted ||
+        (Boolean(freeScope.leadId) && message.lead_id === freeScope.leadId)
+      );
 
   const gmailConnection =
     gmailResult.data;
@@ -934,6 +949,13 @@ export async function loadInboxData(
       statesResult.data ??
       []
   ) {
+    if (
+      freeScope.restricted &&
+      (!freeScope.leadId || state.lead_id !== freeScope.leadId)
+    ) {
+      continue;
+    }
+
     stateByLead.set(
       state.lead_id,
       state.state as

@@ -15,6 +15,9 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 import { resolveAccountCurrency } from "@/lib/account-currency";
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
+import { PlanLockedWorkspace } from "@/components/plan-locked-workspace";
 
 /* =========================================================
    HELPERS
@@ -80,6 +83,8 @@ export default async function ProjectsPage() {
   ]);
 
   const { data: { user } } = await supabase.auth.getUser();
+  const planAccess = user ? await getLeadbasePlanAccess(user.id) : null;
+  const projectManagementLocked = !planAccess || !planAllowsFeature(planAccess.planId, "project_creation");
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
     ? userMetadata.leadbase_profile as Record<string, unknown>
@@ -201,7 +206,7 @@ export default async function ProjectsPage() {
       })
     );
 
-  return (
+  const workspace = (
     <div className="leadbase-route-projects min-h-full">
       <WorkspacePageMotion />
 
@@ -216,4 +221,29 @@ export default async function ProjectsPage() {
       />
     </div>
   );
+
+  if (projectManagementLocked) {
+    const de = language === "de";
+    return (
+      <PlanLockedWorkspace
+        eyebrow={de ? "Projekt-Workspace" : "Project workspace"}
+        title={de ? "Dein Projekt ist bereit" : "Your project is ready"}
+        description={
+          workspaceProjects.length > 0
+            ? de
+              ? `Leadbase hat ${workspaceProjects.length === 1 ? "dein gewonnenes Projekt" : `${workspaceProjects.length} Projekte`} angelegt. Mit Starter kannst du ${workspaceProjects.length === 1 ? "es" : "sie"} öffnen, bearbeiten und verwalten.`
+              : `Leadbase created ${workspaceProjects.length === 1 ? "your won project" : `${workspaceProjects.length} projects`}. Starter unlocks opening, editing and managing ${workspaceProjects.length === 1 ? "it" : "them"}.`
+            : de
+              ? "Sobald dein Free-Lead ein Angebot annimmt, legt Leadbase das Projekt automatisch an. Die Projektverwaltung wird mit Starter freigeschaltet."
+              : "When your Free lead accepts a proposal, Leadbase creates the project automatically. Starter unlocks project management."
+        }
+        ctaLabel={de ? "Auf Starter upgraden" : "Upgrade to Starter"}
+        badge={workspaceProjects.length > 0 ? `${workspaceProjects.length} ${workspaceProjects.length === 1 ? (de ? "Projekt" : "project") : (de ? "Projekte" : "projects")}` : (de ? "Starter+" : "Starter+")}
+      >
+        {workspace}
+      </PlanLockedWorkspace>
+    );
+  }
+
+  return workspace;
 }

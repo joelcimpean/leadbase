@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileText,
   FolderKanban,
+  LockKeyhole,
   Save,
   Send,
 } from "lucide-react";
@@ -120,6 +121,8 @@ import {
 import {
   WorkspacePageMotion,
 } from "@/components/workspace-page-motion";
+
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
 
 type ProposalPageProps = {
   params: Promise<{
@@ -252,6 +255,9 @@ export default async function ProposalPage({
   if (!user) {
     notFound();
   }
+
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  const isFreePlan = planAccess.planId === "free";
 
   const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
   const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
@@ -486,7 +492,7 @@ export default async function ProposalPage({
       : `Website redesign for ${companyName}`;
 
   const templateRows =
-    (templates ?? []) as ProposalTemplateRow[];
+    (isFreePlan ? [] : (templates ?? [])) as ProposalTemplateRow[];
 
   const selectedTemplate =
     templateRows.find((template) => template.id === query.template) ?? null;
@@ -554,10 +560,10 @@ export default async function ProposalPage({
 
   const activeDesignTemplate =
     proposal?.design_template
-      ? normalizeProposalDesignTemplate(
-          proposal.design_template
-        )
-      : userDefaultDesignTemplate;
+      ? normalizeProposalDesignTemplate(proposal.design_template)
+      : isFreePlan
+        ? "minimal"
+        : userDefaultDesignTemplate;
 
   const storedCustomSections =
     normalizeProposalSections(
@@ -984,6 +990,7 @@ export default async function ProposalPage({
             branding={
               <ProposalBrandingFields
                 defaultAccentColor={activeAccentColor}
+                globalAccentColor={userDefaultAccentColor}
                 currentLogoUrl={activeLogoUrl}
                 firstTimeClient={activeFirstTimeClient}
                 isGerman={isGerman}
@@ -991,12 +998,24 @@ export default async function ProposalPage({
               />
             }
             design={
-              <ProposalDesignTemplatePicker
-                initialTemplate={activeDesignTemplate}
-                accentColor={activeAccentColor}
-                isGerman={isGerman}
-                disabled={isAccepted}
-              />
+              isFreePlan ? (
+                <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-[12px] border border-black/[0.08] bg-[#F7F8FA] p-6 text-center dark:border-white/[0.08] dark:bg-white/[0.04]">
+                  <LockKeyhole className="size-5 text-[#002BBA]" />
+                  <div>
+                    <p className="text-[13px] font-semibold">{isGerman ? "Proposal Design ab Starter" : "Proposal design from Starter"}</p>
+                    <p className="mt-1 max-w-lg text-[11.5px] leading-5 text-[#6B7078]">{isGerman ? "Dein Free-Workflow nutzt Minimal. Bestehende gespeicherte Designs bleiben erhalten, Template-Wechsel und Design-Anpassungen sind ab Starter verfügbar." : "Your Free workflow uses Minimal. Existing saved designs are preserved; template switching and design customization are available from Starter."}</p>
+                  </div>
+                  <Link href="/profile?dialog=plan" className="inline-flex h-8 items-center justify-center rounded-[8px] bg-[#002BBA] px-3 text-[11px] font-medium text-white hover:bg-[#00229A]">{isGerman ? "Auf Starter upgraden" : "Upgrade to Starter"}</Link>
+                  <input type="hidden" name="designTemplate" value={activeDesignTemplate} />
+                </div>
+              ) : (
+                <ProposalDesignTemplatePicker
+                  initialTemplate={activeDesignTemplate}
+                  accentColor={activeAccentColor}
+                  isGerman={isGerman}
+                  disabled={isAccepted}
+                />
+              )
             }
             footer={
               <div
@@ -1117,6 +1136,18 @@ export default async function ProposalPage({
 
           {/* EXISTING SECONDARY FUNCTIONALITY, compactly integrated */}
           {!isAccepted ? (
+            isFreePlan ? (
+              <div className="shrink-0 rounded-[12px] border border-black/[0.08] bg-white px-3 py-3 dark:border-white/[0.08] dark:bg-[#111216]">
+                <div className="flex items-start gap-2.5">
+                  <LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-[#002BBA]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11.5px] font-medium text-[#40454E] dark:text-[#B9BDC5]">{isGerman ? "Vorlagen & AI ab Starter" : "Templates & AI from Starter"}</p>
+                    <p className="mt-1 text-[10.5px] leading-4 text-[#6B7078]">{isGerman ? "Der vom Full Workflow erzeugte Proposal-Entwurf bleibt bearbeitbar. Zusätzliche Vorlagen und AI-Autofill sind gesperrt." : "The proposal draft created by the Full Workflow remains editable. Additional templates and AI autofill are locked."}</p>
+                    <Link href="/profile?dialog=plan" className="mt-2 inline-flex text-[10.5px] font-medium text-[#002BBA] hover:underline">{isGerman ? "Starter ansehen" : "View Starter"}</Link>
+                  </div>
+                </div>
+              </div>
+            ) : (
             <details className="shrink-0 rounded-[12px] border border-black/[0.08] bg-white px-3 py-2.5 dark:border-white/[0.08] dark:bg-[#111216]">
               <summary className="cursor-pointer list-none text-[11.5px] font-medium text-[#40454E] dark:text-[#B9BDC5]">
                 {isGerman ? "Vorlagen & AI" : "Templates & AI"}
@@ -1189,6 +1220,7 @@ export default async function ProposalPage({
                 ) : null}
               </div>
             </details>
+            )
           ) : null}
 
           {linkedProject ? (

@@ -17,7 +17,10 @@ import {
 
 import { getAppLanguage } from "@/lib/i18n-server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveAccountCurrency } from "@/lib/account-currency";
+import { formatAccountMoney, resolveAccountCurrency } from "@/lib/account-currency";
+import { PlanLockedWorkspace } from "@/components/plan-locked-workspace";
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
 
 import styles from "./analytics-precision.module.css";
 
@@ -157,11 +160,7 @@ function formatPercent(value: number, digits = value > 0 && value < 10 ? 1 : 0) 
 }
 
 function formatCurrency(value: number, language: AppLanguage, currency: string) {
-  return new Intl.NumberFormat(language === "de" ? "de-DE" : "en-GB", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value);
+  return formatAccountMoney(value, currency, language);
 }
 
 function rangeLabel(range: AnalyticsRange, language: AppLanguage) {
@@ -382,6 +381,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
 
   if (userError || !user) redirect("/login");
 
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  const analyticsLocked = !planAllowsFeature(planAccess.planId, "analytics");
+
   const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
   const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
     ? userMetadata.leadbase_profile as Record<string, unknown>
@@ -452,13 +454,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     if (error) console.error(`Could not load analytics ${label}:`, error);
   }
 
-  const campaigns = (campaignsResult.data ?? []) as CampaignRow[];
-  const leads = (leadsResult.data ?? []) as LeadRow[];
-  const drafts = (draftsResult.data ?? []) as DraftRow[];
-  const messages = (messagesResult.data ?? []) as MessageRow[];
-  const outreachActivity = (outreachActivityResult.data ?? []) as ActivityMessage[];
-  const visits = (visitsResult.data ?? []) as VisitRow[];
-  const projects = (projectsResult.data ?? []) as ProjectRow[];
+  // Free sees the complete Analytics UI as a blurred feature preview, but no
+  // real analytics values are rendered into the response until Starter+.
+  const campaigns = (analyticsLocked ? [] : (campaignsResult.data ?? [])) as CampaignRow[];
+  const leads = (analyticsLocked ? [] : (leadsResult.data ?? [])) as LeadRow[];
+  const drafts = (analyticsLocked ? [] : (draftsResult.data ?? [])) as DraftRow[];
+  const messages = (analyticsLocked ? [] : (messagesResult.data ?? [])) as MessageRow[];
+  const outreachActivity = (analyticsLocked ? [] : (outreachActivityResult.data ?? [])) as ActivityMessage[];
+  const visits = (analyticsLocked ? [] : (visitsResult.data ?? [])) as VisitRow[];
+  const projects = (analyticsLocked ? [] : (projectsResult.data ?? [])) as ProjectRow[];
 
   const requestedCampaign = params.campaign ?? "all";
   const validCampaignIds = new Set(campaigns.map((campaign) => campaign.id));
@@ -699,7 +703,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
 
   const dayLabels = de ? DAY_LABELS_DE : DAY_LABELS_EN;
 
-  return (
+  const analyticsContent = (
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerCopy}>
@@ -982,4 +986,22 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       </section>
     </div>
   );
+
+  if (analyticsLocked) {
+    return (
+      <PlanLockedWorkspace
+        eyebrow={de ? "Analytics" : "Analytics"}
+        title={de ? "Analytics ab Starter" : "Analytics from Starter"}
+        description={de
+          ? "Die komplette Analytics-Ansicht bleibt sichtbar, damit du siehst, was Leadbase aus deinem Workspace auswertet. Echte Kennzahlen und Interaktionen werden ab Starter freigeschaltet."
+          : "The full Analytics workspace stays visible so you can see what Leadbase measures. Real metrics and interactions unlock from Starter."}
+        ctaLabel={de ? "Auf Starter upgraden" : "Upgrade to Starter"}
+        badge="Starter+"
+      >
+        {analyticsContent}
+      </PlanLockedWorkspace>
+    );
+  }
+
+  return analyticsContent;
 }

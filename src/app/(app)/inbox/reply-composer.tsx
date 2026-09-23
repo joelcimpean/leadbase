@@ -36,6 +36,8 @@ import {
   CreditEstimatePill,
 } from "@/components/credit-estimate-pill";
 
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
+
 import {
   type AppLanguage,
 } from "@/lib/i18n";
@@ -879,6 +881,13 @@ export function ReplyComposer({
   } =
     useLanguage();
 
+  const {
+    planId,
+    loading: planLoading,
+  } = useLeadbasePlan();
+
+  const freeAiReplyLocked = !planLoading && planId === "free";
+
   const text =
     inboxCopy[
       language
@@ -1499,6 +1508,11 @@ export function ReplyComposer({
     if (
       busy
     ) {
+      return;
+    }
+
+    if (freeAiReplyLocked) {
+      router.push("/profile?dialog=plan");
       return;
     }
 
@@ -3391,15 +3405,17 @@ export function ReplyComposer({
                 <>
                   <Sparkles className="size-4" />
 
-                  {
-                    text.generateReply
-                  }
+                  {freeAiReplyLocked
+                    ? (language === "de" ? "AI-Antwort · Starter" : "AI reply · Starter")
+                    : text.generateReply}
 
-                  <CreditEstimatePill
-                    feature="reply_generation"
-                    language={language}
-                    hideOnSmall
-                  />
+                  {!freeAiReplyLocked ? (
+                    <CreditEstimatePill
+                      feature="reply_generation"
+                      language={language}
+                      hideOnSmall
+                    />
+                  ) : null}
                 </>
               )}
             </button>

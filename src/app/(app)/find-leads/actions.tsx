@@ -12,6 +12,18 @@ import {
   createClient,
 } from "@/lib/supabase/server";
 
+import {
+  getLeadbasePlanAccess,
+} from "@/lib/plan-access";
+
+import {
+  claimFreeDiscoverySession,
+  finalizeFreeDiscoverySession,
+  isFreeDiscoverySessionError,
+  releaseFreeDiscoverySession,
+  type FreeDiscoverySessionClaim,
+} from "@/lib/free-experience";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -242,18 +254,6 @@ export async function runLeadSearch(
   ======================================================= */
 
   if (
-    typeof campaignId !==
-      "string" ||
-    !campaignId.trim()
-  ) {
-    redirect(
-      buildErrorUrl(
-        "Bitte wähle eine Kampagne aus."
-      )
-    );
-  }
-
-  if (
     typeof industry !==
       "string" ||
     !industry.trim()
@@ -345,57 +345,281 @@ export async function runLeadSearch(
   }
 
   /* =======================================================
-     VERIFY CAMPAIGN
+     PLAN + FREE DISCOVERY SESSION
   ======================================================= */
 
-  const {
-    data:
-      campaign,
-
-    error:
-      campaignError,
-  } =
-    await supabase
-      .from(
-        "campaigns"
-      )
-      .select(`
-        id,
-        name
-      `)
-      .eq(
-        "id",
-        campaignId
-      )
-      .eq(
-        "user_id",
-        user.id
-      )
-      .maybeSingle();
-
-  if (
-    campaignError ||
-    !campaign
-  ) {
-    redirect(
-      buildErrorUrl(
-        "Die ausgewählte Kampagne wurde nicht gefunden."
-      )
+  const planAccess =
+    await getLeadbasePlanAccess(
+      user.id
     );
+
+  const effectiveResultLimit =
+    Math.min(
+      cleanResultLimit,
+      planAccess.entitlements.limits
+        .aiLeadSearchMaxResultsPerRun
+    );
+
+  let freeDiscoveryClaim:
+    | FreeDiscoverySessionClaim
+    | null =
+    null;
+
+  try {
+    freeDiscoveryClaim =
+      await claimFreeDiscoverySession(
+        user.id
+      );
+  } catch (error) {
+    if (
+      isFreeDiscoverySessionError(
+        error
+      )
+    ) {
+      redirect(
+        buildErrorUrl(
+          error instanceof Error &&
+          error.message ===
+            "FREE_DISCOVERY_IN_PROGRESS"
+            ? "Your Free discovery search is already running. Please wait for it to finish."
+            : "Your one-time Free discovery search has already been used. Upgrade to Starter for more searches."
+        )
+      );
+    }
+
+    throw error;
   }
 
   /* =======================================================
-     SEARCH QUERY
+     SEARCH INTENT
   ======================================================= */
 
   const cleanIndustry =
-    industry.trim();
+    typeof industry ===
+      "string"
+      ? industry.trim()
+      : "";
 
   const cleanLocation =
-    location.trim();
+    typeof location ===
+      "string"
+      ? location.trim()
+      : "";
 
   const query =
     `${cleanIndustry} in ${cleanLocation}`;
+
+  const cleanCampaignId =
+    typeof campaignId ===
+      "string"
+      ? campaignId.trim()
+      : "";
+
+  /* =======================================================
+     RESOLVE / AUTO-CREATE CAMPAIGN
+
+     A campaign is optional. If none was chosen, create it only
+     now that a real discovery request is being committed.
+  ======================================================= */
+
+  let campaign:
+    | {
+        id: string;
+        name: string;
+      }
+    | null =
+    null;
+
+  if (
+    cleanCampaignId
+  ) {
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          "campaigns"
+        )
+        .select(`
+          id,
+          name
+        `)
+        .eq(
+          "id",
+          cleanCampaignId
+        )
+        .eq(
+          "user_id",
+          user.id
+        )
+        .neq(
+          "status",
+          "ARCHIVED"
+        )
+        .maybeSingle();
+
+    if (
+      error ||
+      !data
+    ) {
+      await releaseFreeDiscoverySession(
+        user.id,
+        freeDiscoveryClaim
+      );
+
+      redirect(
+        buildErrorUrl(
+          "The selected campaign could not be found."
+        )
+      );
+    }
+
+    campaign =
+      data;
+  } else {
+    const {
+      data:
+        matchingCampaign,
+      error:
+        matchingCampaignError,
+    } =
+      await supabase
+        .from(
+          "campaigns"
+        )
+        .select(`
+          id,
+          name
+        `)
+        .eq(
+          "user_id",
+          user.id
+        )
+        .eq(
+          "target_industry",
+          cleanIndustry
+        )
+        .eq(
+          "target_geography",
+          cleanLocation
+        )
+        .neq(
+          "status",
+          "ARCHIVED"
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(
+          1
+        )
+        .maybeSingle();
+
+    if (
+      matchingCampaignError
+    ) {
+      await releaseFreeDiscoverySession(
+        user.id,
+        freeDiscoveryClaim
+      );
+
+      redirect(
+        buildErrorUrl(
+          "Leadbase could not prepare the automatic campaign."
+        )
+      );
+    }
+
+    if (
+      matchingCampaign
+    ) {
+      campaign =
+        matchingCampaign;
+    } else {
+      const automaticName =
+        `${cleanLocation} ${cleanIndustry}`
+          .replace(
+            /\s+/g,
+            " "
+          )
+          .trim()
+          .slice(
+            0,
+            120
+          );
+
+      const {
+        data:
+          createdCampaign,
+        error:
+          createCampaignError,
+      } =
+        await supabase
+          .from(
+            "campaigns"
+          )
+          .insert({
+            user_id:
+              user.id,
+
+            name:
+              automaticName,
+
+            target_industry:
+              cleanIndustry,
+
+            target_geography:
+              cleanLocation,
+
+            status:
+              "ACTIVE",
+          })
+          .select(`
+            id,
+            name
+          `)
+          .single();
+
+      if (
+        createCampaignError ||
+        !createdCampaign
+      ) {
+        await releaseFreeDiscoverySession(
+          user.id,
+          freeDiscoveryClaim
+        );
+
+        redirect(
+          buildErrorUrl(
+            "Leadbase could not create the automatic campaign."
+          )
+        );
+      }
+
+      campaign =
+        createdCampaign;
+    }
+  }
+
+  if (
+    !campaign
+  ) {
+    await releaseFreeDiscoverySession(
+      user.id,
+      freeDiscoveryClaim
+    );
+
+    redirect(
+      buildErrorUrl(
+        "Leadbase could not resolve a campaign for this search."
+      )
+    );
+  }
 
   /* =======================================================
      CREATE SEARCH RUN
@@ -428,7 +652,7 @@ export async function runLeadSearch(
           cleanLocation,
 
         result_limit:
-          cleanResultLimit,
+          effectiveResultLimit,
 
         source:
           "GOOGLE_PLACES",
@@ -448,6 +672,11 @@ export async function runLeadSearch(
     console.error(
       "Could not create lead search:",
       searchError
+    );
+
+    await releaseFreeDiscoverySession(
+      user.id,
+      freeDiscoveryClaim
     );
 
     redirect(
@@ -482,8 +711,8 @@ export async function runLeadSearch(
       Math.min(
         60,
         Math.max(
-          cleanResultLimit,
-          cleanResultLimit *
+          effectiveResultLimit,
+          effectiveResultLimit *
             2
         )
       );
@@ -892,7 +1121,7 @@ export async function runLeadSearch(
         )
         .slice(
           0,
-          cleanResultLimit
+          effectiveResultLimit
         );
 
     /* =====================================================
@@ -1056,6 +1285,18 @@ export async function runLeadSearch(
       );
     }
 
+    await finalizeFreeDiscoverySession(
+      user.id,
+      freeDiscoveryClaim,
+      {
+        searchId:
+          search.id,
+
+        campaignId:
+          campaign.id,
+      }
+    );
+
     searchSuccessful =
       true;
   } catch (
@@ -1108,6 +1349,11 @@ export async function runLeadSearch(
         failedUpdateError
       );
     }
+
+    await releaseFreeDiscoverySession(
+      user.id,
+      freeDiscoveryClaim
+    );
   }
 
   revalidatePath(

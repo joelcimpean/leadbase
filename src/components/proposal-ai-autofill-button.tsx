@@ -1,7 +1,11 @@
 "use client";
 
+import Link from "next/link";
+
 import {
+  LockKeyhole,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -15,6 +19,8 @@ import {
 import {
   CreditEstimatePill,
 } from "@/components/credit-estimate-pill";
+
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
 
 import type {
   ProposalCustomSection,
@@ -81,6 +87,14 @@ export function ProposalAiAutofillButton({
     useState(false);
   const [message, setMessage] =
     useState<string | null>(null);
+
+  const { planId, remainingCredits, loading: planLoading } = useLeadbasePlan();
+  const freeLocked = !planLoading && planId === "free";
+  const noCredits =
+    !planLoading &&
+    planId !== "free" &&
+    remainingCredits !== null &&
+    remainingCredits <= 0;
 
   async function generate() {
     const form =
@@ -196,6 +210,37 @@ export function ProposalAiAutofillButton({
     } finally {
       setLoading(false);
     }
+  }
+
+  if (freeLocked) {
+    return compact ? (
+      <Link href="/profile?dialog=plan" className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#002BBA] hover:text-[#001E85]">
+        <LockKeyhole className="size-3" />
+        {isGerman ? "AI · ab Starter" : "AI · Starter+"}
+      </Link>
+    ) : (
+      <div className="w-full min-w-0 space-y-2">
+        <Link href="/profile?dialog=plan" className="inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium">
+          <LockKeyhole className="size-4" />
+          {isGerman ? "Proposal AI ab Starter" : "Proposal AI from Starter"}
+        </Link>
+        <p className="max-w-xl text-xs leading-5 text-muted-foreground">{isGerman ? "Der Entwurf aus dem Free Full Lead Workflow bleibt nutzbar. Weitere AI-Autofills sind ab Starter verfügbar." : "The draft from the Free Full Lead Workflow remains usable. Additional AI autofills are available from Starter."}</p>
+      </div>
+    );
+  }
+
+  if (noCredits) {
+    return compact ? (
+      <Link href="/profile?dialog=credits" className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#002BBA] hover:text-[#001E85]">
+        <Zap className="size-3" />
+        {isGerman ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+      </Link>
+    ) : (
+      <Link href="/profile?dialog=credits" className="inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium">
+        <Zap className="size-4" />
+        {isGerman ? "Credits kaufen" : "Buy Credits"}
+      </Link>
+    );
   }
 
   if (compact) {

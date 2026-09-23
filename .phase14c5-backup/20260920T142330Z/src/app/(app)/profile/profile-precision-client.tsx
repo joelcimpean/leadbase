@@ -1,0 +1,1021 @@
+"use client";
+
+import Link from "next/link";
+import {
+  type PointerEvent as ReactPointerEvent,
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  Building2,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  FileText,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Mail,
+  Pencil,
+  Sparkles,
+  Upload,
+  UserRound,
+  X,
+} from "lucide-react";
+
+import { logout } from "@/app/(app)/actions";
+import {
+  changeAccountEmail,
+  changePassword,
+  type AccountPlanSelection,
+  type LeadbaseProfileData,
+  type ProposalBrandingDefaults,
+  type ProposalTemplateId,
+  saveAvatar,
+  saveProfile,
+  saveProposalBranding,
+} from "./actions";
+import { useLanguage } from "@/components/language-provider";
+import { COUNTRY_DIAL_CODES, countryFlag } from "@/lib/country-dial-codes";
+import { cn } from "@/lib/utils";
+import { DesignDefaultsDialog } from "@/components/design-defaults-dialog";
+import { BuyCreditsDialog, ManagePlanDialog, ProfileEditDialog } from "@/components/profile-account-center-dialogs";
+import type { LeadbaseDesignDefaults } from "@/lib/design-defaults";
+import styles from "./profile-precision.module.css";
+
+type ProfileState = LeadbaseProfileData;
+
+type CitySuggestion = {
+  id: string;
+  label: string;
+  city: string;
+  secondary: string;
+};
+
+type UsageResponse = {
+  configured?: boolean;
+  error?: string;
+  scope?: string;
+  period?: { start: string; end: string };
+  plan?: {
+    id?: string;
+    storedPlanId?: string;
+    tierIndex?: number;
+    billingInterval?: "monthly" | "yearly";
+    subscriptionStatus?: string;
+    monthlyCredits?: number;
+    planCreditsRemaining?: number;
+    purchasedCreditsRemaining?: number;
+    remainingCredits?: number;
+    creditDebt?: number;
+    resetsAt?: string | null;
+    cancelAtPeriodEnd?: boolean;
+    currentPeriodEnd?: string | null;
+  };
+  totals?: {
+    creditsUsed: number;
+    modelRequests: number;
+    providerCostUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    totalTokens: number;
+  };
+  byModel?: Array<{ model: string; inputTokens: number; outputTokens: number; credits: number; requests: number; costUsd: number }>;
+  trend?: Array<{ date: string; credits: number; requests: number; costUsd: number }>;
+};
+
+const copy = {
+  de: {
+    eyebrow: "Konto",
+    title: "Profil",
+    description:
+      "Wer du innerhalb von Leadbase bist: persönliche, geschäftliche und Absender-Identität – wiederverwendet für Outreach, Follow-ups und Proposals.",
+    edit: "Profil bearbeiten",
+    cancel: "Abbrechen",
+    save: "Änderungen speichern",
+    saving: "Speichert…",
+    saved: "Gespeichert",
+    profileSetupRequired: "Profil muss eingerichtet werden",
+    emptyIdentity: "Profil noch nicht eingerichtet",
+    completeProfile: "Profil vervollständigen",
+    ready: "Bereit für Outreach",
+    missingPhone: "Für Proposals fehlt: Telefon",
+    avatar: "Avatar ändern",
+    editHint: "Bearbeitungsmodus – Änderungen werden erst mit Speichern übernommen.",
+    senderIdentity: "Absender-Identität",
+    senderHint: "Diese Identität nutzt Leadbase für Outreach, Follow-ups und Antworten.",
+    senderHintStrong: "Settings regelt die Verbindung – hier steht, wer sendet.",
+    gmailSettings: "Gmail-Verbindung → Einstellungen",
+    senderName: "Absendername",
+    role: "Rolle im Outreach",
+    replyAddress: "Antwort-Adresse",
+    website: "Website",
+    signature: "Standard-Signatur",
+    signatureNote: "An generierte E-Mails angehängt",
+    business: "Geschäftliche Identität",
+    businessNote: "Fließt in Proposals & Angebote",
+    company: "Firma / Marke",
+    focus: "Leistungsschwerpunkt",
+    shortDescription: "Kurzbeschreibung",
+    aiContext: "Kontext für KI-Textgenerierung",
+    personal: "Persönliche Angaben",
+    fullName: "Vollständiger Name",
+    phone: "Telefon",
+    phoneMissing: "Wird im Proposal-Footer erwartet",
+    location: "Standort",
+    locationPlaceholder: "Stadt suchen…",
+    googleAttribution: "Powered by Google",
+    proposalPreview: "So erscheinst du im Proposal",
+    proposalInfoTitle: "Brand Kit",
+    proposalInfo:
+      "Brand Color, Identität und Kontakt-CTA werden für Outreach, Kundenvorschau und neue Proposals wiederverwendet.",
+    openBuilder: "Brand Kit bearbeiten",
+    aiUsage: "Credits & Nutzung",
+    thisMonth: "Dieser Monat",
+    tokens: "Credits",
+    requests: "Anfragen",
+    cost: "Kosten",
+    input: "Input",
+    output: "Output",
+    cached: "Cached Input",
+    otherAi: "Weitere OpenAI-Nutzung",
+    webSearch: "Web Search",
+    fileSearch: "File Search",
+    images: "Bilder",
+    models: "Modelle",
+    noUsage: "Noch keine Nutzung in diesem Zeitraum.",
+    usageScope: "Credits werden nur für KI-Aktionen verbraucht. Normale CRM-Aktionen kosten keine Credits; teurere KI-Modelle verbrauchen mehr. Gekaufte Credits verfallen nicht.",
+    usageSetupTitle: "Credits werden eingerichtet",
+    usageSetup:
+      "Führe die Phase-13-SQL-Migration aus. Danach werden Credits, Käufe und KI-Kosten serverseitig verbucht.",
+    reload: "Neu laden",
+    workspace: "Workspace",
+    owner: "Inhaber",
+    privateWorkspace: "Privater Workspace",
+    workspaceNote: "Leadbase läuft aktuell als Einzel-Workspace.",
+    security: "Konto & Sicherheit",
+    accountEmail: "Konto-E-Mail",
+    login: "Anmeldung",
+    emailPassword: "E-Mail & Passwort",
+    password: "Passwort",
+    passwordNote: "Kann direkt über Supabase Auth geändert werden",
+    change: "Ändern",
+    signOut: "Abmelden",
+    securityNote: "2FA, Passkeys und Geräte-Sessions können später ergänzt werden.",
+    copied: "Kopiert",
+    cropTitle: "Profilbild anpassen",
+    cropHint: "Bild ziehen, um den Ausschnitt zu verschieben. Mit dem Regler kannst du zoomen.",
+    chooseImage: "Anderes Bild",
+    zoom: "Zoom",
+    saveAvatar: "Profilbild speichern",
+    avatarSaving: "Wird gespeichert…",
+    imageLoadError: "Das Bild konnte nicht geladen werden. Bitte JPG, PNG oder WebP verwenden.",
+    brandingTitle: "Brand Kit",
+    brandingHint: "Deine globale Kunden-Marke für Outreach, Client Preview und Proposals. Änderungen gelten für zukünftige Inhalte.",
+    publicIdentity: "Öffentliche Identität",
+    publicIdentityHint: "Wähle, was Kunden oben in deiner Designvorschau sehen.",
+    identityLogo: "Logo",
+    identityAvatar: "Profilbild",
+    identityNone: "Kein Zeichen",
+    clientCta: "Projekt besprechen",
+    clientCtaHint: "Welche Kontaktwege sollen in der Kundenvorschau angeboten werden?",
+    ctaEmail: "E-Mail",
+    ctaBooking: "Booking",
+    ctaBoth: "Beides",
+    bookingUrl: "Booking-Link",
+    bookingLabel: "Anbieter-Label",
+    bookingHint: "HTTPS-Link zu Cal.com, Calendly oder einem anderen Buchungsanbieter.",
+    reusedAt: "Wird wiederverwendet für",
+    proposalTemplate: "Standard-Vorlage",
+    proposalTemplateHint: "Wird für neue Angebote vorausgewählt und kann im Builder pro Angebot überschrieben werden.",
+    accent: "Akzentfarbe",
+    logo: "Logo",
+    removeLogo: "Logo entfernen",
+    saveBranding: "Brand Kit speichern",
+    emailTitle: "Konto-E-Mail ändern",
+    emailHint: "Je nach Supabase-Konfiguration musst du die neue Adresse per E-Mail bestätigen.",
+    newEmail: "Neue E-Mail-Adresse",
+    passwordTitle: "Passwort ändern",
+    passwordHint: "Mindestens 8 Zeichen. Das neue Passwort gilt sofort.",
+    newPassword: "Neues Passwort",
+    repeatPassword: "Passwort wiederholen",
+    passwordsDiffer: "Die Passwörter stimmen nicht überein.",
+  },
+  en: {
+    eyebrow: "Account",
+    title: "Profile",
+    description:
+      "Who you are inside Leadbase: personal, business and sender identity – reused for outreach, follow-ups and proposals.",
+    edit: "Edit profile",
+    cancel: "Cancel",
+    save: "Save changes",
+    saving: "Saving…",
+    saved: "Saved",
+    profileSetupRequired: "Profile setup required",
+    emptyIdentity: "Profile not set up yet",
+    completeProfile: "Complete profile",
+    ready: "Ready for outreach",
+    missingPhone: "Missing for proposals: phone",
+    avatar: "Change avatar",
+    editHint: "Edit mode – changes are only applied after saving.",
+    senderIdentity: "Sender identity",
+    senderHint: "Leadbase uses this identity for outreach, follow-ups and replies.",
+    senderHintStrong: "Settings controls the connection – this page defines who sends.",
+    gmailSettings: "Gmail connection → Settings",
+    senderName: "Sender name",
+    role: "Outreach role",
+    replyAddress: "Reply address",
+    website: "Website",
+    signature: "Default signature",
+    signatureNote: "Attached to generated emails",
+    business: "Business identity",
+    businessNote: "Used in proposals & offers",
+    company: "Company / brand",
+    focus: "Service focus",
+    shortDescription: "Short description",
+    aiContext: "Context for AI text generation",
+    personal: "Personal details",
+    fullName: "Full name",
+    phone: "Phone",
+    phoneMissing: "Expected in the proposal footer",
+    location: "Location",
+    locationPlaceholder: "Search city…",
+    googleAttribution: "Powered by Google",
+    proposalPreview: "How you appear in proposals",
+    proposalInfoTitle: "Brand Kit",
+    proposalInfo:
+      "Brand Color, identity and contact CTA are reused for outreach, customer previews and new proposals.",
+    openBuilder: "Edit Brand Kit",
+    aiUsage: "Credits & usage",
+    thisMonth: "This month",
+    tokens: "Credits",
+    requests: "Requests",
+    cost: "Cost",
+    input: "Input",
+    output: "Output",
+    cached: "Cached input",
+    otherAi: "Other OpenAI usage",
+    webSearch: "Web Search",
+    fileSearch: "File Search",
+    images: "Images",
+    models: "Models",
+    noUsage: "No usage in this period yet.",
+    usageScope: "Credits are only used for AI-powered actions. Regular CRM actions cost no Credits; more expensive AI models use more. Purchased Credits do not expire.",
+    usageSetupTitle: "Credits are being set up",
+    usageSetup:
+      "Run the Phase 13 SQL migration. Credits, purchases and AI costs will then be metered server-side.",
+    reload: "Reload",
+    workspace: "Workspace",
+    owner: "Owner",
+    privateWorkspace: "Private workspace",
+    workspaceNote: "Leadbase currently runs as a single-user workspace.",
+    security: "Account & security",
+    accountEmail: "Account email",
+    login: "Login",
+    emailPassword: "Email & password",
+    password: "Password",
+    passwordNote: "Can be changed directly through Supabase Auth",
+    change: "Change",
+    signOut: "Sign out",
+    securityNote: "2FA, passkeys and device sessions can be added later.",
+    copied: "Copied",
+    cropTitle: "Adjust profile picture",
+    cropHint: "Drag the image to reposition the crop. Use the slider to zoom.",
+    chooseImage: "Choose another image",
+    zoom: "Zoom",
+    saveAvatar: "Save profile picture",
+    avatarSaving: "Saving…",
+    imageLoadError: "The image could not be loaded. Please use JPG, PNG or WebP.",
+    brandingTitle: "Brand Kit",
+    brandingHint: "Your global client-facing brand for outreach, client previews and proposals. Changes apply to future content.",
+    publicIdentity: "Public identity",
+    publicIdentityHint: "Choose what clients see in the customer preview header.",
+    identityLogo: "Logo",
+    identityAvatar: "Profile image",
+    identityNone: "No mark",
+    clientCta: "Discuss project",
+    clientCtaHint: "Choose which contact options appear in the customer preview.",
+    ctaEmail: "Email",
+    ctaBooking: "Booking",
+    ctaBoth: "Both",
+    bookingUrl: "Booking link",
+    bookingLabel: "Provider label",
+    bookingHint: "HTTPS link to Cal.com, Calendly or another booking provider.",
+    reusedAt: "Reused for",
+    proposalTemplate: "Default template",
+    proposalTemplateHint: "Preselected for new proposals and still overridable per proposal in the builder.",
+    accent: "Accent color",
+    logo: "Logo",
+    removeLogo: "Remove logo",
+    saveBranding: "Save Brand Kit",
+    emailTitle: "Change account email",
+    emailHint: "Depending on your Supabase setup, the new address may need email confirmation.",
+    newEmail: "New email address",
+    passwordTitle: "Change password",
+    passwordHint: "At least 8 characters. The new password takes effect immediately.",
+    newPassword: "New password",
+    repeatPassword: "Repeat password",
+    passwordsDiffer: "Passwords do not match.",
+  },
+} as const;
+
+function formatCompact(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return String(Math.round(value));
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+}
+
+function initialsFor(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "LB";
+}
+
+function Modal({ title, subtitle, children, onClose, wide = false }: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className={cn(styles.modal, wide && styles.modalWide)} role="dialog" aria-modal="true" aria-label={title}>
+        <div className={styles.modalHeader}>
+          <div><strong>{title}</strong>{subtitle ? <p>{subtitle}</p> : null}</div>
+          <button type="button" onClick={onClose} aria-label="Close"><X /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ProfileField({ label, value, editing, multiline = false, wide = false, onChange, children }: {
+  label: string;
+  value: string;
+  editing: boolean;
+  multiline?: boolean;
+  wide?: boolean;
+  onChange?: (value: string) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={cn(styles.field, wide && styles.fieldWide)}>
+      <div className={styles.fieldLabelRow}><span className={styles.fieldLabel}>{label}</span></div>
+      {editing && onChange ? (
+        multiline ? (
+          <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={3} className={styles.textarea} />
+        ) : (
+          <input value={value} onChange={(event) => onChange(event.target.value)} className={styles.input} />
+        )
+      ) : children ? children : <div className={styles.fieldValue}>{value || "—"}</div>}
+    </div>
+  );
+}
+
+function PhoneEditor({ countryCode, phone, onCountryCodeChange, onPhoneChange }: {
+  countryCode: string;
+  phone: string;
+  onCountryCodeChange: (value: string) => void;
+  onPhoneChange: (value: string) => void;
+}) {
+  const selected = COUNTRY_DIAL_CODES.find((country) => country.dialCode === countryCode) ?? COUNTRY_DIAL_CODES.find((country) => country.iso2 === "DE");
+  return (
+    <div className={styles.phoneEditor}>
+      <label className={styles.countrySelectWrap}>
+        <span>{selected ? countryFlag(selected.iso2) : "🌐"} {countryCode}</span>
+        <ChevronDown />
+        <select value={countryCode} onChange={(event) => onCountryCodeChange(event.target.value)} aria-label="Country calling code">
+          {COUNTRY_DIAL_CODES.map((country) => (
+            <option key={`${country.iso2}-${country.dialCode}`} value={country.dialCode}>
+              {countryFlag(country.iso2)} {country.name} ({country.dialCode})
+            </option>
+          ))}
+        </select>
+      </label>
+      <input value={phone} onChange={(event) => onPhoneChange(event.target.value.replace(/[^0-9 ()\-./]/g, ""))} className={styles.input} placeholder="151 23456789" inputMode="tel" />
+    </div>
+  );
+}
+
+function LocationEditor({ value, language, placeholder, attribution, onChange }: {
+  value: string;
+  language: "de" | "en";
+  placeholder: string;
+  attribution: string;
+  onChange: (value: string) => void;
+}) {
+  const [suggestions, setSuggestions] = useState<CitySuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const skipNextSearch = useRef(false);
+
+  useEffect(() => {
+    if (skipNextSearch.current) {
+      skipNextSearch.current = false;
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/profile/cities?q=${encodeURIComponent(value)}&lang=${language}`, { signal: controller.signal });
+        const data = await response.json() as { suggestions?: CitySuggestion[] };
+        setSuggestions(data.suggestions ?? []);
+        setOpen((data.suggestions?.length ?? 0) > 0);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setSuggestions([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 260);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [value, language]);
+
+  return (
+    <div className={styles.locationEditor}>
+      <div className={styles.locationInputWrap}>
+        <input value={value} onFocus={() => suggestions.length && setOpen(true)} onChange={(event) => onChange(event.target.value)} className={styles.input} placeholder={placeholder} autoComplete="off" />
+        {loading ? <Loader2 className={styles.inputSpinner} /> : null}
+      </div>
+      {open ? (
+        <div className={styles.cityMenu}>
+          {suggestions.map((suggestion) => (
+            <button key={suggestion.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { skipNextSearch.current = true; onChange(suggestion.label); setSuggestions([]); setOpen(false); }}>
+              <strong>{suggestion.city}</strong><span>{suggestion.secondary}</span>
+            </button>
+          ))}
+          <div className={styles.googleAttribution}>{attribution}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AvatarCropDialog({ file, labels, onClose, onSaved }: {
+  file: File;
+  labels: typeof copy.de | typeof copy.en;
+  onClose: () => void;
+  onSaved: (url: string) => void;
+}) {
+  const [src, setSrc] = useState("");
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const viewport = 286;
+  const baseScale = Math.max(viewport / imageSize.width, viewport / imageSize.height);
+  const scale = baseScale * zoom;
+  const displayW = imageSize.width * scale;
+  const displayH = imageSize.height * scale;
+  const maxX = Math.max(0, (displayW - viewport) / 2);
+  const maxY = Math.max(0, (displayH - viewport) / 2);
+
+  useEffect(() => {
+    // Create the object URL inside the effect. Next.js/React Strict Mode intentionally
+    // mounts, cleans up and re-runs effects in development. Creating the URL in
+    // useMemo and revoking it in an effect cleanup revoked the *same* URL before
+    // the second mount, leaving the <img> in a broken state.
+    const objectUrl = URL.createObjectURL(file);
+    setSrc(objectUrl);
+    setImageSize({ width: 1, height: 1 });
+    setOffset({ x: 0, y: 0 });
+    setZoom(1);
+    setError("");
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  useEffect(() => setOffset((current) => ({ x: Math.max(-maxX, Math.min(maxX, current.x)), y: Math.max(-maxY, Math.min(maxY, current.y)) })), [maxX, maxY]);
+
+  function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y };
+  }
+  function pointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!drag.current) return;
+    const x = drag.current.ox + event.clientX - drag.current.x;
+    const y = drag.current.oy + event.clientY - drag.current.y;
+    setOffset({ x: Math.max(-maxX, Math.min(maxX, x)), y: Math.max(-maxY, Math.min(maxY, y)) });
+  }
+
+  async function persist() {
+    const image = imgRef.current;
+    if (!image) return;
+    setSaving(true); setError("");
+    try {
+      if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+        try { await image.decode(); } catch { /* handled by the guard below */ }
+      }
+      if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+        throw new Error(labels.imageLoadError);
+      }
+      const topLeftX = (viewport - displayW) / 2 + offset.x;
+      const topLeftY = (viewport - displayH) / 2 + offset.y;
+      const sx = Math.max(0, -topLeftX / scale);
+      const sy = Math.max(0, -topLeftY / scale);
+      const sourceSize = viewport / scale;
+      const canvas = document.createElement("canvas");
+      canvas.width = 512; canvas.height = 512;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas unavailable");
+      ctx.drawImage(image, sx, sy, sourceSize, sourceSize, 0, 0, 512, 512);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.9));
+      if (!blob) throw new Error("Image export failed");
+      const formData = new FormData();
+      formData.append("avatar", new File([blob], "avatar.webp", { type: "image/webp" }));
+      const result = await saveAvatar(formData);
+      if (!result.ok || !result.data) throw new Error(result.ok ? "Upload failed" : result.error);
+      onSaved(result.data.avatarUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal title={labels.cropTitle} subtitle={labels.cropHint} onClose={onClose}>
+      <div className={styles.cropBody}>
+        <div className={styles.cropViewport} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+          {src ? <img ref={imgRef} src={src} alt="" draggable={false} onLoad={(event) => { setError(""); setImageSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }); }} onError={() => setError(labels.imageLoadError)} style={{ width: displayW, height: displayH, transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px)` }} /> : null}
+          <div className={styles.cropRing} />
+        </div>
+        <label className={styles.zoomRow}><span>{labels.zoom}</span><input type="range" min="1" max="3" step="0.01" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+        {error ? <div className={styles.modalError}>{error}</div> : null}
+      </div>
+      <div className={styles.modalFooter}>
+        <button type="button" className={styles.secondaryButton} onClick={onClose}>{labels.cancel}</button>
+        <button type="button" className={styles.primaryButton} onClick={persist} disabled={saving}>{saving ? <Loader2 className={styles.spin} /> : <Upload />}{saving ? labels.avatarSaving : labels.saveAvatar}</button>
+      </div>
+    </Modal>
+  );
+}
+
+const PROPOSAL_TEMPLATE_OPTIONS: Array<{ id: ProposalTemplateId; name: string; blurb: string; tone: string }> = [
+  { id: "signature", name: "Signature", blurb: "Editorial · dunkles Cover · Serifen-Display", tone: "linear-gradient(145deg,#0E1013 0 42%,#FFFDFB 42%)" },
+  { id: "minimal", name: "Minimal", blurb: "Eine Spalte · viel Weißraum · nur Linien", tone: "linear-gradient(145deg,#FFFFFF,#F7F7F7)" },
+  { id: "kontur", name: "Kontur", blurb: "Schweizer Raster · Hairlines · Tabellen", tone: "repeating-linear-gradient(90deg,#fff 0 18px,#E6E7EA 19px,#fff 20px 36px)" },
+  { id: "kanzlei", name: "Kanzlei", blurb: "Formeller Brief · klassische Typografie", tone: "linear-gradient(180deg,#FBFAF7,#FFFFFF)" },
+  { id: "prisma", name: "Prisma", blurb: "Dunkel · kontraststark · großes Display", tone: "linear-gradient(145deg,#0B0C0E,#222631)" },
+  { id: "atelier", name: "Atelier", blurb: "Warmes Papier · asymmetrisch · editorial", tone: "linear-gradient(145deg,#F3EFE7,#EAE0D2)" },
+  { id: "kompakt", name: "Kompakt", blurb: "Dichte Leadbase-Flächen · kompakt", tone: "linear-gradient(145deg,#F6F7F9,#FFFFFF)" },
+];
+
+function ProposalBrandingDialog({ labels, initial, avatarUrl, onClose, onSaved }: {
+  labels: typeof copy.de | typeof copy.en;
+  initial: ProposalBrandingDefaults;
+  avatarUrl: string | null;
+  onClose: () => void;
+  onSaved: (value: ProposalBrandingDefaults) => void;
+}) {
+  const [accentColor, setAccentColor] = useState(initial.accentColor || "#002BBA");
+  const [templateId, setTemplateId] = useState<ProposalTemplateId>(initial.templateId || "minimal");
+  const [identityMode, setIdentityMode] = useState(initial.identityMode || "avatar");
+  const [ctaMode, setCtaMode] = useState(initial.ctaMode || "email");
+  const [bookingUrl, setBookingUrl] = useState(initial.bookingUrl || "");
+  const [bookingProviderLabel, setBookingProviderLabel] = useState(initial.bookingProviderLabel || "");
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(initial.logoUrl);
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => () => { if (logoFile && preview?.startsWith("blob:")) URL.revokeObjectURL(preview); }, [logoFile, preview]);
+
+  function chooseLogo(file: File | null) {
+    if (!file) return;
+    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
+    setLogoFile(file); setPreview(URL.createObjectURL(file)); setRemoveLogo(false); setIdentityMode("logo");
+  }
+
+  async function persist() {
+    setSaving(true); setError("");
+    const formData = new FormData();
+    formData.set("accentColor", accentColor);
+    formData.set("templateId", templateId);
+    formData.set("identityMode", identityMode);
+    formData.set("ctaMode", ctaMode);
+    formData.set("bookingUrl", bookingUrl);
+    formData.set("bookingProviderLabel", bookingProviderLabel);
+    if (logoFile) formData.set("logo", logoFile);
+    if (removeLogo) formData.set("removeLogo", "1");
+    const result = await saveProposalBranding(formData);
+    if (!result.ok || !result.data) setError(result.ok ? "Could not save Brand Kit." : result.error);
+    else onSaved(result.data);
+    setSaving(false);
+  }
+
+  const identityOptions = [
+    { id: "logo" as const, label: labels.identityLogo, visual: preview && !removeLogo ? <img src={preview} alt="" className="max-h-7 max-w-[86px] object-contain" /> : <Upload className="size-4" /> },
+    { id: "avatar" as const, label: labels.identityAvatar, visual: avatarUrl ? <img src={avatarUrl} alt="" className="size-7 rounded-full object-cover" /> : <UserRound className="size-4" /> },
+    { id: "none" as const, label: labels.identityNone, visual: <span className="font-mono text-[10px]">—</span> },
+  ];
+
+  return (
+    <Modal title={labels.brandingTitle} subtitle={labels.brandingHint} onClose={onClose} wide>
+      <div className={styles.brandingBody}>
+        <div className={styles.brandingColorRow}>
+          <div><span className={styles.fieldLabel}>{labels.accent}</span><p>{labels.reusedAt}: email CTA · client preview · proposals</p></div>
+          <div className={styles.colorControl}><input type="color" value={accentColor} onChange={(event) => setAccentColor(event.target.value.toUpperCase())} /><input value={accentColor} onChange={(event) => setAccentColor(event.target.value.toUpperCase())} maxLength={7} /></div>
+        </div>
+
+        <div className="grid gap-3 border-b border-black/[.07] pb-4 dark:border-white/10">
+          <div><span className={styles.fieldLabel}>{labels.publicIdentity}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.publicIdentityHint}</p></div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {identityOptions.map((option) => {
+              const selected = option.id === identityMode;
+              const unavailable = option.id === "logo" && (!preview || removeLogo);
+              return <button key={option.id} type="button" disabled={unavailable} onClick={() => setIdentityMode(option.id)} className={cn("flex min-h-16 items-center gap-3 rounded-[10px] border px-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40", selected ? "border-[#002BBA] bg-[#FAFBFF] ring-[3px] ring-[#002BBA]/10 dark:bg-[#171922]" : "border-black/10 bg-white hover:border-[#002BBA]/40 dark:border-white/10 dark:bg-[#121316]")}><span className="flex min-w-8 items-center justify-center">{option.visual}</span><span className="text-[11.5px] font-medium">{option.label}</span>{selected ? <Check className="ml-auto size-3.5 text-[#002BBA]" /> : null}</button>;
+            })}
+          </div>
+        </div>
+
+        <div className={styles.brandingLogoRow}>
+          <div><span className={styles.fieldLabel}>{labels.logo}</span><p>PNG, JPG or WebP · max. 2 MB</p></div>
+          <label className={styles.logoDrop}>
+            {preview && !removeLogo ? <img src={preview} alt="Brand logo" /> : <><Upload /><span>{labels.logo}</span></>}
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseLogo(event.target.files?.[0] ?? null)} />
+          </label>
+          {preview ? <label className={styles.removeLogo}><input type="checkbox" checked={removeLogo} onChange={(event) => { setRemoveLogo(event.target.checked); if (event.target.checked && identityMode === "logo") setIdentityMode("avatar"); }} />{labels.removeLogo}</label> : null}
+        </div>
+
+        <div className="grid gap-3 border-b border-black/[.07] pb-4 dark:border-white/10">
+          <div><span className={styles.fieldLabel}>{labels.clientCta}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.clientCtaHint}</p></div>
+          <div className="grid grid-cols-3 gap-2">
+            {([['email', labels.ctaEmail, Mail], ['booking', labels.ctaBooking, CalendarDays], ['both', labels.ctaBoth, Check]] as const).map(([id, label, Icon]) => <button key={id} type="button" onClick={() => setCtaMode(id)} className={cn("flex h-10 items-center justify-center gap-2 rounded-[9px] border text-[11.5px] font-medium transition", ctaMode === id ? "border-[#002BBA] bg-[#002BBA] text-white" : "border-black/10 bg-white hover:border-[#002BBA]/35 dark:border-white/10 dark:bg-[#121316]")}><Icon className="size-3.5" />{label}</button>)}
+          </div>
+          {ctaMode !== "email" ? <div className="grid gap-2 sm:grid-cols-[1fr_170px]"><label className="grid gap-1 text-[10.5px] text-[#6B7078]"><span>{labels.bookingUrl}</span><input className={styles.input} type="url" value={bookingUrl} onChange={(event) => setBookingUrl(event.target.value)} placeholder="https://cal.com/you/30min" /></label><label className="grid gap-1 text-[10.5px] text-[#6B7078]"><span>{labels.bookingLabel}</span><input className={styles.input} value={bookingProviderLabel} onChange={(event) => setBookingProviderLabel(event.target.value)} placeholder="Cal.com" /></label><p className="sm:col-span-2 text-[10px] leading-4 text-[#8A9099]">{labels.bookingHint}</p></div> : null}
+        </div>
+
+        <div className="border-t border-black/[.07] pt-4 dark:border-white/10">
+          <div className="flex items-baseline justify-between gap-4">
+            <div><span className={styles.fieldLabel}>{labels.proposalTemplate}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.proposalTemplateHint}</p></div>
+            <span className="font-mono text-[9px] uppercase tracking-[.09em] text-[#8A9099]">7 templates</span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {PROPOSAL_TEMPLATE_OPTIONS.map((option) => {
+              const selected = option.id === templateId;
+              return (
+                <button key={option.id} type="button" onClick={() => setTemplateId(option.id)} className={cn("rounded-[10px] border p-2.5 text-left transition", selected ? "border-[#002BBA] bg-[#FAFBFF] ring-[3px] ring-[#002BBA]/10 dark:bg-[#171922] dark:ring-[#002BBA]/25" : "border-black/10 bg-white hover:border-[#002BBA]/40 dark:border-white/10 dark:bg-[#121316]")}>
+                  <span className="block h-10 rounded-[7px] border border-black/[.07]" style={{ background: option.tone }} />
+                  <span className="mt-2 flex items-center gap-2 text-[12px] font-medium text-[#0B0C0E] dark:text-white">{option.name}{selected ? <Check className="ml-auto size-3.5 text-[#002BBA]" /> : null}</span>
+                  <span className="mt-0.5 block text-[9.5px] leading-4 text-[#6B7078] dark:text-[#A8ABB2]">{option.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className={styles.brandingPreview} style={{ "--proposal-accent": accentColor } as CSSProperties}>
+          <div><span>{labels.proposalPreview}</span><i /></div>
+          <strong>Client-facing Brand Kit</strong>
+          <button type="button">Primary action</button>
+        </div>
+        {error ? <div className={styles.modalError}>{error}</div> : null}
+      </div>
+      <div className={styles.modalFooter}>
+        <button type="button" className={styles.secondaryButton} onClick={onClose}>{labels.cancel}</button>
+        <button type="button" className={styles.primaryButton} onClick={persist} disabled={saving}>{saving ? <Loader2 className={styles.spin} /> : <Check />}{labels.saveBranding}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function UsageTrend({ values }: { values: Array<{ date: string; tokens: number }> }) {
+  const width = 290; const height = 60;
+  if (!values.length) return <div className={styles.emptyTrend} />;
+  const max = Math.max(1, ...values.map((item) => item.tokens));
+  const points = values.map((item, index) => [values.length === 1 ? width : (index / (values.length - 1)) * width, 52 - (item.tokens / max) * 42] as const);
+  const line = points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const area = `0,60 ${line} 290,60`;
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={styles.usageChart} aria-hidden="true">
+      <defs><linearGradient id="lbRealUsageFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#002BBA" stopOpacity="0.16" /><stop offset="100%" stopColor="#002BBA" stopOpacity="0" /></linearGradient></defs>
+      <polygon points={area} fill="url(#lbRealUsageFade)" /><polyline points={line} fill="none" stroke="#002BBA" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function OpenAIUsageCard({ labels, onManagePlan, onBuyCredits }: { labels: typeof copy.de | typeof copy.en; onManagePlan: () => void; onBuyCredits: () => void }) {
+  const [data, setData] = useState<UsageResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
+    try {
+      const response = await fetch("/api/profile/openai-usage", { cache: "no-store" });
+      const payload = await response.json() as UsageResponse;
+      setData(payload);
+    } catch {
+      setData({ error: "Credit usage could not be loaded." });
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    const handleUsageUpdate = () => void load(true);
+    window.addEventListener("leadbase:ai-usage-updated", handleUsageUpdate);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true);
+    }, 15_000);
+    return () => {
+      window.removeEventListener("leadbase:ai-usage-updated", handleUsageUpdate);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const totals = data?.totals;
+  const modelTotal = (data?.byModel ?? []).reduce((sum, model) => sum + model.credits, 0);
+  const remaining = typeof data?.plan?.remainingCredits === "number" ? data.plan.remainingCredits : null;
+  const currentPool = totals && remaining !== null ? totals.creditsUsed + remaining : null;
+  const usagePercent = totals && currentPool && currentPool > 0
+    ? Math.min(100, Math.round((totals.creditsUsed / currentPool) * 100))
+    : null;
+
+  return (
+    <section id="ai-usage" className={styles.sideCard}>
+      <div className={styles.cardHeader}>
+        <span>{labels.aiUsage}</span>
+        {totals ? <b><i />{labels.thisMonth}</b> : null}
+      </div>
+      {loading ? (
+        <div className={styles.usageLoading}><Loader2 className={styles.spin} /><span>AI Usage…</span></div>
+      ) : totals ? (
+        <>
+          <div className={styles.realUsageHero}>
+            <div>
+              <span>{labels === copy.de ? "Verbraucht" : "Used"}</span>
+              <strong>{formatCompact(totals.creditsUsed)}</strong>
+            </div>
+            <div><span>{labels.requests}</span><strong>{formatCompact(totals.modelRequests)}</strong></div>
+            <div>
+              <span>{labels === copy.de ? "Verbleibend" : "Remaining"}</span>
+              <strong>{formatCompact(remaining ?? 0)}</strong>
+            </div>
+          </div>
+          {usagePercent !== null ? (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ height: 6, overflow: "hidden", borderRadius: 999, background: "rgba(11,12,14,.06)" }}>
+                <div style={{ width: `${usagePercent}%`, height: "100%", borderRadius: 999, background: "#002BBA", transition: "width .25s ease" }} />
+              </div>
+              <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", fontFamily: '"Geist Mono", monospace', fontSize: 9, color: "#6B7078" }}>
+                <span>{usagePercent}%</span><span>{data.plan?.id ?? "free"}</span>
+              </div>
+            </div>
+          ) : null}
+          <div className={styles.tokenSplit}>
+            <div><span>{labels === copy.de ? "Plan" : "Plan"}</span><b>{formatCompact(data.plan?.planCreditsRemaining ?? 0)}</b></div>
+            <div><span>{labels === copy.de ? "Gekauft" : "Purchased"}</span><b>{formatCompact(data.plan?.purchasedCreditsRemaining ?? 0)}</b></div>
+            <div><span>{labels === copy.de ? "Reset" : "Reset"}</span><b>{data.plan?.resetsAt ? new Date(data.plan.resetsAt).toLocaleDateString(labels === copy.de ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit" }) : "—"}</b></div>
+          </div>
+          <div className={styles.modelList}>
+            <div className={styles.usageSectionTitle}>{labels.models}</div>
+            {(data.byModel ?? []).slice(0, 4).map((model) => {
+              const percent = modelTotal ? Math.max(2, Math.round((model.credits / modelTotal) * 100)) : 0;
+              return <div key={model.model} className={styles.modelRow}><span>{model.model}</span><div><i style={{ width: `${percent}%` }} /></div><b>{formatCompact(model.credits)}</b></div>;
+            })}
+            {(data.byModel ?? []).length === 0 ? <div className={styles.usageDisclaimer}>{labels.noUsage}</div> : null}
+          </div>
+          <div className={styles.trendBlock}>
+            <div><span>{labels.thisMonth}</span><span>{formatCompact(totals.creditsUsed)} Credits</span></div>
+            <UsageTrend values={(data.trend ?? []).map((item) => ({ date: item.date, tokens: item.credits }))} />
+            <div className={styles.trendAxis}><span>{data.trend?.[0]?.date.slice(5) ?? ""}</span><span>{data.trend?.at(-1)?.date.slice(5) ?? ""}</span></div>
+          </div>
+          <div className={styles.usageDisclaimer}>{labels.usageScope}</div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button type="button" className={styles.secondaryButton} onClick={onManagePlan}>{labels === copy.de ? "Plan verwalten" : "Manage plan"}</button>
+            <button type="button" className={styles.primaryButton} onClick={onBuyCredits}>{labels === copy.de ? "Credits hinzufügen" : "Add credits"}</button>
+          </div>
+        </>
+      ) : (
+        <div className={styles.usageSetup}>
+          <Sparkles /><strong>{labels.usageSetupTitle}</strong><p>{labels.usageSetup}</p>
+          {data?.error ? <code>{data.error}</code> : null}
+          <button type="button" className={styles.secondaryButton} onClick={() => void load()}>{labels.reload}</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AccountDialog({ kind, currentEmail, labels, onClose, onMessage }: {
+  kind: "email" | "password";
+  currentEmail: string;
+  labels: typeof copy.de | typeof copy.en;
+  onClose: () => void;
+  onMessage: (message: string, error?: boolean) => void;
+}) {
+  const [email, setEmail] = useState(currentEmail);
+  const [password, setPassword] = useState("");
+  const [repeat, setRepeat] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function persist() {
+    setError("");
+    if (kind === "password" && password !== repeat) { setError(labels.passwordsDiffer); return; }
+    setSaving(true);
+    const result = kind === "email" ? await changeAccountEmail(email) : await changePassword(password);
+    if (!result.ok) setError(result.error);
+    else { onMessage(result.message ?? (kind === "email" ? labels.saved : labels.saved)); onClose(); }
+    setSaving(false);
+  }
+  return (
+    <Modal title={kind === "email" ? labels.emailTitle : labels.passwordTitle} subtitle={kind === "email" ? labels.emailHint : labels.passwordHint} onClose={onClose}>
+      <div className={styles.accountDialogBody}>
+        {kind === "email" ? <label><span>{labels.newEmail}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoFocus /></label> : <><label><span>{labels.newPassword}</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /></label><label><span>{labels.repeatPassword}</span><input type="password" value={repeat} onChange={(event) => setRepeat(event.target.value)} /></label></>}
+        {error ? <div className={styles.modalError}>{error}</div> : null}
+      </div>
+      <div className={styles.modalFooter}><button type="button" className={styles.secondaryButton} onClick={onClose}>{labels.cancel}</button><button type="button" className={styles.primaryButton} onClick={persist} disabled={saving}>{saving ? <Loader2 className={styles.spin} /> : <Check />}{labels.save}</button></div>
+    </Modal>
+  );
+}
+
+export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAvatarUrl, initialBranding, initialDesignDefaults, gmailEmail, initialPlanSelection, initialPlanDialogOpen = false, initialCreditsDialogOpen = false }: {
+  initialProfile: ProfileState;
+  accountEmail: string;
+  initialAvatarUrl: string | null;
+  initialBranding: ProposalBrandingDefaults;
+  initialDesignDefaults: LeadbaseDesignDefaults;
+  gmailEmail: string | null;
+  initialPlanSelection: AccountPlanSelection;
+  initialPlanDialogOpen?: boolean;
+  initialCreditsDialogOpen?: boolean;
+}) {
+  const { language } = useLanguage();
+  const t = copy[language];
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [profile, setProfile] = useState<ProfileState>(initialProfile);
+  const [draft, setDraft] = useState<ProfileState>(initialProfile);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [branding, setBranding] = useState(initialBranding);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const [designDefaults, setDesignDefaults] = useState(initialDesignDefaults);
+  const [designDefaultsOpen, setDesignDefaultsOpen] = useState(false);
+  const [accountDialog, setAccountDialog] = useState<"email" | "password" | null>(null);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [planSelection, setPlanSelection] = useState(initialPlanSelection);
+  const [managePlanOpen, setManagePlanOpen] = useState(initialPlanDialogOpen);
+  const [creditsOpen, setCreditsOpen] = useState(initialCreditsDialogOpen);
+  const [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
+
+  function update<K extends keyof ProfileState>(key: K, value: ProfileState[K]) { setDraft((current) => ({ ...current, [key]: value })); }
+  function startEdit() { setDraft(profile); setEditing(false); setProfileEditOpen(true); setSaved(false); }
+  function cancelEdit() { setDraft(profile); setEditing(false); }
+  async function persistProfile() {
+    setSaving(true); setNotice(null);
+    const result = await saveProfile(draft);
+    if (!result.ok || !result.data) setNotice({ message: result.ok ? "Save failed." : result.error, error: true });
+    else {
+      setProfile(result.data.profile); setDraft(result.data.profile); setEditing(false); setSaved(true);
+      window.dispatchEvent(new CustomEvent("leadbase:profile-updated", { detail: { name: result.data.profile.fullName, avatarUrl } }));
+      window.setTimeout(() => setSaved(false), 2200);
+    }
+    setSaving(false);
+  }
+  async function copyReplyMail() {
+    try { await navigator.clipboard.writeText(profile.replyEmail); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* noop */ }
+  }
+  function onAvatarSaved(url: string) {
+    setAvatarUrl(url); setCropFile(null);
+    window.dispatchEvent(new CustomEvent("leadbase:profile-updated", { detail: { name: profile.fullName, avatarUrl: url } }));
+  }
+
+  const phoneDisplay = profile.phone ? `${profile.phoneCountryCode} ${profile.phone}` : "";
+  const profileConfigured = [
+    profile.fullName,
+    profile.location,
+    profile.senderName,
+    profile.replyEmail,
+  ].every((value) => value.trim().length > 0);
+  const counter = !profileConfigured
+    ? t.profileSetupRequired
+    : phoneDisplay
+      ? (language === "de" ? "Absender-Identität vollständig · Proposal-Profil vollständig" : "Sender identity complete · Proposal profile complete")
+      : (language === "de" ? "Absender-Identität vollständig · 1 Angabe fehlt für Proposals" : "Sender identity complete · 1 detail missing for proposals");
+
+  return (
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.headerCopy}>
+          <div className={styles.eyebrow}><span />{t.eyebrow}</div>
+          <div className={styles.titleRow}><h1>{t.title}</h1><span>{counter}</span></div>
+          <p>{t.description}</p>
+        </div>
+        <div className={styles.headerActions}>
+          {saved ? <span className={styles.savedBadge}><Check />{t.saved}</span> : null}
+          {!editing ? <button type="button" className={styles.primaryButton} onClick={startEdit}><Pencil />{t.edit}</button> : <><button type="button" className={styles.secondaryButton} onClick={cancelEdit}>{t.cancel}</button><button type="button" className={styles.primaryButton} onClick={persistProfile} disabled={saving}>{saving ? <Loader2 className={styles.spin} /> : null}{saving ? t.saving : t.save}</button></>}
+        </div>
+      </header>
+
+      {notice ? <div className={cn(styles.noticeBar, notice.error && styles.noticeBarError)}>{notice.message}<button type="button" onClick={() => setNotice(null)}><X /></button></div> : null}
+
+      <div className={styles.workspace}>
+        <section className={styles.mainColumn}>
+          <div className={styles.identityBand}>
+            <button type="button" className={styles.avatar} onClick={() => fileRef.current?.click()} aria-label={t.avatar}>{avatarUrl ? <img src={avatarUrl} alt="" /> : initialsFor(profile.fullName)}</button>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) setCropFile(file); event.currentTarget.value = ""; }} />
+            <div className={styles.identityCopy}><div className={styles.identityName}>{profile.fullName || t.emptyIdentity}</div><div className={styles.identityRole}>{profile.outreachRole || "—"}</div><div className={styles.identityMeta}><span>{t.privateWorkspace}</span><i /><span>{profile.website || "—"}</span><i /><span>{profile.location || "—"}</span></div></div>
+            <div className={styles.identityActions}><div className={styles.identityBadges}>{profileConfigured ? <span className={styles.readyBadge}><span />{t.ready}</span> : <span className={styles.missingBadge}>{t.completeProfile}</span>}{profileConfigured && !phoneDisplay ? <span className={styles.missingBadge}>{t.missingPhone}</span> : null}</div><button type="button" className={styles.avatarButton} onClick={() => fileRef.current?.click()}>{t.avatar}</button></div>
+          </div>
+
+          <div className={styles.profileSurface}>
+            {editing ? <div className={styles.editHint}><Pencil />{t.editHint}</div> : null}
+            <section className={styles.section}>
+              <div className={styles.sectionHeading}><span>{t.senderIdentity}</span><i /><Link href="/settings">{t.gmailSettings}</Link></div>
+              <p className={styles.sectionIntro}>{t.senderHint} <strong>{t.senderHintStrong}</strong></p>
+              <div className={styles.twoColGrid}>
+                <ProfileField label={t.senderName} value={editing ? draft.senderName : profile.senderName} editing={editing} onChange={(value) => update("senderName", value)} />
+                <ProfileField label={t.role} value={editing ? draft.outreachRole : profile.outreachRole} editing={editing} onChange={(value) => update("outreachRole", value)} />
+                <ProfileField label={t.replyAddress} value={profile.replyEmail} editing={false}><div className={styles.inlineValue}><span>{gmailEmail || profile.replyEmail}</span><button type="button" onClick={copyReplyMail}><Copy /></button>{copied ? <em>{t.copied}</em> : null}</div><p className="mt-1 text-[10.5px] font-normal text-[#6B7078]">{gmailEmail ? (language === "de" ? "Aus verbundenem Gmail-Konto" : "From connected Gmail account") : (language === "de" ? "Automatisch aus deiner Konto-E-Mail" : "Automatically derived from your account email")}</p></ProfileField>
+                <ProfileField label={t.website} value={editing ? draft.website : profile.website} editing={editing} onChange={(value) => update("website", value)}>{!editing ? (profile.website ? <div className={styles.inlineValue}><a href={`https://${profile.website.replace(/^https?:\/\//, "")}`} target="_blank" rel="noreferrer">{profile.website}</a><ExternalLink /></div> : <div className={styles.fieldValue}>—</div>) : null}</ProfileField>
+              </div>
+              <div className={styles.insetBox}><div className={styles.insetHeader}><span>{t.signature}</span><em>{t.signatureNote}</em></div>{editing ? <textarea value={draft.signature} onChange={(event) => update("signature", event.target.value)} rows={3} className={styles.signatureTextarea} /> : <div className={styles.signature}>{profile.signature.split("\n").map((line, index) => <span key={`${index}-${line}`}>{line}<br /></span>)}</div>}</div>
+            </section>
+
+            <section className={styles.section}>
+              <div className={styles.sectionHeading}><span>{t.business}</span><i /><em>{t.businessNote}</em></div>
+              <div className={styles.twoColGrid}>
+                <ProfileField label={t.company} value={editing ? draft.company : profile.company} editing={editing} onChange={(value) => update("company", value)} />
+                <ProfileField label={t.focus} value={editing ? draft.focus : profile.focus} editing={editing} onChange={(value) => update("focus", value)} />
+                <ProfileField label={t.shortDescription} value={editing ? draft.description : profile.description} editing={editing} multiline wide onChange={(value) => update("description", value)} />
+              </div>
+            </section>
+
+            <section className={styles.section}>
+              <div className={styles.sectionHeading}><span>{t.personal}</span><i /></div>
+              <div className={styles.threeColGrid}>
+                <ProfileField label={t.fullName} value={editing ? draft.fullName : profile.fullName} editing={editing} onChange={(value) => update("fullName", value)} />
+                <div className={styles.field}><div className={styles.fieldLabelRow}><span className={styles.fieldLabel}>{t.phone}</span></div>{editing ? <PhoneEditor countryCode={draft.phoneCountryCode} phone={draft.phone} onCountryCodeChange={(value) => update("phoneCountryCode", value)} onPhoneChange={(value) => update("phone", value)} /> : phoneDisplay ? <div className={styles.fieldValue}>{phoneDisplay}</div> : <div className={styles.phoneMissing}><b>—</b><span>{t.phoneMissing}</span></div>}</div>
+                <div className={styles.field}><div className={styles.fieldLabelRow}><span className={styles.fieldLabel}>{t.location}</span></div>{editing ? <LocationEditor value={draft.location} language={language} placeholder={t.locationPlaceholder} attribution={t.googleAttribution} onChange={(value) => update("location", value)} /> : <div className={styles.fieldValue}>{profile.location || "—"}</div>}</div>
+              </div>
+            </section>
+
+            <section className={styles.proposalStrip}>
+              <div className={styles.proposalPreview}><span>{t.proposalPreview}</span><strong>{profile.fullName || "—"}</strong><p>{profile.outreachRole || "—"}</p><div><span>{profile.website || "—"}</span><i /><span>{profile.replyEmail || "—"}</span></div></div>
+              <div className={styles.proposalInfo}><div><FileText /><strong>{t.proposalInfoTitle}</strong></div><p>{t.proposalInfo}</p><button type="button" className={styles.linkButton} onClick={() => setBrandingOpen(true)}>{t.openBuilder}</button></div>
+            </section>
+          </div>
+        </section>
+
+        <aside className={styles.sideColumn}>
+          <OpenAIUsageCard labels={t} onManagePlan={() => setManagePlanOpen(true)} onBuyCredits={() => setCreditsOpen(true)} />
+          <section className={styles.sideCard}>
+            <div className={styles.cardHeader}><span>{language === "de" ? "Design-Defaults" : "Design defaults"}</span><b>{language === "de" ? "pro Account" : "per account"}</b></div>
+            <div className="mt-3 flex items-start gap-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#EAEEFB] text-[#002BBA] dark:bg-[#002BBA]/20"><Sparkles className="size-4" /></div>
+              <div className="min-w-0 flex-1"><strong className="block text-[12.5px] font-medium">{designDefaults.designModel === "gpt-6-astra" ? "GPT-6 Astra" : designDefaults.designModel === "gpt-5.6-sol" ? "GPT-5.6 Sol" : designDefaults.designModel === "gpt-5.6-terra" ? "GPT-5.6 Terra" : "GPT-5.6 Luna"}</strong><span className="mt-0.5 block text-[10.5px] text-[#6B7078]">{designDefaults.reasoningEffort} · Motion {designDefaults.motionPreset}</span></div>
+            </div>
+            {designDefaults.motionPreset !== "none" ? <p className="mt-3 rounded-[9px] bg-[#FDF0E3] px-2.5 py-2 text-[10.5px] leading-[1.45] text-[#9A5106]">{language === "de" ? "Motion läuft automatisch bei neuen Designs und verbraucht zusätzliche Credits." : "Motion runs automatically on new designs and uses additional credits."}</p> : null}
+            <button type="button" className={styles.linkButton} onClick={() => setDesignDefaultsOpen(true)}>{language === "de" ? "Standardwerte ändern" : "Change defaults"}</button>
+          </section>
+          <section className={styles.sideCard}><div className={styles.cardHeader}><span>{t.workspace}</span><b>{t.owner}</b></div><div className={styles.workspaceIdentity}><div><Building2 /></div><div><strong>{t.privateWorkspace}</strong><span>{profile.fullName || "—"}</span></div></div><p className={styles.sideNote}>{t.workspaceNote}</p></section>
+          <section className={cn(styles.sideCard, styles.securityCard)}>
+            <div className={styles.cardHeader}><span>{t.security}</span></div>
+            <div className={styles.securityRows}>
+              <div><div><span>{t.accountEmail}</span><strong>{accountEmail}</strong></div><div className={styles.securityActionPair}><button type="button" onClick={() => navigator.clipboard?.writeText(accountEmail)}><Copy /></button><button type="button" className={styles.textButton} onClick={() => setAccountDialog("email")}>{t.change}</button></div></div>
+              <div><div><span>{t.login}</span><strong>{t.emailPassword}</strong></div><Mail className={styles.securityRowIcon} /></div>
+              <div><div><span>{t.password}</span><p>{t.passwordNote}</p></div><button type="button" className={styles.textButton} onClick={() => setAccountDialog("password")}><KeyRound />{t.change}</button></div>
+            </div>
+            <div className={styles.securityFooter}><form action={logout}><button type="submit" className={styles.destructiveButton}><LogOut />{t.signOut}</button></form><span>{t.securityNote}</span></div>
+          </section>
+        </aside>
+      </div>
+
+      {profileEditOpen ? <ProfileEditDialog initialProfile={profile} avatarUrl={avatarUrl} gmailEmail={gmailEmail} language={language} onClose={() => setProfileEditOpen(false)} onSaved={(nextProfile, nextAvatarUrl) => { setProfile(nextProfile); setDraft(nextProfile); setAvatarUrl(nextAvatarUrl); setProfileEditOpen(false); setSaved(true); window.dispatchEvent(new CustomEvent("leadbase:profile-updated", { detail: { name: nextProfile.fullName, avatarUrl: nextAvatarUrl } })); window.setTimeout(() => setSaved(false), 2200); }} /> : null}
+      {managePlanOpen ? <ManagePlanDialog initial={planSelection} language={language} onClose={() => setManagePlanOpen(false)} onSaved={(value) => { setPlanSelection(value); setManagePlanOpen(false); setNotice({ message: language === "de" ? "Plan-Auswahl gespeichert · Checkout noch ausstehend." : "Plan selection saved · checkout still pending." }); }} /> : null}
+      {creditsOpen ? <BuyCreditsDialog language={language} onClose={() => setCreditsOpen(false)} onSaved={(message) => { setCreditsOpen(false); setNotice({ message }); }} /> : null}
+      {cropFile ? <AvatarCropDialog file={cropFile} labels={t} onClose={() => setCropFile(null)} onSaved={onAvatarSaved} /> : null}
+      {brandingOpen ? <ProposalBrandingDialog labels={t} initial={branding} avatarUrl={avatarUrl} onClose={() => setBrandingOpen(false)} onSaved={(value) => { setBranding(value); setBrandingOpen(false); setNotice({ message: t.saved }); }} /> : null}
+      {designDefaultsOpen ? <DesignDefaultsDialog initial={designDefaults} language={language} planId={planSelection.planId} onClose={() => setDesignDefaultsOpen(false)} onSaved={(value) => { setDesignDefaults(value); setDesignDefaultsOpen(false); setNotice({ message: t.saved }); }} /> : null}
+      {accountDialog ? <AccountDialog kind={accountDialog} currentEmail={accountEmail} labels={t} onClose={() => setAccountDialog(null)} onMessage={(message, error) => setNotice({ message, error })} /> : null}
+    </div>
+  );
+}

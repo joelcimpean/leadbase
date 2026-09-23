@@ -7,7 +7,13 @@ export const LEADBASE_CURRENCIES = [
 export type LeadbaseCurrency = (typeof LEADBASE_CURRENCIES)[number];
 export type LeadbaseCurrencyMode = "auto" | "manual";
 
-const DEFAULT_CURRENCY: LeadbaseCurrency = "USD";
+// Stripe billing is intentionally USD-only. Workspace/client currencies remain independent.
+export const LEADBASE_BILLING_CURRENCIES = ["USD"] as const;
+// Keep EUR in the compatibility type while old metadata/records are phased out.
+// All new normalization and checkout paths resolve to USD.
+export type LeadbaseBillingCurrency = "USD" | "EUR";
+
+export const DEFAULT_CURRENCY: LeadbaseCurrency = "USD";
 
 const COUNTRY_CURRENCY_MATCHERS: Array<{ currency: LeadbaseCurrency; terms: string[] }> = [
   { currency: "USD", terms: ["united states", "usa", "u.s.a", ", us", "america"] },
@@ -71,6 +77,21 @@ export function normalizeLeadbaseCurrency(value: unknown, fallback: LeadbaseCurr
   return isLeadbaseCurrency(upper) ? upper : fallback;
 }
 
+export function normalizeBillingCurrency(
+  _value: unknown,
+  _fallback: LeadbaseBillingCurrency = "USD",
+): LeadbaseBillingCurrency {
+  return "USD";
+}
+
+export function formatBillingMoney(value: number, _currency: LeadbaseBillingCurrency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
 export function inferCurrencyFromLocation(location: string | null | undefined): LeadbaseCurrency | null {
   const normalized = (location ?? "").trim().toLocaleLowerCase("en-US");
   if (!normalized) return null;
@@ -94,18 +115,20 @@ export function resolveAccountCurrency(input: {
   locale?: string | null;
   fallback?: LeadbaseCurrency;
 }) {
-  const mode: LeadbaseCurrencyMode = input.currencyMode === "manual" ? "manual" : "auto";
   const fallback = input.fallback ?? DEFAULT_CURRENCY;
-  const stored = isLeadbaseCurrency(input.storedCurrency) ? normalizeLeadbaseCurrency(input.storedCurrency, fallback) : null;
-  if (mode === "manual" && stored) return { currency: stored, mode } as const;
-  const inferred = inferCurrencyFromLocation(input.location) ?? inferCurrencyFromLocale(input.locale) ?? stored ?? fallback;
-  return { currency: inferred, mode: "auto" as const };
+  const currency = isLeadbaseCurrency(input.storedCurrency)
+    ? normalizeLeadbaseCurrency(input.storedCurrency, fallback)
+    : fallback;
+
+  // Currency is an explicit workspace preference. Physical location must never
+  // silently change the currency used for clients, projects or proposals.
+  return { currency, mode: "manual" as const };
 }
 
 export function localeForCurrency(currency: string, language: "de" | "en" = "en") {
   const normalized = normalizeLeadbaseCurrency(currency);
   const map: Partial<Record<LeadbaseCurrency, string>> = {
-    USD: "en-US", EUR: language === "de" ? "de-DE" : "en-IE", GBP: "en-GB", CHF: language === "de" ? "de-CH" : "en-CH",
+    USD: "en-US", EUR: "de-DE", GBP: "en-GB", CHF: language === "de" ? "de-CH" : "en-CH",
     CAD: "en-CA", AUD: "en-AU", NZD: "en-NZ", JPY: "ja-JP", CNY: "zh-CN", HKD: "en-HK", SGD: "en-SG",
     SEK: "sv-SE", NOK: "nb-NO", DKK: "da-DK", PLN: "pl-PL", CZK: "cs-CZ", HUF: "hu-HU", RON: "ro-RO",
     BGN: "bg-BG", TRY: "tr-TR", AED: "en-AE", SAR: "en-SA", ILS: "he-IL", INR: "en-IN", KRW: "ko-KR",

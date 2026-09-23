@@ -1,3 +1,5 @@
+import { formatAccountMoney } from "@/lib/account-currency";
+import { readableTextColor } from "@/lib/brand-kit";
 import "server-only";
 
 import {
@@ -60,19 +62,7 @@ function formatMoney(
   currency: string,
   language: "de" | "en"
 ) {
-  return new Intl.NumberFormat(
-    language === "de"
-      ? "de-DE"
-      : "en-GB",
-    {
-      style: "currency",
-      currency,
-      maximumFractionDigits:
-        Number.isInteger(value)
-          ? 0
-          : 2,
-    }
-  ).format(value);
+  return formatAccountMoney(value, currency || "EUR", language);
 }
 
 function formatDate(
@@ -314,6 +304,11 @@ function buildProposalHtml(
   const accent =
     safeColor(
       data.accentColor
+    );
+
+  const accentText =
+    readableTextColor(
+      accent
     );
 
   const websiteUrl =
@@ -667,7 +662,7 @@ function buildProposalHtml(
       height: 28px;
       border-radius: 999px;
       background: ${accent};
-      color: #fff;
+      color: ${accentText};
       font-weight: 700;
     }
 

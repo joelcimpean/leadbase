@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Check,
   Loader2,
+  LockKeyhole,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -32,6 +36,7 @@ import {
 import {
   CreditEstimatePill,
 } from "@/components/credit-estimate-pill";
+import { useLeadbasePlan } from "@/hooks/use-leadbase-plan";
 
 /* =========================================================
    TYPES
@@ -255,6 +260,36 @@ function playSuccessChime(
 ========================================================= */
 
 export function AnalyzeWebsiteButton({
+  leadId,
+  hasWebsite,
+}: AnalyzeWebsiteButtonProps) {
+  const { language } = useLanguage();
+  const { planId, remainingCredits, loading: planLoading } = useLeadbasePlan();
+  const noCredits = !planLoading && remainingCredits !== null && remainingCredits <= 0;
+  const gateClassName = "inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40";
+
+  if (!planLoading && planId === "free") {
+    return (
+      <Link href="/profile?dialog=plan" className={gateClassName}>
+        <LockKeyhole className="size-4" />
+        {language === "de" ? "Analyse · ab Starter" : "Analyze · Starter+"}
+      </Link>
+    );
+  }
+
+  if (noCredits) {
+    return (
+      <Link href="/profile?dialog=credits" className={gateClassName}>
+        <Zap className="size-4" />
+        {language === "de" ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+      </Link>
+    );
+  }
+
+  return <AnalyzeWebsiteButtonInner leadId={leadId} hasWebsite={hasWebsite} />;
+}
+
+function AnalyzeWebsiteButtonInner({
   leadId,
   hasWebsite,
 }: AnalyzeWebsiteButtonProps) {

@@ -33,6 +33,8 @@ import {
   normalizeProposalDesignTemplate,
 } from "@/lib/proposal-design-templates";
 
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
+
 
 const GMAIL_SEND_SCOPE =
   "https://www.googleapis.com/auth/gmail.send";
@@ -266,6 +268,8 @@ export async function saveProposal(
   if (!user) {
     redirect("/login");
   }
+
+  const planAccess = await getLeadbasePlanAccess(user.id);
 
   const leadId =
     text(
@@ -763,12 +767,13 @@ export async function saveProposal(
       ) === "1",
 
     design_template:
-      normalizeProposalDesignTemplate(
-        text(
-          formData,
-          "designTemplate"
-        )
-      ),
+      planAccess.planId === "free"
+        ? existing?.design_template
+          ? normalizeProposalDesignTemplate(existing.design_template)
+          : "minimal"
+        : normalizeProposalDesignTemplate(
+            text(formData, "designTemplate")
+          ),
 
     revision:
       nextRevision,
@@ -819,27 +824,35 @@ export async function saveProposal(
     );
   }
 
-  // Phase 10N6: remember proposal branding per user so every new lead starts with it.
-  try {
-    const currentMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-    const previousBranding = (currentMetadata.leadbase_proposal_branding ?? {}) as { logoUrl?: unknown; logoPath?: unknown };
-    const rememberedLogoPath = payload.logo_path ?? (
-      payload.logo_url && previousBranding.logoUrl === payload.logo_url && typeof previousBranding.logoPath === "string"
-        ? previousBranding.logoPath
-        : null
-    );
-    await supabase.auth.updateUser({
-      data: {
-        ...currentMetadata,
-        leadbase_proposal_branding: {
-          accentColor: payload.accent_color,
-          logoUrl: payload.logo_url,
-          logoPath: rememberedLogoPath,
+  // Phase 14C.4: a proposal-specific color must never silently mutate the
+  // account Brand Kit. Only the explicit "Use as my brand color everywhere"
+  // choice updates the global color.
+  if (text(formData, "brandColorScope") === "global") {
+    try {
+      const currentMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+      const previousBranding = currentMetadata.leadbase_proposal_branding && typeof currentMetadata.leadbase_proposal_branding === "object"
+        ? currentMetadata.leadbase_proposal_branding as Record<string, unknown>
+        : {};
+      const previousBrandKit = currentMetadata.leadbase_brand_kit && typeof currentMetadata.leadbase_brand_kit === "object"
+        ? currentMetadata.leadbase_brand_kit as Record<string, unknown>
+        : {};
+
+      await supabase.auth.updateUser({
+        data: {
+          ...currentMetadata,
+          leadbase_brand_kit: {
+            ...previousBrandKit,
+            brandColor: payload.accent_color,
+          },
+          leadbase_proposal_branding: {
+            ...previousBranding,
+            accentColor: payload.accent_color,
+          },
         },
-      },
-    });
-  } catch (brandingError) {
-    console.error("Could not persist user proposal branding defaults:", brandingError);
+      });
+    } catch (brandingError) {
+      console.error("Could not persist the selected global Brand Color:", brandingError);
+    }
   }
 
   revalidatePath(
@@ -897,6 +910,11 @@ export async function saveProposalAsTemplate(
 
   const leadId = text(formData, "leadId");
   const templateName = text(formData, "templateName");
+  const planAccess = await getLeadbasePlanAccess(user.id);
+
+  if (planAccess.planId === "free") {
+    redirectError(leadId, "Proposal templates are available from Starter.");
+  }
 
   if (!leadId || !templateName) {
     redirectError(
@@ -1057,6 +1075,11 @@ export async function deleteProposalTemplate(
 
   const leadId = text(formData, "leadId");
   const templateId = text(formData, "templateId");
+  const planAccess = await getLeadbasePlanAccess(user.id);
+
+  if (planAccess.planId === "free") {
+    redirectError(leadId, "Proposal templates are available from Starter.");
+  }
 
   if (!leadId || !templateId) {
     redirectError(

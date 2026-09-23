@@ -13,6 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/server";
+import { getLeadCreationAccess } from "@/lib/free-experience";
+import { AccessGatePanel } from "@/components/access-gate-panel";
 
 import {
   WorkspacePageMotion,
@@ -34,6 +36,24 @@ export default async function NewLeadPage({
   } = await searchParams;
 
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (user) {
+    const leadAccess = await getLeadCreationAccess(user.id);
+    if (!leadAccess.allowed) {
+      return (
+        <AccessGatePanel
+          eyebrow="Free workspace"
+          title="Your Free lead slot is already in use"
+          description="Free includes one demo lead. Deleting that lead does not restore the slot. Upgrade to Starter to add another lead."
+          ctaLabel="Upgrade to Starter"
+          ctaHref="/profile?dialog=plan"
+          secondaryLabel="Back to leads"
+          secondaryHref="/leads"
+        />
+      );
+    }
+  }
 
   const { data: campaigns, error: campaignsError } =
     await supabase

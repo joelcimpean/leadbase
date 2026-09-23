@@ -1,5 +1,7 @@
 "use client";
 
+import { formatAccountMoney } from "@/lib/account-currency";
+
 import Link from "next/link";
 
 import {
@@ -350,25 +352,9 @@ function localeFor(
 function formatMoney(
   value: number,
   currency: string,
-  language:
-    Language
+  language: Language
 ) {
-  return new Intl.NumberFormat(
-    localeFor(
-      language
-    ),
-    {
-      style:
-        "currency",
-      currency:
-        currency ||
-        "EUR",
-      maximumFractionDigits:
-        0,
-    }
-  ).format(
-    value
-  );
+  return formatAccountMoney(value, currency || "EUR", language);
 }
 
 function formatPercent(
@@ -1269,7 +1255,7 @@ export function ProjectsWorkspace({
 
   return (
     <>
-      <div className="mx-auto flex min-h-[calc(100vh-20px)] w-full max-w-[1540px] flex-col gap-[14px] px-4 py-4 sm:px-5 lg:px-6 lg:py-5 xl:px-[26px] xl:py-6">
+      <div className="flex min-h-[calc(100vh-20px)] w-full min-w-0 flex-col gap-[14px] px-4 py-4 sm:px-5 lg:px-6 lg:py-5 xl:px-[26px] xl:py-6">
         <ProjectsHeader
           language={
             language

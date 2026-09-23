@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Building2,
+  CalendarDays,
   Check,
   ChevronDown,
   Copy,
@@ -23,13 +24,14 @@ import {
   Pencil,
   Sparkles,
   Upload,
+  UserRound,
   X,
 } from "lucide-react";
 
 import { logout } from "@/app/(app)/actions";
 import {
   changeAccountEmail,
-  changePassword,
+  requestPasswordChange,
   type AccountPlanSelection,
   type LeadbaseProfileData,
   type ProposalBrandingDefaults,
@@ -44,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { DesignDefaultsDialog } from "@/components/design-defaults-dialog";
 import { BuyCreditsDialog, ManagePlanDialog, ProfileEditDialog } from "@/components/profile-account-center-dialogs";
 import type { LeadbaseDesignDefaults } from "@/lib/design-defaults";
+import type { LeadbaseBillingCurrency } from "@/lib/account-currency";
 import styles from "./profile-precision.module.css";
 
 type ProfileState = LeadbaseProfileData;
@@ -130,14 +133,14 @@ const copy = {
     locationPlaceholder: "Stadt suchen…",
     googleAttribution: "Powered by Google",
     proposalPreview: "So erscheinst du im Proposal",
-    proposalInfoTitle: "Proposal Branding",
+    proposalInfoTitle: "Brand Kit",
     proposalInfo:
-      "Logo und Akzentfarbe werden als dein Standard gespeichert und bei neuen Lead-Proposals automatisch vorausgewählt.",
-    openBuilder: "Branding bearbeiten",
+      "Brand Color, Identität und Kontakt-CTA werden für Outreach, Kundenvorschau und neue Proposals wiederverwendet.",
+    openBuilder: "Brand Kit bearbeiten",
     aiUsage: "Credits & Nutzung",
     thisMonth: "Dieser Monat",
     tokens: "Credits",
-    requests: "Requests",
+    requests: "Anfragen",
     cost: "Kosten",
     input: "Input",
     output: "Output",
@@ -161,8 +164,12 @@ const copy = {
     accountEmail: "Konto-E-Mail",
     login: "Anmeldung",
     emailPassword: "E-Mail & Passwort",
+    googleLogin: "Google",
+    emailGoogleLogin: "E-Mail + Google",
     password: "Passwort",
-    passwordNote: "Kann direkt über Supabase Auth geändert werden",
+    passwordNote: "Änderungen laufen über einen sicheren E-Mail-Link",
+    oauthPasswordNote: "Google-Login bleibt aktiv · Passwort kann per sicherem E-Mail-Link erstellt werden",
+    pendingVerification: "Bestätigung ausstehend",
     change: "Ändern",
     signOut: "Abmelden",
     securityNote: "2FA, Passkeys und Geräte-Sessions können später ergänzt werden.",
@@ -174,22 +181,36 @@ const copy = {
     saveAvatar: "Profilbild speichern",
     avatarSaving: "Wird gespeichert…",
     imageLoadError: "Das Bild konnte nicht geladen werden. Bitte JPG, PNG oder WebP verwenden.",
-    brandingTitle: "Standard-Branding für Proposals",
-    brandingHint: "Diese Werte werden pro Benutzer gespeichert und automatisch in neuen Proposal-Buildern vorausgewählt.",
+    brandingTitle: "Brand Kit",
+    brandingHint: "Deine globale Kunden-Marke für Outreach, Client Preview und Proposals. Änderungen gelten für zukünftige Inhalte.",
+    publicIdentity: "Öffentliche Identität",
+    publicIdentityHint: "Wähle, was Kunden oben in deiner Designvorschau sehen.",
+    identityLogo: "Logo",
+    identityAvatar: "Profilbild",
+    identityNone: "Kein Zeichen",
+    clientCta: "Projekt besprechen",
+    clientCtaHint: "Welche Kontaktwege sollen in der Kundenvorschau angeboten werden?",
+    ctaEmail: "E-Mail",
+    ctaBooking: "Booking",
+    ctaBoth: "Beides",
+    bookingUrl: "Booking-Link",
+    bookingLabel: "Anbieter-Label",
+    bookingHint: "HTTPS-Link zu Cal.com, Calendly oder einem anderen Buchungsanbieter.",
+    reusedAt: "Wird wiederverwendet für",
     proposalTemplate: "Standard-Vorlage",
     proposalTemplateHint: "Wird für neue Angebote vorausgewählt und kann im Builder pro Angebot überschrieben werden.",
     accent: "Akzentfarbe",
     logo: "Logo",
     removeLogo: "Logo entfernen",
-    saveBranding: "Branding speichern",
+    saveBranding: "Brand Kit speichern",
     emailTitle: "Konto-E-Mail ändern",
-    emailHint: "Je nach Supabase-Konfiguration musst du die neue Adresse per E-Mail bestätigen.",
+    emailHint: "Die neue Adresse wird erst aktiv, nachdem sie per E-Mail bestätigt wurde. Bis dahin bleibt deine aktuelle Konto-E-Mail aktiv.",
     newEmail: "Neue E-Mail-Adresse",
-    passwordTitle: "Passwort ändern",
-    passwordHint: "Mindestens 8 Zeichen. Das neue Passwort gilt sofort.",
-    newPassword: "Neues Passwort",
-    repeatPassword: "Passwort wiederholen",
-    passwordsDiffer: "Die Passwörter stimmen nicht überein.",
+    passwordTitle: "Passwort sicher ändern",
+    passwordHint: "Leadbase sendet dir einen zeitlich begrenzten Link an deine aktuelle Konto-E-Mail. Das Passwort wird hier nicht direkt überschrieben.",
+    passwordEmailLabel: "Link senden an",
+    sendPasswordLink: "Sicheren Link senden",
+    createPasswordLink: "Link zum Erstellen senden",
   },
   en: {
     eyebrow: "Account",
@@ -232,10 +253,10 @@ const copy = {
     locationPlaceholder: "Search city…",
     googleAttribution: "Powered by Google",
     proposalPreview: "How you appear in proposals",
-    proposalInfoTitle: "Proposal branding",
+    proposalInfoTitle: "Brand Kit",
     proposalInfo:
-      "Logo and accent color are stored as your default and automatically selected for new lead proposals.",
-    openBuilder: "Edit branding",
+      "Brand Color, identity and contact CTA are reused for outreach, customer previews and new proposals.",
+    openBuilder: "Edit Brand Kit",
     aiUsage: "Credits & usage",
     thisMonth: "This month",
     tokens: "Credits",
@@ -263,8 +284,12 @@ const copy = {
     accountEmail: "Account email",
     login: "Login",
     emailPassword: "Email & password",
+    googleLogin: "Google",
+    emailGoogleLogin: "Email + Google",
     password: "Password",
-    passwordNote: "Can be changed directly through Supabase Auth",
+    passwordNote: "Changes use a secure email link",
+    oauthPasswordNote: "Google sign-in stays active · create a password through a secure email link",
+    pendingVerification: "Verification pending",
     change: "Change",
     signOut: "Sign out",
     securityNote: "2FA, passkeys and device sessions can be added later.",
@@ -276,22 +301,36 @@ const copy = {
     saveAvatar: "Save profile picture",
     avatarSaving: "Saving…",
     imageLoadError: "The image could not be loaded. Please use JPG, PNG or WebP.",
-    brandingTitle: "Default proposal branding",
-    brandingHint: "These values are stored per user and automatically selected in new Proposal Builders.",
+    brandingTitle: "Brand Kit",
+    brandingHint: "Your global client-facing brand for outreach, client previews and proposals. Changes apply to future content.",
+    publicIdentity: "Public identity",
+    publicIdentityHint: "Choose what clients see in the customer preview header.",
+    identityLogo: "Logo",
+    identityAvatar: "Profile image",
+    identityNone: "No mark",
+    clientCta: "Discuss project",
+    clientCtaHint: "Choose which contact options appear in the customer preview.",
+    ctaEmail: "Email",
+    ctaBooking: "Booking",
+    ctaBoth: "Both",
+    bookingUrl: "Booking link",
+    bookingLabel: "Provider label",
+    bookingHint: "HTTPS link to Cal.com, Calendly or another booking provider.",
+    reusedAt: "Reused for",
     proposalTemplate: "Default template",
     proposalTemplateHint: "Preselected for new proposals and still overridable per proposal in the builder.",
     accent: "Accent color",
     logo: "Logo",
     removeLogo: "Remove logo",
-    saveBranding: "Save branding",
+    saveBranding: "Save Brand Kit",
     emailTitle: "Change account email",
-    emailHint: "Depending on your Supabase setup, the new address may need email confirmation.",
+    emailHint: "The new address becomes active only after email verification. Your current account email stays active until then.",
     newEmail: "New email address",
-    passwordTitle: "Change password",
-    passwordHint: "At least 8 characters. The new password takes effect immediately.",
-    newPassword: "New password",
-    repeatPassword: "Repeat password",
-    passwordsDiffer: "Passwords do not match.",
+    passwordTitle: "Change password securely",
+    passwordHint: "Leadbase sends a time-limited link to your current account email. Your password is never overwritten directly from this dialog.",
+    passwordEmailLabel: "Send link to",
+    sendPasswordLink: "Send secure link",
+    createPasswordLink: "Send create-password link",
   },
 } as const;
 
@@ -552,14 +591,19 @@ const PROPOSAL_TEMPLATE_OPTIONS: Array<{ id: ProposalTemplateId; name: string; b
   { id: "kompakt", name: "Kompakt", blurb: "Dichte Leadbase-Flächen · kompakt", tone: "linear-gradient(145deg,#F6F7F9,#FFFFFF)" },
 ];
 
-function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
+function ProposalBrandingDialog({ labels, initial, avatarUrl, onClose, onSaved }: {
   labels: typeof copy.de | typeof copy.en;
   initial: ProposalBrandingDefaults;
+  avatarUrl: string | null;
   onClose: () => void;
   onSaved: (value: ProposalBrandingDefaults) => void;
 }) {
   const [accentColor, setAccentColor] = useState(initial.accentColor || "#002BBA");
-  const [templateId, setTemplateId] = useState<ProposalTemplateId>(initial.templateId || "signature");
+  const [templateId, setTemplateId] = useState<ProposalTemplateId>(initial.templateId || "minimal");
+  const [identityMode, setIdentityMode] = useState(initial.identityMode || "avatar");
+  const [ctaMode, setCtaMode] = useState(initial.ctaMode || "email");
+  const [bookingUrl, setBookingUrl] = useState(initial.bookingUrl || "");
+  const [bookingProviderLabel, setBookingProviderLabel] = useState(initial.bookingProviderLabel || "");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(initial.logoUrl);
   const [removeLogo, setRemoveLogo] = useState(false);
@@ -571,7 +615,7 @@ function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
   function chooseLogo(file: File | null) {
     if (!file) return;
     if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-    setLogoFile(file); setPreview(URL.createObjectURL(file)); setRemoveLogo(false);
+    setLogoFile(file); setPreview(URL.createObjectURL(file)); setRemoveLogo(false); setIdentityMode("logo");
   }
 
   async function persist() {
@@ -579,29 +623,60 @@ function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
     const formData = new FormData();
     formData.set("accentColor", accentColor);
     formData.set("templateId", templateId);
+    formData.set("identityMode", identityMode);
+    formData.set("ctaMode", ctaMode);
+    formData.set("bookingUrl", bookingUrl);
+    formData.set("bookingProviderLabel", bookingProviderLabel);
     if (logoFile) formData.set("logo", logoFile);
     if (removeLogo) formData.set("removeLogo", "1");
     const result = await saveProposalBranding(formData);
-    if (!result.ok || !result.data) setError(result.ok ? "Could not save branding." : result.error);
+    if (!result.ok || !result.data) setError(result.ok ? "Could not save Brand Kit." : result.error);
     else onSaved(result.data);
     setSaving(false);
   }
+
+  const identityOptions = [
+    { id: "logo" as const, label: labels.identityLogo, visual: preview && !removeLogo ? <img src={preview} alt="" className="max-h-7 max-w-[86px] object-contain" /> : <Upload className="size-4" /> },
+    { id: "avatar" as const, label: labels.identityAvatar, visual: avatarUrl ? <img src={avatarUrl} alt="" className="size-7 rounded-full object-cover" /> : <UserRound className="size-4" /> },
+    { id: "none" as const, label: labels.identityNone, visual: <span className="font-mono text-[10px]">—</span> },
+  ];
 
   return (
     <Modal title={labels.brandingTitle} subtitle={labels.brandingHint} onClose={onClose} wide>
       <div className={styles.brandingBody}>
         <div className={styles.brandingColorRow}>
-          <div><span className={styles.fieldLabel}>{labels.accent}</span><p>#002BBA remains the Leadbase default if you reset it.</p></div>
+          <div><span className={styles.fieldLabel}>{labels.accent}</span><p>{labels.reusedAt}: email CTA · client preview · proposals</p></div>
           <div className={styles.colorControl}><input type="color" value={accentColor} onChange={(event) => setAccentColor(event.target.value.toUpperCase())} /><input value={accentColor} onChange={(event) => setAccentColor(event.target.value.toUpperCase())} maxLength={7} /></div>
         </div>
+
+        <div className="grid gap-3 border-b border-black/[.07] pb-4 dark:border-white/10">
+          <div><span className={styles.fieldLabel}>{labels.publicIdentity}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.publicIdentityHint}</p></div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {identityOptions.map((option) => {
+              const selected = option.id === identityMode;
+              const unavailable = option.id === "logo" && (!preview || removeLogo);
+              return <button key={option.id} type="button" disabled={unavailable} onClick={() => setIdentityMode(option.id)} className={cn("flex min-h-16 items-center gap-3 rounded-[10px] border px-3 text-left transition disabled:cursor-not-allowed disabled:opacity-40", selected ? "border-[#002BBA] bg-[#FAFBFF] ring-[3px] ring-[#002BBA]/10 dark:bg-[#171922]" : "border-black/10 bg-white hover:border-[#002BBA]/40 dark:border-white/10 dark:bg-[#121316]")}><span className="flex min-w-8 items-center justify-center">{option.visual}</span><span className="text-[11.5px] font-medium">{option.label}</span>{selected ? <Check className="ml-auto size-3.5 text-[#002BBA]" /> : null}</button>;
+            })}
+          </div>
+        </div>
+
         <div className={styles.brandingLogoRow}>
           <div><span className={styles.fieldLabel}>{labels.logo}</span><p>PNG, JPG or WebP · max. 2 MB</p></div>
           <label className={styles.logoDrop}>
-            {preview && !removeLogo ? <img src={preview} alt="Proposal logo" /> : <><Upload /><span>{labels.logo}</span></>}
+            {preview && !removeLogo ? <img src={preview} alt="Brand logo" /> : <><Upload /><span>{labels.logo}</span></>}
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseLogo(event.target.files?.[0] ?? null)} />
           </label>
-          {preview ? <label className={styles.removeLogo}><input type="checkbox" checked={removeLogo} onChange={(event) => setRemoveLogo(event.target.checked)} />{labels.removeLogo}</label> : null}
+          {preview ? <label className={styles.removeLogo}><input type="checkbox" checked={removeLogo} onChange={(event) => { setRemoveLogo(event.target.checked); if (event.target.checked && identityMode === "logo") setIdentityMode("avatar"); }} />{labels.removeLogo}</label> : null}
         </div>
+
+        <div className="grid gap-3 border-b border-black/[.07] pb-4 dark:border-white/10">
+          <div><span className={styles.fieldLabel}>{labels.clientCta}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.clientCtaHint}</p></div>
+          <div className="grid grid-cols-3 gap-2">
+            {([['email', labels.ctaEmail, Mail], ['booking', labels.ctaBooking, CalendarDays], ['both', labels.ctaBoth, Check]] as const).map(([id, label, Icon]) => <button key={id} type="button" onClick={() => setCtaMode(id)} className={cn("flex h-10 items-center justify-center gap-2 rounded-[9px] border text-[11.5px] font-medium transition", ctaMode === id ? "border-[#002BBA] bg-[#002BBA] text-white" : "border-black/10 bg-white hover:border-[#002BBA]/35 dark:border-white/10 dark:bg-[#121316]")}><Icon className="size-3.5" />{label}</button>)}
+          </div>
+          {ctaMode !== "email" ? <div className="grid gap-2 sm:grid-cols-[1fr_170px]"><label className="grid gap-1 text-[10.5px] text-[#6B7078]"><span>{labels.bookingUrl}</span><input className={styles.input} type="url" value={bookingUrl} onChange={(event) => setBookingUrl(event.target.value)} placeholder="https://cal.com/you/30min" /></label><label className="grid gap-1 text-[10.5px] text-[#6B7078]"><span>{labels.bookingLabel}</span><input className={styles.input} value={bookingProviderLabel} onChange={(event) => setBookingProviderLabel(event.target.value)} placeholder="Cal.com" /></label><p className="sm:col-span-2 text-[10px] leading-4 text-[#8A9099]">{labels.bookingHint}</p></div> : null}
+        </div>
+
         <div className="border-t border-black/[.07] pt-4 dark:border-white/10">
           <div className="flex items-baseline justify-between gap-4">
             <div><span className={styles.fieldLabel}>{labels.proposalTemplate}</span><p className="mt-1 text-[10.5px] text-[#6B7078]">{labels.proposalTemplateHint}</p></div>
@@ -622,7 +697,7 @@ function ProposalBrandingDialog({ labels, initial, onClose, onSaved }: {
         </div>
         <div className={styles.brandingPreview} style={{ "--proposal-accent": accentColor } as CSSProperties}>
           <div><span>{labels.proposalPreview}</span><i /></div>
-          <strong>Leadbase Proposal</strong>
+          <strong>Client-facing Brand Kit</strong>
           <button type="button">Primary action</button>
         </div>
         {error ? <div className={styles.modalError}>{error}</div> : null}
@@ -755,46 +830,94 @@ function OpenAIUsageCard({ labels, onManagePlan, onBuyCredits }: { labels: typeo
   );
 }
 
-function AccountDialog({ kind, currentEmail, labels, onClose, onMessage }: {
+function AccountDialog({
+  kind,
+  currentEmail,
+  isOauthOnly,
+  labels,
+  onClose,
+  onMessage,
+  onPendingEmail,
+}: {
   kind: "email" | "password";
   currentEmail: string;
+  isOauthOnly: boolean;
   labels: typeof copy.de | typeof copy.en;
   onClose: () => void;
   onMessage: (message: string, error?: boolean) => void;
+  onPendingEmail: (email: string | null) => void;
 }) {
   const [email, setEmail] = useState(currentEmail);
-  const [password, setPassword] = useState("");
-  const [repeat, setRepeat] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
   async function persist() {
     setError("");
-    if (kind === "password" && password !== repeat) { setError(labels.passwordsDiffer); return; }
     setSaving(true);
-    const result = kind === "email" ? await changeAccountEmail(email) : await changePassword(password);
-    if (!result.ok) setError(result.error);
-    else { onMessage(result.message ?? (kind === "email" ? labels.saved : labels.saved)); onClose(); }
+    const result = kind === "email"
+      ? await changeAccountEmail(email)
+      : await requestPasswordChange();
+    if (!result.ok) {
+      setError(result.error);
+    } else {
+      if (kind === "email") onPendingEmail(result.data?.pendingEmail ?? null);
+      onMessage(result.message ?? labels.saved);
+      onClose();
+    }
     setSaving(false);
   }
+
   return (
-    <Modal title={kind === "email" ? labels.emailTitle : labels.passwordTitle} subtitle={kind === "email" ? labels.emailHint : labels.passwordHint} onClose={onClose}>
+    <Modal
+      title={kind === "email" ? labels.emailTitle : labels.passwordTitle}
+      subtitle={kind === "email" ? labels.emailHint : labels.passwordHint}
+      onClose={onClose}
+    >
       <div className={styles.accountDialogBody}>
-        {kind === "email" ? <label><span>{labels.newEmail}</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoFocus /></label> : <><label><span>{labels.newPassword}</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /></label><label><span>{labels.repeatPassword}</span><input type="password" value={repeat} onChange={(event) => setRepeat(event.target.value)} /></label></>}
+        {kind === "email" ? (
+          <label>
+            <span>{labels.newEmail}</span>
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoFocus />
+          </label>
+        ) : (
+          <div className="rounded-[11px] border border-black/[.08] bg-[#F7F8FA] px-3.5 py-3 dark:border-white/10 dark:bg-white/[.045]">
+            <span className="text-[10px] font-medium uppercase tracking-[.06em] text-[#8A9099]">{labels.passwordEmailLabel}</span>
+            <div className="mt-1.5 flex items-center gap-2">
+              <Mail className="size-3.5 text-[#002BBA]" />
+              <strong className="min-w-0 truncate text-[12.5px] font-medium text-[#0B0C0E] dark:text-white">{currentEmail}</strong>
+            </div>
+            {isOauthOnly ? (
+              <p className="mt-2 text-[10.5px] leading-4 text-[#6B7078] dark:text-[#A8ABB2]">{labels.oauthPasswordNote}</p>
+            ) : null}
+          </div>
+        )}
         {error ? <div className={styles.modalError}>{error}</div> : null}
       </div>
-      <div className={styles.modalFooter}><button type="button" className={styles.secondaryButton} onClick={onClose}>{labels.cancel}</button><button type="button" className={styles.primaryButton} onClick={persist} disabled={saving}>{saving ? <Loader2 className={styles.spin} /> : <Check />}{labels.save}</button></div>
+      <div className={styles.modalFooter}>
+        <button type="button" className={styles.secondaryButton} onClick={onClose}>{labels.cancel}</button>
+        <button type="button" className={styles.primaryButton} onClick={persist} disabled={saving || (kind === "email" && !email.trim())}>
+          {saving ? <Loader2 className={styles.spin} /> : kind === "password" ? <Mail /> : <Check />}
+          {kind === "password" ? (isOauthOnly ? labels.createPasswordLink : labels.sendPasswordLink) : labels.save}
+        </button>
+      </div>
     </Modal>
   );
 }
 
-export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAvatarUrl, initialBranding, initialDesignDefaults, gmailEmail, initialPlanSelection }: {
+export function ProfilePrecisionClient({ initialProfile, accountEmail, pendingAccountEmail, authProviders, initialSecurityStatus, initialBillingCurrency, initialAvatarUrl, initialBranding, initialDesignDefaults, gmailEmail, initialPlanSelection, initialPlanDialogOpen = false, initialCreditsDialogOpen = false }: {
   initialProfile: ProfileState;
   accountEmail: string;
+  pendingAccountEmail: string | null;
+  authProviders: string[];
+  initialSecurityStatus: string | null;
+  initialBillingCurrency: LeadbaseBillingCurrency;
   initialAvatarUrl: string | null;
   initialBranding: ProposalBrandingDefaults;
   initialDesignDefaults: LeadbaseDesignDefaults;
   gmailEmail: string | null;
   initialPlanSelection: AccountPlanSelection;
+  initialPlanDialogOpen?: boolean;
+  initialCreditsDialogOpen?: boolean;
 }) {
   const { language } = useLanguage();
   const t = copy[language];
@@ -812,11 +935,28 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
   const [designDefaults, setDesignDefaults] = useState(initialDesignDefaults);
   const [designDefaultsOpen, setDesignDefaultsOpen] = useState(false);
   const [accountDialog, setAccountDialog] = useState<"email" | "password" | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(pendingAccountEmail);
+  const [billingCurrencyPreference, setBillingCurrencyPreference] = useState<LeadbaseBillingCurrency>(initialBillingCurrency);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [planSelection, setPlanSelection] = useState(initialPlanSelection);
-  const [managePlanOpen, setManagePlanOpen] = useState(false);
-  const [creditsOpen, setCreditsOpen] = useState(false);
-  const [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(null);
+  const [managePlanOpen, setManagePlanOpen] = useState(initialPlanDialogOpen);
+  const [creditsOpen, setCreditsOpen] = useState(initialCreditsDialogOpen);
+  const [notice, setNotice] = useState<{ message: string; error?: boolean } | null>(
+    initialSecurityStatus === "email-verified"
+      ? { message: language === "de" ? "Konto-E-Mail bestätigt." : "Account email verified." }
+      : initialSecurityStatus === "password-link-required"
+        ? { message: language === "de" ? "Fordere zuerst einen sicheren Passwort-Link an." : "Request a secure password-change link first.", error: true }
+        : null,
+  );
+
+  const hasEmailProvider = authProviders.includes("email");
+  const hasGoogleProvider = authProviders.includes("google");
+  const isOauthOnly = !hasEmailProvider && hasGoogleProvider;
+  const loginLabel = hasEmailProvider && hasGoogleProvider
+    ? t.emailGoogleLogin
+    : isOauthOnly
+      ? t.googleLogin
+      : t.emailPassword;
 
   function update<K extends keyof ProfileState>(key: K, value: ProfileState[K]) { setDraft((current) => ({ ...current, [key]: value })); }
   function startEdit() { setDraft(profile); setEditing(false); setProfileEditOpen(true); setSaved(false); }
@@ -932,9 +1072,21 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
           <section className={cn(styles.sideCard, styles.securityCard)}>
             <div className={styles.cardHeader}><span>{t.security}</span></div>
             <div className={styles.securityRows}>
-              <div><div><span>{t.accountEmail}</span><strong>{accountEmail}</strong></div><div className={styles.securityActionPair}><button type="button" onClick={() => navigator.clipboard?.writeText(accountEmail)}><Copy /></button><button type="button" className={styles.textButton} onClick={() => setAccountDialog("email")}>{t.change}</button></div></div>
-              <div><div><span>{t.login}</span><strong>{t.emailPassword}</strong></div><Mail className={styles.securityRowIcon} /></div>
-              <div><div><span>{t.password}</span><p>{t.passwordNote}</p></div><button type="button" className={styles.textButton} onClick={() => setAccountDialog("password")}><KeyRound />{t.change}</button></div>
+              <div>
+                <div>
+                  <span>{t.accountEmail}</span>
+                  <strong>{accountEmail}</strong>
+                  {pendingEmail ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#9A6507] dark:text-[#E7B95D]">
+                      <span className="rounded-[5px] bg-[#FFF4D8] px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[.05em] dark:bg-[#6B4B13]/35">{t.pendingVerification}</span>
+                      <span className="break-all">{pendingEmail}</span>
+                    </p>
+                  ) : null}
+                </div>
+                <div className={styles.securityActionPair}><button type="button" onClick={() => navigator.clipboard?.writeText(accountEmail)}><Copy /></button><button type="button" className={styles.textButton} onClick={() => setAccountDialog("email")}>{t.change}</button></div>
+              </div>
+              <div><div><span>{t.login}</span><strong>{loginLabel}</strong></div><Mail className={styles.securityRowIcon} /></div>
+              <div><div><span>{t.password}</span><p>{isOauthOnly ? t.oauthPasswordNote : t.passwordNote}</p></div><button type="button" className={styles.textButton} onClick={() => setAccountDialog("password")}><KeyRound />{isOauthOnly ? (language === "de" ? "Erstellen" : "Create") : t.change}</button></div>
             </div>
             <div className={styles.securityFooter}><form action={logout}><button type="submit" className={styles.destructiveButton}><LogOut />{t.signOut}</button></form><span>{t.securityNote}</span></div>
           </section>
@@ -942,12 +1094,12 @@ export function ProfilePrecisionClient({ initialProfile, accountEmail, initialAv
       </div>
 
       {profileEditOpen ? <ProfileEditDialog initialProfile={profile} avatarUrl={avatarUrl} gmailEmail={gmailEmail} language={language} onClose={() => setProfileEditOpen(false)} onSaved={(nextProfile, nextAvatarUrl) => { setProfile(nextProfile); setDraft(nextProfile); setAvatarUrl(nextAvatarUrl); setProfileEditOpen(false); setSaved(true); window.dispatchEvent(new CustomEvent("leadbase:profile-updated", { detail: { name: nextProfile.fullName, avatarUrl: nextAvatarUrl } })); window.setTimeout(() => setSaved(false), 2200); }} /> : null}
-      {managePlanOpen ? <ManagePlanDialog initial={planSelection} language={language} onClose={() => setManagePlanOpen(false)} onSaved={(value) => { setPlanSelection(value); setManagePlanOpen(false); setNotice({ message: language === "de" ? "Plan-Auswahl gespeichert · Checkout noch ausstehend." : "Plan selection saved · checkout still pending." }); }} /> : null}
-      {creditsOpen ? <BuyCreditsDialog language={language} onClose={() => setCreditsOpen(false)} onSaved={(message) => { setCreditsOpen(false); setNotice({ message }); }} /> : null}
+      {managePlanOpen ? <ManagePlanDialog initial={planSelection} initialBillingCurrency={billingCurrencyPreference} language={language} onBillingCurrencyChange={(value) => { setBillingCurrencyPreference(value); setPlanSelection((current) => ({ ...current, billingCurrency: value })); }} onClose={() => setManagePlanOpen(false)} onSaved={(value) => { setPlanSelection(value); setBillingCurrencyPreference(value.billingCurrency ?? billingCurrencyPreference); setManagePlanOpen(false); setNotice({ message: language === "de" ? "Plan-Auswahl gespeichert · Checkout noch ausstehend." : "Plan selection saved · checkout still pending." }); }} /> : null}
+      {creditsOpen ? <BuyCreditsDialog initialBillingCurrency={billingCurrencyPreference} language={language} onBillingCurrencyChange={setBillingCurrencyPreference} onClose={() => setCreditsOpen(false)} onSaved={(message) => { setCreditsOpen(false); setNotice({ message }); }} /> : null}
       {cropFile ? <AvatarCropDialog file={cropFile} labels={t} onClose={() => setCropFile(null)} onSaved={onAvatarSaved} /> : null}
-      {brandingOpen ? <ProposalBrandingDialog labels={t} initial={branding} onClose={() => setBrandingOpen(false)} onSaved={(value) => { setBranding(value); setBrandingOpen(false); setNotice({ message: t.saved }); }} /> : null}
+      {brandingOpen ? <ProposalBrandingDialog labels={t} initial={branding} avatarUrl={avatarUrl} onClose={() => setBrandingOpen(false)} onSaved={(value) => { setBranding(value); setBrandingOpen(false); setNotice({ message: t.saved }); }} /> : null}
       {designDefaultsOpen ? <DesignDefaultsDialog initial={designDefaults} language={language} planId={planSelection.planId} onClose={() => setDesignDefaultsOpen(false)} onSaved={(value) => { setDesignDefaults(value); setDesignDefaultsOpen(false); setNotice({ message: t.saved }); }} /> : null}
-      {accountDialog ? <AccountDialog kind={accountDialog} currentEmail={accountEmail} labels={t} onClose={() => setAccountDialog(null)} onMessage={(message, error) => setNotice({ message, error })} /> : null}
+      {accountDialog ? <AccountDialog kind={accountDialog} currentEmail={accountEmail} isOauthOnly={isOauthOnly} labels={t} onClose={() => setAccountDialog(null)} onMessage={(message, error) => setNotice({ message, error })} onPendingEmail={setPendingEmail} /> : null}
     </div>
   );
 }

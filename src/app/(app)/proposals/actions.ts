@@ -111,6 +111,13 @@ export async function ensureProposalProjectFromList(proposalId: string) {
     acceptedAt: proposal.accepted_at,
   });
 
+  if (result.upgradeRequired) {
+    return {
+      ok: false as const,
+      error: "The lead was marked Won. Upgrade to Starter to manage it as a project.",
+    };
+  }
+
   if (result.error || !result.projectId) {
     return { ok: false as const, error: result.error || "Project could not be created." };
   }

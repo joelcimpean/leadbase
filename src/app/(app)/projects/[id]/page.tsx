@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import {
   notFound,
+  redirect,
 } from "next/navigation";
 
 import {
@@ -30,7 +31,9 @@ import {
 import {
   createClient,
 } from "@/lib/supabase/server";
-import { resolveAccountCurrency } from "@/lib/account-currency";
+import { formatAccountMoney, resolveAccountCurrency } from "@/lib/account-currency";
+import { getLeadbasePlanAccess } from "@/lib/plan-access";
+import { planAllowsFeature } from "@/lib/plan-entitlements";
 
 type ProjectDetailPageProps = {
   params: Promise<{
@@ -51,25 +54,9 @@ function localeFor(
 function money(
   value: number,
   currency: string,
-  language:
-    "de" | "en"
+  language: "de" | "en"
 ) {
-  return new Intl.NumberFormat(
-    localeFor(
-      language
-    ),
-    {
-      style:
-        "currency",
-      currency:
-        currency ||
-        "EUR",
-      maximumFractionDigits:
-        0,
-    }
-  ).format(
-    value
-  );
+  return formatAccountMoney(value, currency || "EUR", language);
 }
 
 function dateLabel(
@@ -214,7 +201,14 @@ export default async function ProjectDetailPage({
     ]);
 
   const { data: { user } } = await supabase.auth.getUser();
-  const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  if (!user) redirect("/login");
+
+  const planAccess = await getLeadbasePlanAccess(user.id);
+  if (!planAllowsFeature(planAccess.planId, "project_creation")) {
+    redirect("/projects");
+  }
+
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
   const storedProfile = userMetadata.leadbase_profile && typeof userMetadata.leadbase_profile === "object"
     ? userMetadata.leadbase_profile as Record<string, unknown>
     : null;

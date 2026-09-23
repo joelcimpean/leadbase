@@ -14,6 +14,11 @@ import {
   import {
     createClient,
   } from "@/lib/supabase/server";
+
+  import {
+    assertFreeWorkspaceLeadAllowed,
+    isFreeWorkspaceLeadScopeError,
+  } from "@/lib/free-experience";
   
   export const runtime =
     "nodejs";
@@ -598,6 +603,15 @@ import {
           "Not authenticated.",
           401
         );
+      }
+
+      try {
+        await assertFreeWorkspaceLeadAllowed(user.id, leadId);
+      } catch (scopeError) {
+        if (isFreeWorkspaceLeadScopeError(scopeError)) {
+          return jsonError("This conversation is not available on Free.", 403);
+        }
+        throw scopeError;
       }
   
       /* =====================================================

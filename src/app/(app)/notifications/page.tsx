@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { NotificationsPrecisionClient } from "./notifications-precision-client";
 import { WorkspacePageMotion } from "@/components/workspace-page-motion";
 import { createClient } from "@/lib/supabase/server";
-import { resolveAccountCurrency } from "@/lib/account-currency";
+import { formatAccountMoney, resolveAccountCurrency } from "@/lib/account-currency";
 
 export type NotificationPageItem = {
   id: string;
@@ -62,20 +62,8 @@ function fallbackEntity(title: string) {
 
 function formatMoney(value: number | string | null, currency: string | null, fallbackCurrency: string) {
   const amount = Number(value);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return null;
-  }
-
-  try {
-    return new Intl.NumberFormat("de-DE", {
-      style: "currency",
-      currency: currency || fallbackCurrency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `${Math.round(amount).toLocaleString("de-DE")} ${currency || fallbackCurrency}`;
-  }
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return formatAccountMoney(amount, currency || fallbackCurrency, "de");
 }
 
 export default async function NotificationsPage() {

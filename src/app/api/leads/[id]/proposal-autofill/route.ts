@@ -25,6 +25,10 @@ import {
   assessProposalEmailHistory,
   filterProposalHistoryForAi,
 } from "@/lib/proposal-email-history";
+import {
+  assertDirectAiActionAllowed,
+  isFreeDirectAiActionError,
+} from "@/lib/free-experience";
 
 const MODEL = "gpt-5.6-luna";
 
@@ -95,6 +99,22 @@ export async function POST(
           status: 401,
         }
       );
+    }
+
+    try {
+      await assertDirectAiActionAllowed(user.id);
+    } catch (error) {
+      if (isFreeDirectAiActionError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "FREE_FULL_WORKFLOW_ONLY",
+            error: "Proposal AI is available from Starter. Free keeps the proposal draft created by the Full Workflow.",
+          },
+          { status: 403 },
+        );
+      }
+      throw error;
     }
 
     const {

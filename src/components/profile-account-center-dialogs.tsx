@@ -27,9 +27,8 @@ import {
 import { COUNTRY_DIAL_CODES, countryFlag, dialCodeFromLocale } from "@/lib/country-dial-codes";
 import {
   LEADBASE_CURRENCIES,
-  inferCurrencyFromLocation,
-  inferCurrencyFromLocale,
   normalizeLeadbaseCurrency,
+  type LeadbaseBillingCurrency,
 } from "@/lib/account-currency";
 import {
   LEADBASE_CREDIT_TOPUPS,
@@ -38,8 +37,9 @@ import {
   LEADBASE_CUSTOM_CREDITS_STEP,
   LEADBASE_PUBLIC_PLANS,
   LEADBASE_YEARLY_DISCOUNT_PERCENT,
-  customCreditPriceEur,
+  customCreditPrice,
   priceForTier,
+  priceForTopup,
   type LeadbaseBillingInterval,
   type LeadbasePublicPlanId,
 } from "@/lib/public-plans";
@@ -282,42 +282,24 @@ export function PhoneField({
 
 export function CurrencyField({
   currency,
-  currencyMode,
-  location,
   language,
   onCurrency,
-  onMode,
 }: {
   currency: string;
-  currencyMode: "auto" | "manual";
-  location: string;
   language: Language;
   onCurrency: (value: string) => void;
-  onMode: (value: "auto" | "manual") => void;
 }) {
-  const inferred = inferCurrencyFromLocation(location) ?? normalizeLeadbaseCurrency(currency);
   return (
     <div className="mt-1.5 flex h-10 w-full min-w-0 overflow-hidden rounded-[9px] border border-[#DFE1E5] bg-white transition focus-within:border-[#002BBA] focus-within:ring-3 focus-within:ring-[#002BBA]/10 dark:border-white/15 dark:bg-[#121316]">
       <select
-        value={currencyMode === "auto" ? "auto" : "manual"}
-        onChange={(event) => onMode(event.target.value === "manual" ? "manual" : "auto")}
-        className="h-full w-[132px] shrink-0 border-0 border-r border-black/10 bg-transparent px-3 text-[12px] outline-none dark:border-white/15 dark:text-white"
-        aria-label={language === "de" ? "Währungsmodus" : "Currency mode"}
-      >
-        <option value="auto">{language === "de" ? `Auto · ${inferred}` : `Auto · ${inferred}`}</option>
-        <option value="manual">{language === "de" ? "Manuell" : "Manual"}</option>
-      </select>
-      <select
         value={normalizeLeadbaseCurrency(currency)}
-        onChange={(event) => {
-          onMode("manual");
-          onCurrency(event.target.value);
-        }}
-        disabled={currencyMode === "auto"}
-        className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-[12.5px] outline-none disabled:cursor-default disabled:text-[#6B7078] dark:text-white dark:disabled:text-[#A8ABB2]"
+        onChange={(event) => onCurrency(event.target.value)}
+        className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-[12.5px] outline-none dark:text-white"
         aria-label={language === "de" ? "Währung" : "Currency"}
       >
-        {LEADBASE_CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
+        {LEADBASE_CURRENCIES.map((code) => (
+          <option key={code} value={code}>{code}</option>
+        ))}
       </select>
     </div>
   );
@@ -345,16 +327,16 @@ export function ProfileEditDialog({
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!draft.phoneCountryCode || (draft.currencyMode === "auto" && !draft.currency)) {
+    if (!draft.phoneCountryCode) {
       const guessedDial = dialCodeFromLocale(navigator.language);
-      const guessedCurrency = inferCurrencyFromLocation(draft.location) ?? inferCurrencyFromLocale(navigator.language);
-      setDraft((current) => ({
-        ...current,
-        phoneCountryCode: current.phoneCountryCode || guessedDial || "",
-        currency: current.currency || guessedCurrency || "USD",
-      }));
+      if (guessedDial) {
+        setDraft((current) => ({
+          ...current,
+          phoneCountryCode: current.phoneCountryCode || guessedDial,
+        }));
+      }
     }
-  }, [draft.currency, draft.currencyMode, draft.location, draft.phoneCountryCode]);
+  }, [draft.phoneCountryCode]);
 
   useEffect(() => {
     return () => {
@@ -466,15 +448,7 @@ export function ProfileEditDialog({
           </label>
           <label className={labelClass}>
             {language === "de" ? "Standort" : "Location"} <span className="text-[#B42318]">*</span>
-            <CityField value={draft.location} language={language} onChange={(value) => {
-              setDraft((current) => ({
-                ...current,
-                location: value,
-                ...(current.currencyMode === "auto" && inferCurrencyFromLocation(value)
-                  ? { currency: inferCurrencyFromLocation(value)! }
-                  : {}),
-              }));
-            }} />
+            <CityField value={draft.location} language={language} onChange={(value) => update("location", value)} />
           </label>
           <label className={labelClass}>
             {language === "de" ? "Absendername" : "Sender name"}
@@ -492,20 +466,15 @@ export function ProfileEditDialog({
             {language === "de" ? "Währung" : "Currency"}
             <CurrencyField
               currency={draft.currency}
-              currencyMode={draft.currencyMode}
-              location={draft.location}
               language={language}
-              onCurrency={(value) => update("currency", value)}
-              onMode={(value) => setDraft((current) => ({
+              onCurrency={(value) => setDraft((current) => ({
                 ...current,
-                currencyMode: value,
-                currency: value === "auto"
-                  ? (inferCurrencyFromLocation(current.location) ?? inferCurrencyFromLocale(navigator.language) ?? normalizeLeadbaseCurrency(current.currency))
-                  : normalizeLeadbaseCurrency(current.currency),
+                currency: value,
+                currencyMode: "manual",
               }))}
             />
             <span className="mt-1.5 block text-[10px] font-normal leading-4 text-[#6B7078] dark:text-[#A8ABB2]">
-              {language === "de" ? "Auto passt sich deinem Standort an. Manuell überschreibt die Erkennung." : "Auto follows your location. Manual overrides detection."}
+              {language === "de" ? "Diese Währung wird in Dashboard, Leads, Projekten und Angeboten verwendet." : "This currency is used across dashboard, leads, projects and proposals."}
             </span>
           </label>
           <label className={labelClass}>
@@ -557,12 +526,16 @@ export function ProfileEditDialog({
 
 export function ManagePlanDialog({
   initial,
+  initialBillingCurrency,
   language,
+  onBillingCurrencyChange,
   onClose,
   onSaved,
 }: {
   initial: AccountPlanSelection;
+  initialBillingCurrency: LeadbaseBillingCurrency;
   language: Language;
+  onBillingCurrencyChange: (value: LeadbaseBillingCurrency) => void;
   onClose: () => void;
   onSaved: (value: AccountPlanSelection) => void;
 }) {
@@ -570,6 +543,7 @@ export function ManagePlanDialog({
     initial.planId === "free" ? "pro" : initial.planId;
   const [planId, setPlanId] = useState<LeadbasePublicPlanId>(initialPaidId);
   const [billing, setBilling] = useState<LeadbaseBillingInterval>(initial.billing);
+  const billingCurrency: LeadbaseBillingCurrency = "USD";
   const [tiers, setTiers] = useState<Record<LeadbasePublicPlanId, number>>({
     starter: initialPaidId === "starter" ? initial.tierIndex : 0,
     pro: initialPaidId === "pro" ? initial.tierIndex : 0,
@@ -582,12 +556,13 @@ export function ManagePlanDialog({
 
   const selectedPlan = LEADBASE_PUBLIC_PLANS.find((plan) => plan.id === planId)!;
   const selectedTier = selectedPlan.tiers[Math.min(tiers[planId], selectedPlan.tiers.length - 1)];
-  const price = priceForTier(selectedTier, billing);
+  const price = priceForTier(selectedTier, billing, billingCurrency);
   const selectedIsCurrent =
     initial.planId !== "free" &&
     planId === initial.planId &&
     tiers[planId] === initial.tierIndex &&
     billing === initial.billing;
+
 
   async function checkout() {
     setSaving(true);
@@ -601,6 +576,7 @@ export function ManagePlanDialog({
           planId,
           tierIndex: tiers[planId],
           billing,
+          billingCurrency,
         }),
       });
       const payload = await response.json() as { url?: string; error?: string };
@@ -610,9 +586,12 @@ export function ManagePlanDialog({
         planId,
         tierIndex: tiers[planId],
         billing,
+        billingCurrency,
         checkoutStatus: "pending_checkout",
         credits: selectedTier.credits,
-        priceEur: price,
+        price,
+        priceEur: priceForTier(selectedTier, billing, "EUR"),
+        priceUsd: priceForTier(selectedTier, billing, "USD"),
       });
       window.location.assign(payload.url);
     } catch (checkoutError) {
@@ -652,7 +631,7 @@ export function ManagePlanDialog({
             </span>
             <div className="mt-1.5 flex items-center gap-2">
               <strong className="text-[17px] font-semibold tracking-[-.02em] dark:text-white">{selectedPlan.name}</strong>
-              <span className="rounded-[6px] bg-[#EAEEFB] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[.06em] text-[#002BBA] dark:bg-[#002BBA]/20 dark:text-[#8EA5FF]"><AnimatedNumber value={price} locale={language === "de" ? "de-DE" : "en-US"} /> € / {billing === "monthly" ? (language === "de" ? "Monat" : "month") : (language === "de" ? "Jahr" : "year")}</span>
+              <span className="rounded-[6px] bg-[#EAEEFB] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[.06em] text-[#002BBA] dark:bg-[#002BBA]/20 dark:text-[#8EA5FF]">$<AnimatedNumber value={price} locale="en-US" /> / {billing === "monthly" ? (language === "de" ? "Monat" : "month") : (language === "de" ? "Jahr" : "year")}</span>
             </div>
           </div>
           <div className="ml-auto text-right">
@@ -661,6 +640,7 @@ export function ManagePlanDialog({
           </div>
         </div>
 
+        <div className="mt-4 flex flex-wrap items-center gap-2">
         <div className="mt-4 flex w-fit rounded-[10px] bg-[#F3F4F6] p-0.5 dark:bg-white/[.07]">
           <button type="button" onClick={() => setBilling("monthly")} className={cn("flex h-8 items-center gap-2 rounded-[8px] px-3 text-[11.5px] transition", billing === "monthly" ? "bg-white font-medium text-[#0B0C0E] shadow-[0_1px_2px_rgba(11,12,14,.12)] dark:bg-[#1C1E22] dark:text-white" : "text-[#6B7078] dark:text-[#A8ABB2]")}>
             {language === "de" ? "Monatlich" : "Monthly"}
@@ -672,13 +652,14 @@ export function ManagePlanDialog({
             </span>
           </button>
         </div>
+        </div>
 
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {LEADBASE_PUBLIC_PLANS.map((plan) => {
             const active = plan.id === planId;
             const tierIndex = Math.min(tiers[plan.id], plan.tiers.length - 1);
             const tier = plan.tiers[tierIndex];
-            const tierPrice = priceForTier(tier, billing);
+            const tierPrice = priceForTier(tier, billing, billingCurrency);
             return (
               <button key={plan.id} type="button" onClick={() => setPlanId(plan.id)} className={cn("rounded-[12px] border bg-white p-3.5 text-left transition dark:bg-[#121316]", active ? "border-[#002BBA] shadow-[0_0_0_3px_rgba(0,43,186,.10)]" : "border-black/10 hover:border-[#002BBA]/45 dark:border-white/12")}>
                 <div className="flex items-center gap-2">
@@ -692,7 +673,7 @@ export function ManagePlanDialog({
                   <span className={cn("ml-auto size-3.5 rounded-full", active ? "bg-[#002BBA] shadow-[inset_0_0_0_3.5px_white]" : "border border-[#DFE1E5] dark:border-white/20")} />
                 </div>
                 <div className="mt-3 flex items-baseline gap-1.5">
-                  <strong className="text-[18px] font-semibold tracking-[-.025em] tabular-nums dark:text-white"><AnimatedNumber value={tierPrice} locale={language === "de" ? "de-DE" : "en-US"} /> €</strong>
+                  <strong className="text-[18px] font-semibold tracking-[-.025em] tabular-nums dark:text-white">$<AnimatedNumber value={tierPrice} locale="en-US" /></strong>
                   <span className="text-[10.5px] text-[#6B7078] dark:text-[#A8ABB2]">/{billing === "monthly" ? (language === "de" ? "Monat" : "mo") : (language === "de" ? "Jahr" : "yr")}</span>
                 </div>
                 <div className="mt-1 min-h-[16px] text-[9.5px] text-[#6B7078] dark:text-[#A8ABB2]">
@@ -829,23 +810,30 @@ export function ManagePlanDialog({
 }
 
 export function BuyCreditsDialog({
+  initialBillingCurrency,
   language,
+  onBillingCurrencyChange,
   onClose,
   onSaved,
 }: {
+  initialBillingCurrency: LeadbaseBillingCurrency;
   language: Language;
+  onBillingCurrencyChange: (value: LeadbaseBillingCurrency) => void;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
   const [selected, setSelected] = useState<string>(LEADBASE_CREDIT_TOPUPS[1].id);
   const [customCredits, setCustomCredits] = useState(5_000);
   const [customInput, setCustomInput] = useState("5000");
+  const topupCurrency: LeadbaseBillingCurrency = "USD";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const preset = LEADBASE_CREDIT_TOPUPS.find((topup) => topup.id === selected) ?? null;
   const customActive = selected === "custom";
   const selectedCredits = customActive ? customCredits : (preset?.credits ?? LEADBASE_CREDIT_TOPUPS[1].credits);
-  const selectedPrice = customActive ? (customCreditPriceEur(customCredits) ?? 0) : (preset?.priceEur ?? LEADBASE_CREDIT_TOPUPS[1].priceEur);
+  const selectedPrice = customActive
+    ? (customCreditPrice(customCredits, topupCurrency) ?? 0)
+    : priceForTopup(preset ?? LEADBASE_CREDIT_TOPUPS[1], topupCurrency);
 
   function setSafeCustomCredits(value: number) {
     const stepped = Math.round(value / LEADBASE_CUSTOM_CREDITS_STEP) * LEADBASE_CUSTOM_CREDITS_STEP;
@@ -864,6 +852,7 @@ export function BuyCreditsDialog({
     }
   }
 
+
   async function checkout() {
     setSaving(true);
     setError("");
@@ -871,7 +860,7 @@ export function BuyCreditsDialog({
       const response = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "credits", presetId: customActive ? "custom" : preset?.id, credits: selectedCredits }),
+        body: JSON.stringify({ kind: "credits", presetId: customActive ? "custom" : preset?.id, credits: selectedCredits, billingCurrency: topupCurrency }),
       });
       const payload = await response.json() as { url?: string; error?: string };
       if (!response.ok || !payload.url) throw new Error(payload.error || "Checkout could not be created.");
@@ -899,7 +888,7 @@ export function BuyCreditsDialog({
                 <span className={monoClass}>{pack.id === "small" ? (language === "de" ? "Klein" : "Small") : pack.id === "medium" ? (language === "de" ? "Mittel" : "Medium") : (language === "de" ? "Groß" : "Large")}</span>
                 <strong className="mt-2 block text-[17px] font-semibold tracking-[-.02em] dark:text-white">{pack.credits.toLocaleString(language === "de" ? "de-DE" : "en-US")}</strong>
                 <span className="text-[10.5px] text-[#6B7078] dark:text-[#A8ABB2]">Credits</span>
-                <div className="mt-3 border-t border-black/[.07] pt-2.5 dark:border-white/10"><strong className="text-[13px] dark:text-white">{pack.priceEur} €</strong></div>
+                <div className="mt-3 border-t border-black/[.07] pt-2.5 dark:border-white/10"><strong className="text-[13px] dark:text-white">${priceForTopup(pack, topupCurrency)}</strong></div>
               </button>
             );
           })}
@@ -925,7 +914,7 @@ export function BuyCreditsDialog({
             </div>
             <div className="text-right">
               <span className={monoClass}>{language === "de" ? "Preis" : "Price"}</span>
-              <strong className="mt-1 block text-[16px] font-semibold tabular-nums dark:text-white"><AnimatedNumber value={customCreditPriceEur(customCredits) ?? 0} locale={language === "de" ? "de-DE" : "en-US"} /> €</strong>
+              <strong className="mt-1 block text-[16px] font-semibold tabular-nums dark:text-white">$<AnimatedNumber value={customCreditPrice(customCredits, topupCurrency) ?? 0} locale="en-US" /></strong>
             </div>
             <span className={cn("size-3.5 shrink-0 rounded-full", customActive ? "bg-[#002BBA] shadow-[inset_0_0_0_3.5px_white]" : "border border-[#DFE1E5] dark:border-white/20")} />
           </button>
@@ -974,7 +963,7 @@ export function BuyCreditsDialog({
       </div>
       <div className="flex shrink-0 items-center justify-end gap-2 border-t border-black/[.07] px-5 py-3 sm:px-6 dark:border-white/10">
         <button type="button" onClick={onClose} className="h-9 rounded-[9px] border border-black/10 px-3.5 text-[12.5px] font-medium text-[#40454E] dark:border-white/15 dark:text-[#E8E8EA]">{language === "de" ? "Abbrechen" : "Cancel"}</button>
-        <button type="button" onClick={() => void checkout()} disabled={saving} className="flex h-9 items-center gap-2 rounded-[9px] bg-[#002BBA] px-3.5 text-[12.5px] font-medium text-white disabled:opacity-55">{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}{language === "de" ? <>{selectedCredits.toLocaleString("de-DE")} Credits · <AnimatedNumber value={selectedPrice} locale="de-DE" /> €</> : <>{selectedCredits.toLocaleString("en-US")} credits · €<AnimatedNumber value={selectedPrice} locale="en-US" /></>}</button>
+        <button type="button" onClick={() => void checkout()} disabled={saving} className="flex h-9 items-center gap-2 rounded-[9px] bg-[#002BBA] px-3.5 text-[12.5px] font-medium text-white disabled:opacity-55">{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}{language === "de" ? <>{selectedCredits.toLocaleString("de-DE")} Credits · $<AnimatedNumber value={selectedPrice} locale="en-US" /></> : <>{selectedCredits.toLocaleString("en-US")} credits · $<AnimatedNumber value={selectedPrice} locale="en-US" /></>}</button>
       </div>
     </DialogShell>
   );

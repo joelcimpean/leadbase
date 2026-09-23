@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Check,
   ChevronDown,
@@ -11,6 +13,7 @@ import {
   ImagePlus,
   Link2,
   Link2Off,
+  LockKeyhole,
   Loader2,
   MapPin,
   MousePointer2,
@@ -21,6 +24,7 @@ import {
   Trash2,
   UploadCloud,
   X,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -1153,8 +1157,16 @@ export function RedesignPreviewActions({
   const {
     planId,
     entitlements,
+    remainingCredits,
     loading: planLoading,
   } = useLeadbasePlan();
+
+  const freeDesignLocked = !planLoading && planId === "free";
+  const noCredits =
+    !planLoading &&
+    planId !== "free" &&
+    remainingCredits !== null &&
+    remainingCredits <= 0;
 
   const canGenerateDesign =
     planAllowsFeature(planId, "design_generation");
@@ -3256,42 +3268,57 @@ export function RedesignPreviewActions({
           </button>
         </div>
 
+        {freeDesignLocked ? (
+          <div className="mt-3 flex flex-col gap-3 rounded-[11px] border border-[#002BBA]/12 bg-[#EAEEFB]/45 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between dark:border-[#8EA6FF]/15 dark:bg-[#002BBA]/10">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <LockKeyhole className="mt-0.5 size-3.5 shrink-0 text-[#002BBA] dark:text-[#8EA6FF]" />
+              <div className="min-w-0">
+                <p className="text-[11.5px] font-medium text-[#0B0C0E] dark:text-white">
+                  {language === "de" ? "Demo-Design ist im Free-Plan schreibgeschützt" : "Demo design is view-only on Free"}
+                </p>
+                <p className="mt-0.5 text-[10.5px] leading-4 text-[#6B7078]">
+                  {language === "de"
+                    ? "Bearbeiten, neu generieren, Modelle, Qualität, Motion und Inspiration sind ab Starter verfügbar."
+                    : "Editing, regeneration, models, quality, motion and inspiration are available from Starter."}
+                </p>
+              </div>
+            </div>
+            <Link href="/profile?dialog=plan" className="inline-flex h-8 shrink-0 items-center justify-center rounded-[8px] bg-[#002BBA] px-3 text-[11px] font-medium text-white hover:bg-[#00229A]">
+              {language === "de" ? "Auf Starter upgraden" : "Upgrade to Starter"}
+            </Link>
+          </div>
+        ) : null}
+
         {/* =================================================
             MAIN TOOLBAR
         ================================================= */}
 
         <div className="mt-[14px] flex min-w-0 flex-wrap items-center gap-2">
           {variants.length === 0 ? (
-            <button
-              type="button"
-              disabled={
-                generating ||
-                planLoading ||
-                !canGenerateDesign
-              }
-              onClick={() =>
-                void generate()
-              }
-              className="inline-flex h-[34px] items-center justify-center gap-2 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] font-medium text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.10] dark:bg-[#111216] dark:text-white dark:hover:bg-white/[0.04]"
-            >
-              {generating ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="size-3.5 opacity-70" />
-              )}
-
-              {generating
-                ? text.generating
-                : text.generate}
-
-              {!generating ? (
-                <CreditEstimatePill
-                  estimate={designCreditEstimate(designModel, reasoningEffort)}
-                  language={language}
-                  hideOnSmall
-                />
-              ) : null}
-            </button>
+            freeDesignLocked ? (
+              <Link href="/profile?dialog=plan" className="inline-flex h-[34px] items-center justify-center gap-2 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] font-medium text-[#40454E] transition-colors hover:border-[#002BBA]/30 hover:text-[#002BBA] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white">
+                <LockKeyhole className="size-3.5" />
+                {language === "de" ? "Design ab Starter" : "Design · Starter+"}
+              </Link>
+            ) : noCredits ? (
+              <Link href="/profile?dialog=credits" className="inline-flex h-[34px] items-center justify-center gap-2 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] font-medium text-[#40454E] transition-colors hover:border-[#002BBA]/30 hover:text-[#002BBA] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white">
+                <Zap className="size-3.5" />
+                {language === "de" ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled={generating || planLoading || !canGenerateDesign}
+                onClick={() => void generate()}
+                className="inline-flex h-[34px] items-center justify-center gap-2 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] font-medium text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.10] dark:bg-[#111216] dark:text-white dark:hover:bg-white/[0.04]"
+              >
+                {generating ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5 opacity-70" />}
+                {generating ? text.generating : text.generate}
+                {!generating ? (
+                  <CreditEstimatePill estimate={designCreditEstimate(designModel, reasoningEffort)} language={language} hideOnSmall />
+                ) : null}
+              </button>
+            )
           ) : (
             <>
               {/* VARIANT */}
@@ -3466,87 +3493,73 @@ export function RedesignPreviewActions({
               {/* EDIT */}
 
               {selectedVariant ? (
-                <a
-                  href={`/design-preview/${encodeURIComponent(
-                    selectedVariant.id
-                  )}/edit`}
-                  className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
-                >
-                  <Pencil className="size-3.5 opacity-60" />
-
-                  {
-                    text.edit
-                  }
-                </a>
+                freeDesignLocked ? (
+                  <Link href="/profile?dialog=plan" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-[#002BBA]/30 hover:text-[#002BBA] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white">
+                    <LockKeyhole className="size-3.5 opacity-70" />
+                    {language === "de" ? "Bearbeiten · Starter" : "Edit · Starter"}
+                  </Link>
+                ) : (
+                  <a
+                    href={`/design-preview/${encodeURIComponent(selectedVariant.id)}/edit`}
+                    className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
+                  >
+                    <Pencil className="size-3.5 opacity-60" />
+                    {text.edit}
+                  </a>
+                )
               ) : null}
 
               {/* NEW VARIATION */}
 
-              <button
-                type="button"
-                disabled={
-                  generating ||
-                  planLoading ||
-                  !canGenerateDesign
-                }
-                onClick={() =>
-                  void generate()
-                }
-                className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
-              >
-                {generating ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="size-3.5 opacity-60" />
-                )}
+              {freeDesignLocked ? (
+                <Link href="/profile?dialog=plan" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-[#002BBA]/30 hover:text-[#002BBA] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white">
+                  <LockKeyhole className="size-3.5" />
+                  {language === "de" ? "Neu generieren · Starter" : "Regenerate · Starter"}
+                </Link>
+              ) : noCredits ? (
+                <Link href="/profile?dialog=credits" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-[#002BBA]/30 hover:text-[#002BBA] dark:border-white/[0.10] dark:bg-[#111216] dark:text-white">
+                  <Zap className="size-3.5" />
+                  {language === "de" ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled={generating || planLoading || !canGenerateDesign}
+                  onClick={() => void generate()}
+                  className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] border border-black/[0.09] bg-white px-3 text-[13px] text-[#40454E] transition-colors hover:border-black/[0.16] hover:bg-[#FDFDFE] disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.10] dark:bg-[#111216] dark:text-white"
+                >
+                  {generating ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5 opacity-60" />}
+                  {text.regenerate}
+                  {!generating ? <CreditEstimatePill estimate={designCreditEstimate(designModel, reasoningEffort)} language={language} hideOnSmall /> : null}
+                </button>
+              )}
 
-                {
-                  text.regenerate
-                }
-
-                {!generating ? (
-                  <CreditEstimatePill
-                    estimate={designCreditEstimate(designModel, reasoningEffort)}
-                    language={language}
-                    hideOnSmall
-                  />
-                ) : null}
-              </button>
-
-              <div className="ml-auto flex items-center gap-2">
+              <div className="basis-full flex items-center gap-2">
                 {/* ENHANCE MOTION */}
 
                 {selectedVariant ? (
-                  <button
-                    type="button"
-                    disabled={
-                      generating ||
-                      motionEnhancing ||
-                      !canUseMotion
-                    }
-                    onClick={() =>
-                      void enhanceMotion()
-                    }
-                    className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] bg-[#EAEEFB] px-3 text-[13px] font-medium text-[#002BBA] transition-colors hover:bg-[#DFE5F8] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#002BBA]/20 dark:text-[#8EA6FF] dark:hover:bg-[#002BBA]/28"
-                  >
-                    {motionEnhancing ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="size-3.5" />
-                    )}
-
-                    {
-                      text.enhanceMotion
-                    }
-
-                    {!motionEnhancing ? (
-                      <CreditEstimatePill
-                        feature="design_motion"
-                        language={language}
-                        hideOnSmall
-                      />
-                    ) : null}
-                  </button>
+                  freeDesignLocked ? (
+                    <Link href="/profile?dialog=plan" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] bg-[#EAEEFB] px-3 text-[13px] font-medium text-[#002BBA] transition-colors hover:bg-[#DFE5F8] dark:bg-[#002BBA]/20 dark:text-[#8EA6FF]">
+                      <LockKeyhole className="size-3.5" />
+                      {language === "de" ? "Motion · Pro+" : "Motion · Pro+"}
+                    </Link>
+                  ) : noCredits && canUseMotion ? (
+                    <Link href="/profile?dialog=credits" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] bg-[#EAEEFB] px-3 text-[13px] font-medium text-[#002BBA] transition-colors hover:bg-[#DFE5F8] dark:bg-[#002BBA]/20 dark:text-[#8EA6FF]">
+                      <Zap className="size-3.5" />
+                      {language === "de" ? "Keine Credits · kaufen" : "No Credits · Buy Credits"}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={generating || motionEnhancing || !canUseMotion}
+                      onClick={() => void enhanceMotion()}
+                      className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded-[10px] bg-[#EAEEFB] px-3 text-[13px] font-medium text-[#002BBA] transition-colors hover:bg-[#DFE5F8] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#002BBA]/20 dark:text-[#8EA6FF] dark:hover:bg-[#002BBA]/28"
+                    >
+                      {motionEnhancing ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                      {text.enhanceMotion}
+                      {!motionEnhancing ? <CreditEstimatePill feature="design_motion" language={language} hideOnSmall /> : null}
+                    </button>
+                  )
                 ) : null}
 
                 {/* CLIENT PREVIEW */}
@@ -3847,6 +3860,18 @@ export function RedesignPreviewActions({
 
         {settingsOpen ? (
           <div className="mt-4 border-t border-black/[0.07] pt-4 dark:border-white/[0.08]">
+            {freeDesignLocked ? (
+              <div className="flex flex-col gap-3 rounded-[11px] border border-black/[0.08] bg-[#F7F8FA] px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.08] dark:bg-white/[0.04]">
+                <div className="flex items-start gap-2.5">
+                  <LockKeyhole className="mt-0.5 size-4 shrink-0 text-[#002BBA] dark:text-[#8EA6FF]" />
+                  <div>
+                    <p className="text-[12px] font-medium">{language === "de" ? "Design-Einstellungen ab Starter" : "Design settings from Starter"}</p>
+                    <p className="mt-0.5 text-[10.5px] leading-4 text-[#6B7078]">{language === "de" ? "Modelle, Qualität, Motion, Briefing, Links und Referenzbilder sind im Free-Demo-Design schreibgeschützt." : "Models, quality, motion, briefing, links and reference images are read-only in the Free demo design."}</p>
+                  </div>
+                </div>
+                <Link href="/profile?dialog=plan" className="inline-flex h-8 shrink-0 items-center justify-center rounded-[8px] bg-[#002BBA] px-3 text-[11px] font-medium text-white hover:bg-[#00229A]">{language === "de" ? "Starter ansehen" : "View Starter"}</Link>
+              </div>
+            ) : (
             <div className="grid gap-3 xl:grid-cols-3">
               <label className="space-y-1.5">
                 <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#6B7078]">
@@ -4084,6 +4109,7 @@ export function RedesignPreviewActions({
                 </p>
               </div>
             </div>
+            )}
 
             {/* ACTIVE CLIENT PREVIEW + VISITS */}
 

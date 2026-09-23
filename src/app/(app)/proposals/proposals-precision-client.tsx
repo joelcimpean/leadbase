@@ -1,5 +1,7 @@
 "use client";
 
+import { formatAccountMoney } from "@/lib/account-currency";
+
 import {
   Check,
   ChevronDown,
@@ -255,16 +257,7 @@ function nextStep(item: ProposalPageItem, language: AppLanguage) {
 }
 
 function formatMoney(value: number, currency: string, language: AppLanguage) {
-  try {
-    return new Intl.NumberFormat(language === "de" ? "de-DE" : "en-IE", {
-      style: "currency",
-      currency: currency || "EUR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value || 0);
-  } catch {
-    return `${Math.round(value || 0).toLocaleString(language === "de" ? "de-DE" : "en-IE")} €`;
-  }
+  return formatAccountMoney(value || 0, currency || "EUR", language);
 }
 
 function formatDate(value: string | null, language: AppLanguage) {
@@ -426,7 +419,7 @@ export function ProposalsPrecisionClient({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `leadbase-proposals-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `Leadbase-proposals-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();

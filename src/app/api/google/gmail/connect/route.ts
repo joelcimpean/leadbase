@@ -89,7 +89,22 @@ export async function GET(
       state,
     });
 
-  return NextResponse.redirect(
+  const returnTo =
+    request.nextUrl.searchParams.get("returnTo") === "/"
+      ? "/"
+      : "/settings";
+
+  const response = NextResponse.redirect(
     authorizationUrl
   );
+
+  response.cookies.set("leadbase_gmail_return_to", returnTo, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: request.nextUrl.protocol === "https:",
+    path: "/",
+    maxAge: 10 * 60,
+  });
+
+  return response;
 }

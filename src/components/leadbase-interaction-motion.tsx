@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { animate as motionAnimate, hover, press } from "motion";
 import { animate as animeAnimate, stagger } from "animejs";
 
@@ -83,6 +83,8 @@ function animateToast(element: HTMLElement) {
 
 export function LeadbaseInteractionMotion() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const routeDialog = searchParams.get("dialog");
 
   useEffect(() => {
     const reduceMotion = window.matchMedia(
@@ -102,15 +104,22 @@ export function LeadbaseInteractionMotion() {
     );
 
     if (page) {
+      // A transformed ancestor changes the containing block of position:fixed
+      // dialogs. Deep-linked dialogs such as /profile?dialog=plan would
+      // therefore dim only the main content for the first transition frame
+      // before snapping to the full viewport. Keep route motion opacity-only
+      // whenever a dialog is already open from the URL.
       motionAnimate(
         page,
+        routeDialog
+          ? { opacity: [0.96, 1] }
+          : {
+              opacity: [0.93, 1],
+              y: [6, 0],
+              scale: [0.998, 1],
+            },
         {
-          opacity: [0.93, 1],
-          y: [6, 0],
-          scale: [0.998, 1],
-        },
-        {
-          duration: 0.28,
+          duration: routeDialog ? 0.18 : 0.28,
           ease: [0.22, 1, 0.36, 1],
         }
       );
@@ -372,7 +381,7 @@ export function LeadbaseInteractionMotion() {
         animation?.stop();
       }
     };
-  }, [pathname]);
+  }, [pathname, routeDialog]);
 
   return null;
 }

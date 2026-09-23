@@ -2930,6 +2930,10 @@ export async function generateSolStaticDesign({
   designModel,
   reasoningEffort,
   referenceImages = [],
+  maxOutputTokens,
+  repairMaxOutputTokens,
+  allowRepair = true,
+  allowVision = true,
 }: {
   variantId:
     string;
@@ -2964,6 +2968,18 @@ export async function generateSolStaticDesign({
 
   referenceImages?:
     string[];
+
+  maxOutputTokens?:
+    number;
+
+  repairMaxOutputTokens?:
+    number;
+
+  allowRepair?:
+    boolean;
+
+  allowVision?:
+    boolean;
 }): Promise<StaticDesignResult> {
   const apiKey =
     process.env
@@ -2992,6 +3008,24 @@ export async function generateSolStaticDesign({
   const resolvedReasoningEffort =
     reasoningEffort ??
     "medium";
+
+  const resolvedMaxOutputTokens =
+    Math.max(
+      2_000,
+      Math.min(
+        typeof maxOutputTokens === "number" && Number.isFinite(maxOutputTokens) ? maxOutputTokens : MAX_OUTPUT_TOKENS,
+        MAX_OUTPUT_TOKENS,
+      ),
+    );
+
+  const resolvedRepairMaxOutputTokens =
+    Math.max(
+      2_000,
+      Math.min(
+        typeof repairMaxOutputTokens === "number" && Number.isFinite(repairMaxOutputTokens) ? repairMaxOutputTokens : REPAIR_MAX_OUTPUT_TOKENS,
+        REPAIR_MAX_OUTPUT_TOKENS,
+      ),
+    );
 
   const realCandidates =
     collectVisualCandidates({
@@ -4290,10 +4324,9 @@ Return ONLY the finished complete HTML document.
       visionByUrl,
 
       maxOutputTokens:
-        MAX_OUTPUT_TOKENS,
+        resolvedMaxOutputTokens,
 
-      allowVision:
-        true,
+      allowVision,
     });
 
   const firstGenerationMs =
@@ -4350,6 +4383,12 @@ Return ONLY the finished complete HTML document.
   if (
     !quality.ok
   ) {
+    if (!allowRepair) {
+      throw new Error(
+        `Generated website did not pass structural QA within the workflow budget: ${quality.reasons.join(" ")}`
+      );
+    }
+
     repaired =
       true;
 
@@ -4438,7 +4477,7 @@ Return ONLY the full corrected HTML document.
         visionByUrl,
 
         maxOutputTokens:
-          REPAIR_MAX_OUTPUT_TOKENS,
+          resolvedRepairMaxOutputTokens,
 
         allowVision:
           false,
